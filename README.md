@@ -157,8 +157,11 @@ AI-Trader Bench/
 │
 ├── 📊 Data System
 │   ├── data/
-│   │   ├── daily_prices_*.json    # 📈 Stock price data
+│   │   ├── daily_prices_*.json    # 📈 NASDAQ 100 stock price data
 │   │   ├── merged.jsonl           # 🔄 Unified data format
+│   │   ├── A_stock/               # 🇨🇳 A-share market data
+│   │   │   ├── sse_50_weight.csv  # 📋 SSE 50 constituent stocks
+│   │   │   └── daily_prices_sse_50.csv  # 📈 Daily price data
 │   │   └── agent_data/            # 📝 AI trading records
 │   └── calculate_performance.py   # 📈 Performance analysis
 │
@@ -188,7 +191,9 @@ AI-Trader Bench/
 | **Math Tool** | Financial calculations and analysis | Basic mathematical operations |
 
 #### 📊 Data System
-- **📈 Price Data**: Complete OHLCV data for NASDAQ 100 component stocks
+- **📈 Price Data**: 
+  - 🇺🇸 Complete OHLCV data for NASDAQ 100 component stocks
+  - 🇨🇳 A-share market data (SSE 50 Index) via Tushare API
 - **📝 Trading Records**: Detailed trading history for each AI model
 - **📊 Performance Metrics**: Sharpe ratio, maximum drawdown, annualized returns, etc.
 - **🔄 Data Synchronization**: Automated data acquisition and update mechanisms
@@ -198,7 +203,11 @@ AI-Trader Bench/
 ### 📋 Prerequisites
 
 - **Python 3.8+** 
-- **API Keys**: OpenAI, Alpha Vantage, Jina AI
+- **API Keys**: 
+  - OpenAI (for AI models)
+  - Alpha Vantage (for NASDAQ 100 data)
+  - Jina AI (for market information search)
+  - Tushare (for A-share market data, optional)
 
 ### ⚡ One-Click Installation
 
@@ -225,8 +234,9 @@ OPENAI_API_BASE=https://your-openai-proxy.com/v1
 OPENAI_API_KEY=your_openai_key
 
 # 📊 Data Source Configuration
-ALPHAADVANTAGE_API_KEY=your_alpha_vantage_key
+ALPHAADVANTAGE_API_KEY=your_alpha_vantage_key  # For NASDAQ 100 data
 JINA_API_KEY=your_jina_api_key
+TUSHARE_TOKEN=your_tushare_token               # For A-share data
 
 # ⚙️ System Configuration
 RUNTIME_ENV_PATH=./runtime_env.json # Recommended to use absolute path
@@ -252,7 +262,9 @@ pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dot
 
 ## 🎮 Running Guide
 
-### 📊 Step 1: Data Preparation (`./fresh_data.sh`)
+### 📊 Step 1: Data Preparation
+
+#### 🇺🇸 NASDAQ 100 Data (`./fresh_data.sh`)
 
 ```bash
 # 📈 Get NASDAQ 100 stock data
@@ -262,6 +274,26 @@ python get_daily_price.py
 # 🔄 Merge data into unified format
 python merge_jsonl.py
 ```
+
+#### 🇨🇳 A-Share Market Data (SSE 50)
+
+```bash
+# 📈 Get Chinese A-share market data (SSE 50 Index)
+cd data
+python get_daily_price_a_stock.py
+
+# 📊 Data will be saved to: data/A_stock/daily_prices_sse_50.csv
+```
+
+**Features:**
+- 📅 **Auto Date Range**: Automatically fetches data from 2025-01-01 to today
+- 🔄 **Batch Processing**: Handles Tushare's 6000-record limit automatically
+- 💾 **Fallback Support**: Uses local CSV if API fails (`data/A_stock/sse_50_weight.csv`)
+- 📈 **Sorted Output**: Data sorted by trade_date and ts_code in ascending order
+
+**Requirements:**
+- Tushare API token (set `TUSHARE_TOKEN` in `.env` file)
+- Get your free token at: https://tushare.pro/register
 
 ### 🛠️ Step 2: Start MCP Services
 
@@ -480,7 +512,7 @@ class CustomTool:
 ## 🚀 Roadmap
 
 ### 🌟 Future Plans
-- [ ] **🇨🇳 A-Share Support** - Extend to Chinese stock market
+- [x] **🇨🇳 A-Share Support** - ✅ SSE 50 Index data integration completed
 - [ ] **📊 Post-Market Statistics** - Automatic profit analysis
 - [ ] **🔌 Strategy Marketplace** - Add third-party strategy sharing platform
 - [ ] **🎨 Cool Frontend Interface** - Modern web dashboard
