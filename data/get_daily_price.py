@@ -126,6 +126,10 @@ def get_daily_price(SYMBOL: str):
         return
     with open(f"./daily_prices_{SYMBOL}.json", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
+    if SYMBOL == "QQQ":
+        with open(f'./Adaily_prices_{SYMBOL}.json', 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
+
 
 
 if __name__ == "__main__":
