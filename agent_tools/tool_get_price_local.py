@@ -1,10 +1,12 @@
-from pathlib import Path
 import json
-from datetime import datetime
-from typing import Dict, Any
-from fastmcp import FastMCP
 import os
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict
+
 from dotenv import load_dotenv
+from fastmcp import FastMCP
+
 load_dotenv()
 
 mcp = FastMCP("LocalPrices")
@@ -58,7 +60,7 @@ def get_price_local(symbol: str, date: str) -> Dict[str, Any]:
                 return {
                     "error": f"Data not found for date {date}. Please verify the date exists in data. Sample available dates: {sample_dates}",
                     "symbol": symbol,
-                    "date": date
+                    "date": date,
                 }
             return {
                 "symbol": symbol,
@@ -66,14 +68,13 @@ def get_price_local(symbol: str, date: str) -> Dict[str, Any]:
                 "ohlcv": {
                     "open": day.get("1. buy price"),
                     "high": day.get("2. high"),
-                    "low": day.get("3. low"), 
+                    "low": day.get("3. low"),
                     "close": day.get("4. sell price"),
                     "volume": day.get("5. volume"),
                 },
             }
 
     return {"error": f"No records found for stock {symbol} in local data", "symbol": symbol, "date": date}
-
 
 
 def get_price_local_function(symbol: str, date: str, filename: str = "merged.jsonl") -> Dict[str, Any]:
@@ -111,7 +112,7 @@ def get_price_local_function(symbol: str, date: str, filename: str = "merged.jso
                 return {
                     "error": f"Data not found for date {date}. Please verify the date exists in data. Sample available dates: {sample_dates}",
                     "symbol": symbol,
-                    "date": date
+                    "date": date,
                 }
             return {
                 "symbol": symbol,
@@ -127,9 +128,9 @@ def get_price_local_function(symbol: str, date: str, filename: str = "merged.jso
 
     return {"error": f"No records found for stock {symbol} in local data", "symbol": symbol, "date": date}
 
+
 if __name__ == "__main__":
     # print("a test case")
     # print(get_price_local_function("AAPL", "2025-10-16"))
     port = int(os.getenv("GETPRICE_HTTP_PORT", "8003"))
     mcp.run(transport="streamable-http", port=port)
-

@@ -1,25 +1,28 @@
 import os
+
 from dotenv import load_dotenv
+
 load_dotenv()
 import json
+import os
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
-import sys
-import os
+
 # Add project root directory to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
-from tools.price_tools import (
-    get_yesterday_date, 
-    get_open_prices, 
-    get_yesterday_open_and_close_price, 
-    get_today_init_position, 
-    get_yesterday_profit,
-    all_nasdaq_100_symbols,
-    all_sse_50_symbols
-)
 from tools.general_tools import get_config_value
+from tools.price_tools import (
+    all_nasdaq_100_symbols,
+    all_sse_50_symbols,
+    get_open_prices,
+    get_today_init_position,
+    get_yesterday_date,
+    get_yesterday_open_and_close_price,
+    get_yesterday_profit,
+)
 
 STOP_SIGNAL = "<FINISH_SIGNAL>"
 
@@ -59,15 +62,18 @@ When you think your task is complete, output
 {STOP_SIGNAL}
 """
 
-def get_agent_system_prompt(today_date: str, signature: str, market: str = "us", stock_symbols: Optional[List[str]] = None) -> str:
+
+def get_agent_system_prompt(
+    today_date: str, signature: str, market: str = "us", stock_symbols: Optional[List[str]] = None
+) -> str:
     print(f"signature: {signature}")
     print(f"today_date: {today_date}")
     print(f"market: {market}")
-    
+
     # Auto-select stock symbols based on market if not provided
     if stock_symbols is None:
         stock_symbols = all_sse_50_symbols if market == "cn" else all_nasdaq_100_symbols
-    
+
     # Get yesterday's buy and sell prices
     yesterday_buy_prices, yesterday_sell_prices = get_yesterday_open_and_close_price(
         today_date, stock_symbols, market=market
@@ -78,14 +84,13 @@ def get_agent_system_prompt(today_date: str, signature: str, market: str = "us",
         today_date, yesterday_buy_prices, yesterday_sell_prices, today_init_position, stock_symbols
     )
     return agent_system_prompt.format(
-        date=today_date, 
-        positions=today_init_position, 
+        date=today_date,
+        positions=today_init_position,
         STOP_SIGNAL=STOP_SIGNAL,
         yesterday_close_price=yesterday_sell_prices,
         today_buy_price=today_buy_price,
-        yesterday_profit=yesterday_profit
+        yesterday_profit=yesterday_profit,
     )
-
 
 
 if __name__ == "__main__":
@@ -93,4 +98,4 @@ if __name__ == "__main__":
     signature = get_config_value("SIGNATURE")
     if signature is None:
         raise ValueError("SIGNATURE environment variable is not set")
-    print(get_agent_system_prompt(today_date, signature))  
+    print(get_agent_system_prompt(today_date, signature))
