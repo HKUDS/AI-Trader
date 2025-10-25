@@ -27,6 +27,35 @@ all_nasdaq_100_symbols = [
     "ON", "BIIB", "LULU", "CDW", "GFS"
 ]
 
+all_sse_50_symbols = [
+    "600519.SH", "601318.SH", "600036.SH", "601899.SH", "600900.SH",
+    "601166.SH", "600276.SH", "600030.SH", "603259.SH", "688981.SH",
+    "688256.SH", "601398.SH", "688041.SH", "601211.SH", "601288.SH",
+    "601328.SH", "688008.SH", "600887.SH", "600150.SH", "601816.SH",
+    "601127.SH", "600031.SH", "688012.SH", "603501.SH", "601088.SH",
+    "600309.SH", "601601.SH", "601668.SH", "603993.SH", "601012.SH",
+    "601728.SH", "600690.SH", "600809.SH", "600941.SH", "600406.SH",
+    "601857.SH", "601766.SH", "601919.SH", "600050.SH", "600760.SH",
+    "601225.SH", "600028.SH", "601988.SH", "688111.SH", "601985.SH",
+    "601888.SH", "601628.SH", "601600.SH", "601658.SH", "600048.SH"
+]
+
+def get_merged_file_path(market: str = "us") -> Path:
+    """Get merged.jsonl path based on market type.
+    
+    Args:
+        market: Market type, "us" for US stocks or "cn" for A-shares
+        
+    Returns:
+        Path object pointing to the merged.jsonl file
+    """
+    base_dir = Path(__file__).resolve().parents[1]
+    if market == "cn":
+        return base_dir / "data" / "A_stock" / "merged.jsonl"
+    else:
+        return base_dir / "data" / "merged.jsonl"
+
+
 def get_yesterday_date(today_date: str) -> str:
     """
     获取昨日日期，考虑休市日。
@@ -47,13 +76,14 @@ def get_yesterday_date(today_date: str) -> str:
     yesterday_date = yesterday_dt.strftime("%Y-%m-%d")
     return yesterday_date
 
-def get_open_prices(today_date: str, symbols: List[str], merged_path: Optional[str] = None) -> Dict[str, Optional[float]]:
+def get_open_prices(today_date: str, symbols: List[str], merged_path: Optional[str] = None, market: str = "us") -> Dict[str, Optional[float]]:
     """从 data/merged.jsonl 中读取指定日期与标的的开盘价。
 
     Args:
         today_date: 日期字符串，格式 YYYY-MM-DD。
         symbols: 需要查询的股票代码列表。
         merged_path: 可选，自定义 merged.jsonl 路径；默认读取项目根目录下 data/merged.jsonl。
+        market: 市场类型，"us" 为美股，"cn" 为A股
 
     Returns:
         {symbol_price: open_price 或 None} 的字典；若未找到对应日期或标的，则值为 None。
@@ -62,8 +92,7 @@ def get_open_prices(today_date: str, symbols: List[str], merged_path: Optional[s
     results: Dict[str, Optional[float]] = {}
 
     if merged_path is None:
-        base_dir = Path(__file__).resolve().parents[1]
-        merged_file = base_dir / "data" / "merged.jsonl"
+        merged_file = get_merged_file_path(market)
     else:
         merged_file = Path(merged_path)
 
@@ -95,13 +124,14 @@ def get_open_prices(today_date: str, symbols: List[str], merged_path: Optional[s
 
     return results
 
-def get_yesterday_open_and_close_price(today_date: str, symbols: List[str], merged_path: Optional[str] = None) -> tuple[Dict[str, Optional[float]], Dict[str, Optional[float]]]:
+def get_yesterday_open_and_close_price(today_date: str, symbols: List[str], merged_path: Optional[str] = None, market: str = "us") -> tuple[Dict[str, Optional[float]], Dict[str, Optional[float]]]:
     """从 data/merged.jsonl 中读取指定日期与股票的昨日买入价和卖出价。
 
     Args:
         today_date: 日期字符串，格式 YYYY-MM-DD，代表今天日期。
         symbols: 需要查询的股票代码列表。
         merged_path: 可选，自定义 merged.jsonl 路径；默认读取项目根目录下 data/merged.jsonl。
+        market: 市场类型，"us" 为美股，"cn" 为A股
 
     Returns:
         (买入价字典, 卖出价字典) 的元组；若未找到对应日期或标的，则值为 None。
@@ -111,8 +141,7 @@ def get_yesterday_open_and_close_price(today_date: str, symbols: List[str], merg
     sell_results: Dict[str, Optional[float]] = {}
 
     if merged_path is None:
-        base_dir = Path(__file__).resolve().parents[1]
-        merged_file = base_dir / "data" / "merged.jsonl"
+        merged_file = get_merged_file_path(market)
     else:
         merged_file = Path(merged_path)
 
@@ -187,7 +216,7 @@ def get_yesterday_open_and_close_price(today_date: str, symbols: List[str], merg
 
     return buy_results, sell_results
 
-def get_yesterday_profit(today_date: str, yesterday_buy_prices: Dict[str, Optional[float]], yesterday_sell_prices: Dict[str, Optional[float]], yesterday_init_position: Dict[str, float]) -> Dict[str, float]:
+def get_yesterday_profit(today_date: str, yesterday_buy_prices: Dict[str, Optional[float]], yesterday_sell_prices: Dict[str, Optional[float]], yesterday_init_position: Dict[str, float], stock_symbols: Optional[List[str]] = None) -> Dict[str, float]:
     """
     获取今日开盘时持仓的收益，收益计算方式为：(昨日收盘价格 - 昨日开盘价格)*当前持仓。
     Args:
@@ -195,14 +224,19 @@ def get_yesterday_profit(today_date: str, yesterday_buy_prices: Dict[str, Option
         yesterday_buy_prices: 昨日开盘价格字典，格式为 {symbol_price: price}
         yesterday_sell_prices: 昨日收盘价格字典，格式为 {symbol_price: price}
         yesterday_init_position: 昨日初始持仓字典，格式为 {symbol: weight}
+        stock_symbols: 股票代码列表，默认为 all_nasdaq_100_symbols
 
     Returns:
         {symbol: profit} 的字典；若未找到对应日期或标的，则值为 0.0。
     """
     profit_dict = {}
     
+    # 使用传入的股票列表或默认的纳斯达克100列表
+    if stock_symbols is None:
+        stock_symbols = all_nasdaq_100_symbols
+    
     # 遍历所有股票代码
-    for symbol in all_nasdaq_100_symbols:
+    for symbol in stock_symbols:
         symbol_price_key = f'{symbol}_price'
         
         # 获取昨日开盘价和收盘价

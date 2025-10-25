@@ -160,10 +160,11 @@ AI-Trader Bench/
 ├── 📊 数据系统
 │   ├── data/
 │   │   ├── daily_prices_*.json    # 📈 纳斯达克100股票价格数据
-│   │   ├── merged.jsonl           # 🔄 统一数据格式
+│   │   ├── merged.jsonl           # 🔄 美股统一数据格式
 │   │   ├── A_stock/               # 🇨🇳 A股市场数据
-│   │   │   ├── sse_50_weight.csv  # 📋 上证50成分股
-│   │   │   └── daily_prices_sse_50.csv  # 📈 日线价格数据
+│   │   │   ├── sse_50_weight.csv      # 📋 上证50成分股
+│   │   │   ├── daily_prices_sse_50.csv # 📈 日线价格数据（CSV）
+│   │   │   └── merged.jsonl           # 🔄 A股统一数据格式
 │   │   └── agent_data/            # 📝 AI交易记录
 │   └── calculate_performance.py   # 📈 性能分析
 │
@@ -260,7 +261,7 @@ AGENT_MAX_STEP=30             # 最大推理步数
 pip install -r requirements.txt
 
 # 或手动安装核心依赖
-pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas
+pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas tushare
 ```
 
 ## 🎮 运行指南
@@ -285,7 +286,10 @@ python merge_jsonl.py
 cd data
 python get_daily_price_a_stock.py
 
-# 📊 数据将保存至: data/A_stock/daily_prices_sse_50.csv
+# 🔄 转换为JSONL格式（交易系统必需）
+python merge_a_stock_jsonl.py
+
+# 📊 数据将保存至: data/A_stock/merged.jsonl
 ```
 
 **功能特性：**
@@ -293,6 +297,7 @@ python get_daily_price_a_stock.py
 - 🔄 **批量处理**: 自动处理Tushare的6000条记录限制
 - 💾 **备用支持**: 当API失败时使用本地CSV (`data/A_stock/sse_50_weight.csv`)
 - 📈 **排序输出**: 数据按trade_date和ts_code升序排列
+- 🔄 **格式转换**: 将CSV转换为与交易系统兼容的JSONL格式
 
 **使用要求：**
 - Tushare API令牌（在`.env`文件中设置`TUSHARE_TOKEN`）
@@ -307,12 +312,19 @@ python start_mcp_services.py
 
 ### 🚀 步骤3: 启动AI竞技场
 
+#### 美股交易（纳斯达克100）：
 ```bash
-# 🎯 运行主程序 - 让AI们开始交易！
+# 🎯 使用默认配置运行
 python main.py
 
-# 🎯 或使用自定义配置
-python main.py configs/my_config.json
+# 🎯 或指定美股配置
+python main.py configs/default_config.json
+```
+
+#### A股交易（上证50）：
+```bash
+# 🎯 运行A股交易
+python main.py configs/astock_config.json
 ```
 
 ### ⏰ 时间设置示例
@@ -321,6 +333,7 @@ python main.py configs/my_config.json
 ```json
 {
   "agent_type": "BaseAgent",
+  "market": "us",              // 市场类型："us" 美股，"cn" A股
   "date_range": {
     "init_date": "2024-01-01",  // 回测开始日期
     "end_date": "2024-03-31"     // 回测结束日期
@@ -332,7 +345,10 @@ python main.py configs/my_config.json
       "signature": "claude-3.7-sonnet",
       "enabled": true
     }
-  ]
+  ],
+  "agent_config": {
+    "initial_cash": 10000.0    // 初始资金：美股 $10,000，A股 ¥100,000
+  }
 }
 ```
 
@@ -349,13 +365,14 @@ python3 -m http.server 8000
 
 ### 🏆 竞技规则
 
-| 规则项 | 设置 | 说明 |
-|--------|------|------|
-| **💰 初始资金** | $10,000 | 每个AI模型起始资金 |
-| **📈 交易标的** | 纳斯达克100 | 100只顶级科技股 |
-| **⏰ 交易时间** | 工作日 | 周一至周五 |
-| **💲 价格基准** | 开盘价 | 使用当日开盘价交易 |
-| **📝 记录方式** | JSONL格式 | 完整交易历史记录 |
+| 规则项 | 美股 | A股（中国） |
+|--------|------|------------|
+| **💰 初始资金** | $10,000 | ¥100,000 |
+| **📈 交易标的** | 纳斯达克100 | 上证50 |
+| **🌍 市场** | 美国股市 | 中国A股市场 |
+| **⏰ 交易时间** | 工作日 | 工作日 |
+| **💲 价格基准** | 开盘价 | 开盘价 |
+| **📝 记录方式** | JSONL格式 | JSONL格式 |
 
 ## ⚙️ 配置指南
 
@@ -364,6 +381,7 @@ python3 -m http.server 8000
 ```json
 {
   "agent_type": "BaseAgent",
+  "market": "us",
   "date_range": {
     "init_date": "2025-01-01",
     "end_date": "2025-01-31"
@@ -393,10 +411,11 @@ python3 -m http.server 8000
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `agent_type` | AI代理类型 | "BaseAgent" |
+| `market` | 市场类型："us" 或 "cn" | "us" |
 | `max_steps` | 最大推理步数 | 30 |
 | `max_retries` | 最大重试次数 | 3 |
 | `base_delay` | 操作延迟(秒) | 1.0 |
-| `initial_cash` | 初始资金 | $10,000 |
+| `initial_cash` | 初始资金 | $10,000（美股）/ ¥100,000（A股） |
 
 ### 📊 数据格式
 
@@ -579,7 +598,8 @@ class CustomTool:
 感谢以下开源项目和服务：
 - [LangChain](https://github.com/langchain-ai/langchain) - AI应用开发框架
 - [MCP](https://github.com/modelcontextprotocol) - Model Context Protocol
-- [Alpha Vantage](https://www.alphavantage.co/) - 金融数据API
+- [Alpha Vantage](https://www.alphavantage.co/) - 美股金融数据API
+- [Tushare](https://tushare.pro/) - A股市场数据API
 - [Jina AI](https://jina.ai/) - 信息搜索服务
 
 ---

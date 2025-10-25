@@ -158,10 +158,11 @@ AI-Trader Bench/
 ├── 📊 Data System
 │   ├── data/
 │   │   ├── daily_prices_*.json    # 📈 NASDAQ 100 stock price data
-│   │   ├── merged.jsonl           # 🔄 Unified data format
+│   │   ├── merged.jsonl           # 🔄 US stocks unified data format
 │   │   ├── A_stock/               # 🇨🇳 A-share market data
-│   │   │   ├── sse_50_weight.csv  # 📋 SSE 50 constituent stocks
-│   │   │   └── daily_prices_sse_50.csv  # 📈 Daily price data
+│   │   │   ├── sse_50_weight.csv      # 📋 SSE 50 constituent stocks
+│   │   │   ├── daily_prices_sse_50.csv # 📈 Daily price data (CSV)
+│   │   │   └── merged.jsonl           # 🔄 A-share unified data format
 │   │   └── agent_data/            # 📝 AI trading records
 │   └── calculate_performance.py   # 📈 Performance analysis
 │
@@ -257,7 +258,7 @@ AGENT_MAX_STEP=30             # Maximum reasoning steps
 pip install -r requirements.txt
 
 # Or manually install core dependencies
-pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas
+pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas tushare
 ```
 
 ## 🎮 Running Guide
@@ -282,7 +283,10 @@ python merge_jsonl.py
 cd data
 python get_daily_price_a_stock.py
 
-# 📊 Data will be saved to: data/A_stock/daily_prices_sse_50.csv
+# 🔄 Convert to JSONL format (required for trading)
+python merge_a_stock_jsonl.py
+
+# 📊 Data will be saved to: data/A_stock/merged.jsonl
 ```
 
 **Features:**
@@ -290,6 +294,7 @@ python get_daily_price_a_stock.py
 - 🔄 **Batch Processing**: Handles Tushare's 6000-record limit automatically
 - 💾 **Fallback Support**: Uses local CSV if API fails (`data/A_stock/sse_50_weight.csv`)
 - 📈 **Sorted Output**: Data sorted by trade_date and ts_code in ascending order
+- 🔄 **Format Conversion**: Converts CSV to JSONL format compatible with trading system
 
 **Requirements:**
 - Tushare API token (set `TUSHARE_TOKEN` in `.env` file)
@@ -304,12 +309,19 @@ python start_mcp_services.py
 
 ### 🚀 Step 3: Start AI Arena
 
+#### For US Stocks (NASDAQ 100):
 ```bash
-# 🎯 Run main program - let AIs start trading!
+# 🎯 Run with default configuration
 python main.py
 
-# 🎯 Or use custom configuration
-python main.py configs/my_config.json
+# 🎯 Or specify US stock config
+python main.py configs/default_config.json
+```
+
+#### For A-Shares (SSE 50):
+```bash
+# 🎯 Run A-share trading
+python main.py configs/astock_config.json
 ```
 
 ### ⏰ Time Settings Example
@@ -318,6 +330,7 @@ python main.py configs/my_config.json
 ```json
 {
   "agent_type": "BaseAgent",
+  "market": "us",              // Market type: "us" for US stocks, "cn" for A-shares
   "date_range": {
     "init_date": "2024-01-01",  // Backtest start date
     "end_date": "2024-03-31"     // Backtest end date
@@ -329,7 +342,10 @@ python main.py configs/my_config.json
       "signature": "claude-3.7-sonnet",
       "enabled": true
     }
-  ]
+  ],
+  "agent_config": {
+    "initial_cash": 10000.0    // Initial capital: $10,000 for US, ¥100,000 for A-shares
+  }
 }
 ```
 
@@ -345,13 +361,14 @@ python3 -m http.server 8000
 
 ### 🏆 Competition Rules
 
-| Rule Item | Setting | Description |
-|-----------|---------|-------------|
-| **💰 Initial Capital** | $10,000 | Starting capital for each AI model |
-| **📈 Trading Targets** | NASDAQ 100 | 100 top tech stocks |
-| **⏰ Trading Hours** | Weekdays | Monday to Friday |
-| **💲 Price Benchmark** | Opening Price | Trade using daily opening price |
-| **📝 Recording Method** | JSONL Format | Complete trading history records |
+| Rule Item | US Stocks | A-Shares (China) |
+|-----------|-----------|------------------|
+| **💰 Initial Capital** | $10,000 | ¥100,000 |
+| **📈 Trading Targets** | NASDAQ 100 | SSE 50 |
+| **🌍 Market** | US Stock Market | China A-Share Market |
+| **⏰ Trading Hours** | Weekdays | Weekdays |
+| **💲 Price Benchmark** | Opening Price | Opening Price |
+| **📝 Recording Method** | JSONL Format | JSONL Format |
 
 ## ⚙️ Configuration Guide
 
@@ -360,6 +377,7 @@ python3 -m http.server 8000
 ```json
 {
   "agent_type": "BaseAgent",
+  "market": "us",
   "date_range": {
     "init_date": "2025-01-01",
     "end_date": "2025-01-31"
@@ -389,10 +407,11 @@ python3 -m http.server 8000
 | Parameter | Description | Default Value |
 |-----------|-------------|---------------|
 | `agent_type` | AI agent type | "BaseAgent" |
+| `market` | Market type: "us" or "cn" | "us" |
 | `max_steps` | Maximum reasoning steps | 30 |
 | `max_retries` | Maximum retry attempts | 3 |
 | `base_delay` | Operation delay (seconds) | 1.0 |
-| `initial_cash` | Initial capital | $10,000 |
+| `initial_cash` | Initial capital | $10,000 (US) / ¥100,000 (CN) |
 
 ### 📊 Data Format
 
@@ -575,7 +594,8 @@ This project is licensed under the [MIT License](LICENSE).
 Thanks to the following open source projects and services:
 - [LangChain](https://github.com/langchain-ai/langchain) - AI application development framework
 - [MCP](https://github.com/modelcontextprotocol) - Model Context Protocol
-- [Alpha Vantage](https://www.alphavantage.co/) - Financial data API
+- [Alpha Vantage](https://www.alphavantage.co/) - US stock financial data API
+- [Tushare](https://tushare.pro/) - China A-share market data API
 - [Jina AI](https://jina.ai/) - Information search service
 
 ---

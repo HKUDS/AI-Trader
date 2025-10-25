@@ -61,8 +61,10 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
     # Step 3: Get stock opening price for the day
     # Use get_open_prices function to get the opening price of specified stock for the day
     # If stock symbol does not exist or price data is missing, KeyError exception will be raised
+    # Auto-detect market type based on symbol format
+    market = "cn" if symbol.endswith((".SH", ".SZ")) else "us"
     try:
-        this_symbol_price = get_open_prices(today_date, [symbol])[f'{symbol}_price']
+        this_symbol_price = get_open_prices(today_date, [symbol], market=market)[f'{symbol}_price']
     except KeyError:
         # Stock symbol does not exist or price data is missing, return error message
         return {"error": f"Symbol {symbol} not found! This action will not be allowed.", "symbol": symbol, "date": today_date}
@@ -148,8 +150,10 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
     # Step 3: Get stock opening price for the day
     # Use get_open_prices function to get the opening price of specified stock for the day
     # If stock symbol does not exist or price data is missing, KeyError exception will be raised
+    # Auto-detect market type based on symbol format
+    market = "cn" if symbol.endswith((".SH", ".SZ")) else "us"
     try:
-        this_symbol_price = get_open_prices(today_date, [symbol])[f'{symbol}_price']
+        this_symbol_price = get_open_prices(today_date, [symbol], market=market)[f'{symbol}_price']
     except KeyError:
         # Stock symbol does not exist or price data is missing, return error message
         return {"error": f"Symbol {symbol} not found! This action will not be allowed.", "symbol": symbol, "date": today_date}

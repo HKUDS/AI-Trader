@@ -55,6 +55,20 @@ class BaseAgent:
         "ON", "BIIB", "LULU", "CDW", "GFS"
     ]
     
+    # Default SSE 50 stock symbols (A-shares)
+    DEFAULT_SSE50_SYMBOLS = [
+        "600519.SH", "601318.SH", "600036.SH", "601899.SH", "600900.SH",
+        "601166.SH", "600276.SH", "600030.SH", "603259.SH", "688981.SH",
+        "688256.SH", "601398.SH", "688041.SH", "601211.SH", "601288.SH",
+        "601328.SH", "688008.SH", "600887.SH", "600150.SH", "601816.SH",
+        "601127.SH", "600031.SH", "688012.SH", "603501.SH", "601088.SH",
+        "600309.SH", "601601.SH", "601668.SH", "603993.SH", "601012.SH",
+        "601728.SH", "600690.SH", "600809.SH", "600941.SH", "600406.SH",
+        "601857.SH", "601766.SH", "601919.SH", "600050.SH", "600760.SH",
+        "601225.SH", "600028.SH", "601988.SH", "688111.SH", "601985.SH",
+        "601888.SH", "601628.SH", "601600.SH", "601658.SH", "600048.SH"
+    ]
+    
     def __init__(
         self,
         signature: str,
@@ -67,7 +81,8 @@ class BaseAgent:
         base_delay: float = 0.5,
         openai_base_url: Optional[str] = None,
         initial_cash: float = 10000.0,
-        init_date: str = "2025-10-13"
+        init_date: str = "2025-10-13",
+        market: str = "us"
     ):
         """
         Initialize BaseAgent
@@ -75,7 +90,7 @@ class BaseAgent:
         Args:
             signature: Agent signature/name
             basemodel: Base model name
-            stock_symbols: List of stock symbols, defaults to NASDAQ 100
+            stock_symbols: List of stock symbols, defaults to NASDAQ 100 or SSE 50 based on market
             mcp_config: MCP tool configuration, including port and URL information
             log_path: Log path, defaults to ./data/agent_data
             max_steps: Maximum reasoning steps
@@ -84,10 +99,18 @@ class BaseAgent:
             openai_base_url: OpenAI API base URL
             initial_cash: Initial cash amount
             init_date: Initialization date
+            market: Market type, "us" for US stocks or "cn" for A-shares
         """
         self.signature = signature
         self.basemodel = basemodel
-        self.stock_symbols = stock_symbols or self.DEFAULT_STOCK_SYMBOLS
+        self.market = market
+        
+        # Auto-select stock symbols based on market if not provided
+        if stock_symbols is None:
+            self.stock_symbols = self.DEFAULT_SSE50_SYMBOLS if market == "cn" else self.DEFAULT_STOCK_SYMBOLS
+        else:
+            self.stock_symbols = stock_symbols
+            
         self.max_steps = max_steps
         self.max_retries = max_retries
         self.base_delay = base_delay
@@ -206,7 +229,7 @@ class BaseAgent:
         self.agent = create_agent(
             self.model,
             tools=self.tools,
-            system_prompt=get_agent_system_prompt(today_date, self.signature),
+            system_prompt=get_agent_system_prompt(today_date, self.signature, self.market, self.stock_symbols),
         )
         
         # Initial user query

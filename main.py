@@ -108,6 +108,10 @@ async def main(config_path=None):
         print(str(e))
         exit(1)
     
+    # Get market type from configuration
+    market = config.get("market", "us")
+    print(f"🌍 Market type: {'A-shares (China)' if market == 'cn' else 'US stocks'}")
+    
     # Get date range from configuration file
     INIT_DATE = config["date_range"]["init_date"]
     END_DATE = config["date_range"]["end_date"]
@@ -178,18 +182,26 @@ async def main(config_path=None):
         # Get log path configuration
         log_path = log_config.get("log_path", "./data/agent_data")
 
+        # Select stock symbols based on market
+        if market == "cn":
+            from prompts.agent_prompt import all_sse_50_symbols
+            stock_symbols = all_sse_50_symbols
+        else:
+            stock_symbols = all_nasdaq_100_symbols
+        
         try:
             # Dynamically create Agent instance
             agent = AgentClass(
                 signature=signature,
                 basemodel=basemodel,
-                stock_symbols=all_nasdaq_100_symbols,
+                stock_symbols=stock_symbols,
                 log_path=log_path,
                 max_steps=max_steps,
                 max_retries=max_retries,
                 base_delay=base_delay,
                 initial_cash=initial_cash,
-                init_date=INIT_DATE
+                init_date=INIT_DATE,
+                market=market
             )
             
             print(f"✅ {agent_type} instance created successfully: {agent}")
