@@ -1,0 +1,24 @@
+{
+  "agent_type": "BaseAgent",
+  "date_range": {
+    "init_date": "2025-10-21",
+    "end_date": "2025-10-22"
+  },
+  "models": [
+    {
+      "name": "MiniMax-M2",
+      "basemodel": "MiniMax-M2",
+      "signature": "minimax-m2-test",
+      "enabled": true
+    }
+  ],
+  "agent_config": {
+    "max_steps": 30,
+    "max_retries": 3,
+    "base_delay": 1.0,
+    "initial_cash": 10000.0
+  },
+  "log_config": {
+    "log_path": "./data/agent_data"
+  }
+}

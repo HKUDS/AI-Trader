@@ -20,6 +20,7 @@ class DataLoader {
                 'deepseek-chat-v3.1',
                 'gpt-5',
                 'claude-3.7-sonnet',
+                'minimax-m2',
             ];
 
             const agents = [];
@@ -354,6 +355,7 @@ class DataLoader {
             'gpt-5': 'GPT-5',
             'deepseek-chat-v3.1': 'DeepSeek-v3.1',
             'claude-3.7-sonnet': 'Claude 3.7 Sonnet',
+            'minimax-m2': 'MiniMax-M2',
             'QQQ': 'QQQ invesco'
         };
         return names[agentName] || agentName;
@@ -391,6 +393,7 @@ class DataLoader {
             'gpt-5': '#10a37f',                  // OpenAI Green
             'deepseek-chat-v3.1': '#4a90e2',  // DeepSeek Blue
             'claude-3.7-sonnet': '#cc785c', // Anthropic Orange
+            'minimax-m2': '#FF3366',             // MiniMax Red
             'QQQ': '#ff6b00'                       // QQQ Orange
         };
         return colors[agentName] || null;
