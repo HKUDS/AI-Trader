@@ -1,0 +1,24 @@
+{
+  "agent_type": "BaseAgent",
+  "date_range": {
+    "init_date": "2025-10-21",
+    "end_date": "2025-10-21"
+  },
+  "models": [
+    {
+      "name": "qwen-max",
+      "basemodel": "qwen-max",
+      "signature": "qwen-max-test",
+      "enabled": true
+    }
+  ],
+  "agent_config": {
+    "max_steps": 30,
+    "max_retries": 3,
+    "base_delay": 1.0,
+    "initial_cash": 10000.0
+  },
+  "log_config": {
+    "log_path": "./data/agent_data"
+  }
+}

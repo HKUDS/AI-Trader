@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+logs/
+*.log
+
+# Data
+data/agent_data/
+
+# Runtime
+.runtime_env.json
+
+# Test files
+test_*.py
+run_debug.py
+
+# macOS
+.DS_Store
+AI-Trader-Docs/
