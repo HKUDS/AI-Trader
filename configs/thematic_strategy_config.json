@@ -1,0 +1,40 @@
+{
+  "agent_type": "ThematicAgent",
+  "date_range": {
+    "init_date": "2025-10-01",
+    "end_date": "2025-10-24"
+  },
+  "models": [
+    {
+      "name": "thematic-claude",
+      "basemodel": "anthropic/claude-3.7-sonnet",
+      "signature": "thematic-claude-ai-semiconductor",
+      "enabled": true,
+      "theme": "ai_semiconductor"
+    },
+    {
+      "name": "thematic-gpt",
+      "basemodel": "openai/gpt-4o",
+      "signature": "thematic-gpt-ai-semiconductor",
+      "enabled": false,
+      "theme": "ai_semiconductor"
+    }
+  ],
+  "agent_config": {
+    "max_steps": 30,
+    "max_retries": 3,
+    "base_delay": 1.0,
+    "initial_cash": 10000.0,
+    "max_stock_weight": 0.20,
+    "min_cash_ratio": 0.01
+  },
+  "log_config": {
+    "log_path": "./data/agent_data"
+  },
+  "strategy_config": {
+    "theme": "ai_semiconductor",
+    "description": "主题集中策略 - AI/半导体赛道",
+    "rebalance_threshold": 0.20,
+    "target_cash_ratio": 0.02
+  }
+}
