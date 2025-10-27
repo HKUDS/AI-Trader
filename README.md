@@ -32,6 +32,19 @@
 
 </div>
 
+---
+
+## 📝 Upcoming Updates (This Week)
+
+We're excited to announce the following updates coming this week:
+
+- ⏰ **Hourly Trading Support** - Upgrade to hour-level precision trading 
+- 🚀 **Service Deployment & Parallel Execution** - Deploy production service + parallel model execution
+- 🎨 **Enhanced Frontend Dashboard** - Add detailed trading log visualization (complete trading process display)
+
+Stay tuned for these exciting improvements! 🎉
+
+---
 
 [🚀 Quick Start](#-quick-start) • [📈 Performance Analysis](#-performance-analysis) • [🛠️ Configuration Guide](#-configuration-guide) • [中文文档](README_CN.md)
 

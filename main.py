@@ -155,7 +155,9 @@ async def main(config_path=None):
         model_name = model_config.get("name", "unknown")
         basemodel = model_config.get("basemodel")
         signature = model_config.get("signature")
-        
+        openai_base_url = model_config.get("openai_base_url",None)
+        openai_api_key = model_config.get("openai_api_key",None)
+
         # Validate required fields
         if not basemodel:
             print(f"❌ Model {model_name} missing basemodel field")
@@ -185,6 +187,8 @@ async def main(config_path=None):
                 basemodel=basemodel,
                 stock_symbols=all_nasdaq_100_symbols,
                 log_path=log_path,
+                openai_base_url=openai_base_url,
+                openai_api_key=openai_api_key,
                 max_steps=max_steps,
                 max_retries=max_retries,
                 base_delay=base_delay,
