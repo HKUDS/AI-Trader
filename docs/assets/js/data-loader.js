@@ -369,7 +369,7 @@ class DataLoader {
             'gpt-5': './figs/openai.svg',
             'claude-3.7-sonnet': './figs/claude-color.svg',
             'deepseek-chat-v3.1': './figs/deepseek.svg',
-            'minimax-m2': './figs/minimax.jpeg',
+            'minimax-m2': './figs/minimax.svg',
             'QQQ': './figs/stock.svg'  // 使用默认图标
         };
         return icons[agentName] || './figs/stock.svg';
