@@ -90,13 +90,22 @@ class DataLoader {
         }
     }
 
-    // Get closing price for a symbol on a specific date
+    // Get closing and opening price for a symbol on a specific date
     async getClosingPrice(symbol, date) {
         const prices = await this.loadStockPrice(symbol);
         if (!prices || !prices[date]) {
             return null;
         }
         return parseFloat(prices[date]['4. close']);
+    }
+
+    // Get opening price for a symbol on a specific date
+    async getOpeningPrice(symbol, date) {
+        const prices = await this.loadStockPrice(symbol);
+        if (!prices || !prices[date]) {
+            return null;
+        }
+        return parseFloat(prices[date]['1. open']);
     }
 
     // Calculate total asset value for a position on a given date
@@ -330,6 +339,132 @@ class DataLoader {
                 amount: p.this_action.amount
             }))
             .reverse(); // Most recent first
+    }
+
+    // Calculate realized PnL for an agent by tracking buy/sell transactions
+    async calculateRealizedPnL(agentName) {
+        const data = this.agentData[agentName];
+        if (!data || !data.positions) return { totalRealizedPnL: 0, trades: [] };
+
+        // Track cost basis for each symbol using FIFO (First In First Out)
+        const costBasis = {}; // symbol -> array of {quantity, price}
+        const realizedTrades = [];
+        let totalRealizedPnL = 0;
+
+        for (const position of data.positions) {
+            if (!position.this_action || position.this_action.action === 'no_trade') continue;
+
+            const { action, symbol, amount } = position.this_action;
+            const date = position.date;
+            
+            // Get the opening price for the trade date
+            const price = await this.getOpeningPrice(symbol, date);
+            if (!price) continue;
+
+            if (action === 'buy') {
+                // Add to cost basis
+                if (!costBasis[symbol]) {
+                    costBasis[symbol] = [];
+                }
+                costBasis[symbol].push({ quantity: amount, price: price });
+            } else if (action === 'sell') {
+                // Calculate realized PnL using FIFO
+                if (!costBasis[symbol] || costBasis[symbol].length === 0) continue;
+
+                let remainingToSell = amount;
+                let tradePnL = 0;
+
+                while (remainingToSell > 0 && costBasis[symbol].length > 0) {
+                    const lot = costBasis[symbol][0];
+                    const quantityToSell = Math.min(remainingToSell, lot.quantity);
+                    
+                    const costPrice = lot.price;
+                    const salePrice = price;
+                    const pnl = (salePrice - costPrice) * quantityToSell;
+                    
+                    tradePnL += pnl;
+                    totalRealizedPnL += pnl;
+
+                    lot.quantity -= quantityToSell;
+                    remainingToSell -= quantityToSell;
+
+                    if (lot.quantity <= 0) {
+                        costBasis[symbol].shift(); // Remove exhausted lot
+                    }
+                }
+
+                realizedTrades.push({
+                    date: date,
+                    symbol: symbol,
+                    quantity: amount,
+                    salePrice: price,
+                    pnl: tradePnL
+                });
+            }
+        }
+
+        return {
+            totalRealizedPnL: totalRealizedPnL,
+            trades: realizedTrades.reverse(), // Most recent first
+            costBasis: costBasis // Remaining cost basis for unrealized PnL
+        };
+    }
+
+    // Calculate unrealized PnL for current holdings
+    async calculateUnrealizedPnL(agentName) {
+        const data = this.agentData[agentName];
+        if (!data || !data.positions || data.positions.length === 0) {
+            return { totalUnrealizedPnL: 0, holdings: [] };
+        }
+
+        const latestPosition = data.positions[data.positions.length - 1];
+        const latestDate = latestPosition.date;
+        const holdings = latestPosition.positions;
+
+        // Get cost basis from realized PnL calculation
+        const realizedData = await this.calculateRealizedPnL(agentName);
+        const costBasis = realizedData.costBasis;
+
+        const unrealizedHoldings = [];
+        let totalUnrealizedPnL = 0;
+
+        for (const [symbol, shares] of Object.entries(holdings)) {
+            if (symbol === 'CASH' || shares <= 0) continue;
+
+            const currentPrice = await this.getClosingPrice(symbol, latestDate);
+            if (!currentPrice) continue;
+
+            // Calculate unrealized PnL using cost basis
+            if (costBasis[symbol] && costBasis[symbol].length > 0) {
+                let unrealizedPnL = 0;
+                let totalCost = 0;
+                let totalShares = 0;
+
+                for (const lot of costBasis[symbol]) {
+                    totalCost += lot.price * lot.quantity;
+                    totalShares += lot.quantity;
+                    unrealizedPnL += (currentPrice - lot.price) * lot.quantity;
+                }
+
+                const avgCost = totalShares > 0 ? totalCost / totalShares : 0;
+
+                unrealizedHoldings.push({
+                    symbol: symbol,
+                    shares: shares,
+                    currentPrice: currentPrice,
+                    avgCost: avgCost,
+                    unrealizedPnL: unrealizedPnL,
+                    marketValue: shares * currentPrice
+                });
+
+                totalUnrealizedPnL += unrealizedPnL;
+            }
+        }
+
+        return {
+            totalUnrealizedPnL: totalUnrealizedPnL,
+            holdings: unrealizedHoldings
+        };
     }
 
     // Format number as currency
