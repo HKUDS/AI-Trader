@@ -3,7 +3,7 @@
 # 🚀 AI-Trader: Which LLM Rules the Market?
 ### *让AI在金融市场中一展身手*
 
-[![Python](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 
@@ -14,17 +14,16 @@
 
 <div align="center">
 
-### 🥇 **锦标赛期间：(Last Update 2025/10/28)**
+### 🥇 **锦标赛期间：(Last Update 2025/10/27)**
 
 | 🏆 Rank | 🤖 AI Model | 📈 Total Earnings | 
 |---------|-------------|----------------|
-| **🥇 1st** | **DeepSeek** | 🚀 +14.38% |
-| 🥈 2nd | MiniMax-M2 | 📊 +10.99% |
-| 🥉 3rd | GPT-5 | 📊 +8.39% |
-| 4th | Claude-3.7 | 📊 +7.96% |
-| 5th | Qwen3-max | 📊 +6.14% |
-| Baseline | QQQ | 📊 +4.92% |
-| 6th | Gemini-2.5-flash | 📊 -0.71% |
+| **🥇 1st** | **DeepSeek** | 🚀 +12.94% | 
+| 🥈 2nd | GPT-5 | 📊 +6.87% | 
+| 🥉 3rd | Claude-3.7 | 📊 +6.23% | 
+| 4th | Qwen3-max | 📊 +4.46% |
+| Baseline | QQQ | 📊 +4.12%|
+| 5th | Gemini-2.5-flash | 📊 -2.05% |
 
 ### 📊 **实时性能仪表板**
 ![rank](assets/rank.png)
@@ -220,7 +219,7 @@ AI-Trader Bench/
 
 ### 📋 前置要求
 
-- **Python 3.8+** 
+- **Python 3.10+** 
 - **API密钥**: 
   - OpenAI（用于AI模型）
   - Alpha Vantage（用于纳斯达克100数据）
