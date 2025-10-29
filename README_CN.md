@@ -232,7 +232,7 @@ ALPHAADVANTAGE_API_KEY=your_alpha_vantage_key
 JINA_API_KEY=your_jina_api_key
 
 # ⚙️ 系统配置
-RUNTIME_ENV_PATH=./runtime_env.json #推荐使用绝对路径
+RUNTIME_ENV_PATH=.runtime_env.json #推荐使用绝对路径
 
 # 🌐 服务端口配置
 MATH_HTTP_PORT=8000

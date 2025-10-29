@@ -5,14 +5,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-def _load_runtime_env(pathDir) -> dict:
+def _load_runtime_env(pathDir = '') -> dict:
     path = os.environ.get("RUNTIME_ENV_PATH")
     if path and pathDir:
-        # 如果都没有，使用默认路径（项目根目录下的.runtime_env.json）
+        # if not use the default environ env
         project_root = os.path.dirname(os.path.abspath(__file__))
         path = os.path.join(project_root, pathDir, path)
-    
-    print(f'❗️❗️❗️ _load_runtime_env >>>>> 使用路径: {path}')
     try:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
@@ -20,15 +18,12 @@ def _load_runtime_env(pathDir) -> dict:
                 if isinstance(data, dict):
                     return data
     except Exception:
-        print('❗️❗️❗️ _load_runtime_env >>>>> Exception', Exception)
         pass
     return {}
 
 
 def get_config_value(key: str, default=None, pathDir = ''):
     _RUNTIME_ENV = _load_runtime_env(pathDir)
-
-    print('❗️❗️❗️get_config_value >>>>', _RUNTIME_ENV)
     if key in _RUNTIME_ENV:
         return _RUNTIME_ENV[key]
     return os.getenv(key, default)
