@@ -7,8 +7,31 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _resolve_runtime_env_path() -> Path:
+    """Resolve the runtime_env.json path robustly.
+
+    Order of precedence:
+    1) If RUNTIME_ENV_PATH is set and exists:
+       - Use it; resolve relative paths against project root
+    2) Fall back to {project_root}/runtime_env.json
+    """
+    project_root = Path(__file__).resolve().parents[1]
+    env_path_str = os.environ.get("RUNTIME_ENV_PATH")
+    if env_path_str:
+        env_path = Path(env_path_str)
+        if not env_path.is_absolute():
+            env_path = project_root / env_path
+        if env_path.exists():
+            return env_path
+    return project_root / "runtime_env.json"
+
+
 def _load_runtime_env() -> dict:
-    path = os.environ.get("RUNTIME_ENV_PATH")
+    """
+    Load runtime environment configuration from runtime_env.json using
+    _resolve_runtime_env_path(). Returns empty dict if not found/invalid.
+    """
+    path = _resolve_runtime_env_path()
     try:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
@@ -29,9 +52,19 @@ def get_config_value(key: str, default=None):
 
 
 def write_config_value(key: str, value: any):
+    """
+    Write a configuration value to runtime_env.json
+    
+    Args:
+        key: Configuration key
+        value: Configuration value
+    """
     _RUNTIME_ENV = _load_runtime_env()
     _RUNTIME_ENV[key] = value
-    path = os.environ.get("RUNTIME_ENV_PATH")
+    
+    # Resolve path (same logic as _load_runtime_env)
+    path = _resolve_runtime_env_path()
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(_RUNTIME_ENV, f, ensure_ascii=False, indent=4)
 
