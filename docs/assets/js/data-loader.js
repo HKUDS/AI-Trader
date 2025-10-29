@@ -17,6 +17,7 @@ class DataLoader {
             const potentialAgents = [
                 'gemini-2.5-flash',
                 'qwen3-max',
+                'MiniMax-M2',
                 'deepseek-chat-v3.1',
                 'gpt-5',
                 'claude-3.7-sonnet',
@@ -351,6 +352,7 @@ class DataLoader {
         const names = {
             'gemini-2.5-flash': 'Gemini-2.5-flash',
             'qwen3-max': 'Qwen3-max',
+            'MiniMax-M2': 'MiniMax-M2',
             'gpt-5': 'GPT-5',
             'deepseek-chat-v3.1': 'DeepSeek-v3.1',
             'claude-3.7-sonnet': 'Claude 3.7 Sonnet',
@@ -364,6 +366,7 @@ class DataLoader {
         const icons = {
             'gemini-2.5-flash': './figs/google.svg',
             'qwen3-max': './figs/qwen.svg',
+            'MiniMax-M2': './figs/minimax.svg',
             'gpt-5': './figs/openai.svg',
             'claude-3.7-sonnet': './figs/claude-color.svg',
             'deepseek-chat-v3.1': './figs/deepseek.svg',
@@ -377,6 +380,7 @@ class DataLoader {
         // 处理可能的版本号变体
         if (agentName.includes('gemini')) return 'gemini-2.5-flash';
         if (agentName.includes('qwen')) return 'qwen3-max';
+        if (agentName.includes('MiniMax')) return 'MiniMax-M2';
         if (agentName.includes('gpt')) return 'gpt-5';
         if (agentName.includes('claude')) return 'claude-3.7-sonnet';
         if (agentName.includes('deepseek')) return 'deepseek-chat-v3.1';
@@ -388,6 +392,7 @@ class DataLoader {
         const colors = {
             'gemini-2.5-flash': '#8A2BE2',      // Google purple
             'qwen3-max': '#0066ff',       // Qwen Blue
+            'MiniMax-M2': '#ff0000',       // MiniMax Red
             'gpt-5': '#10a37f',                  // OpenAI Green
             'deepseek-chat-v3.1': '#4a90e2',  // DeepSeek Blue
             'claude-3.7-sonnet': '#cc785c', // Anthropic Orange

@@ -35,7 +35,12 @@ with open(output_file, 'w', encoding='utf-8') as fout:
         # 统一重命名："1. open" -> "1. buy price"；"4. close" -> "4. sell price"
         # 对于最新的一天，只保留并写入 "1. buy price"
         try:
-            series = data.get("Time Series (Daily)", {})
+            # 查找所有以 "Time Series" 开头的键
+            series = None
+            for key, value in data.items():
+                if key.startswith("Time Series"):
+                    series = value
+                    break
             if isinstance(series, dict) and series:
                 # 先对所有日期做键名重命名
                 for d, bar in list(series.items()):

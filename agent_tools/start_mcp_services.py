@@ -11,6 +11,8 @@ import signal
 import subprocess
 import threading
 from pathlib import Path
+from dotenv import load_dotenv
+load_dotenv()
 
 class MCPServiceManager:
     def __init__(self):
