@@ -99,7 +99,7 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
             f.write(json.dumps({"date": today_date, "id": current_action_id + 1, "this_action":{"action":"buy","symbol":symbol,"amount":amount},"positions": new_position}) + "\n")
         # Step 7: Return updated position
         write_config_value("IF_TRADE", True,  pathDir='../')
-        print("IF_TRADE", get_config_value("IF_TRADE"))
+        print("IF_TRADE", get_config_value("IF_TRADE", pathDir='../'))
         return new_position
 
 @mcp.tool()
@@ -132,12 +132,12 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
     """
     # Step 1: Get environment variables and basic information
     # Get signature (model name) from environment variable, used to determine data storage path
-    signature = get_config_value("SIGNATURE")
+    signature = get_config_value("SIGNATURE", pathDir='../')
     if signature is None:
         raise ValueError("SIGNATURE environment variable is not set")
     
     # Get current trading date from environment variable
-    today_date = get_config_value("TODAY_DATE")
+    today_date = get_config_value("TODAY_DATE", pathDir='../')
     
     # Step 2: Get current latest position and operation ID
     # get_latest_position returns two values: position dictionary and current maximum operation ID
