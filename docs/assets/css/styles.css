@@ -69,6 +69,8 @@ body {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 .nav-brand {
@@ -121,6 +123,68 @@ body {
     color: var(--accent-blue);
     background: rgba(0, 212, 255, 0.15);
     box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
+}
+
+/* GitHub Link */
+.github-link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.2rem;
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.1), rgba(0, 255, 204, 0.1));
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: var(--text-primary);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: all var(--transition-normal);
+    position: relative;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.github-link::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.3), transparent);
+    transition: left 0.5s ease;
+}
+
+.github-link:hover::before {
+    left: 100%;
+}
+
+.github-link:hover {
+    background: linear-gradient(135deg, var(--accent-blue), var(--accent-cyan));
+    border-color: var(--accent-blue);
+    color: var(--primary-bg);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(0, 212, 255, 0.5), 0 0 20px rgba(0, 212, 255, 0.3);
+}
+
+.github-link:active {
+    transform: translateY(0);
+}
+
+.github-icon {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    transition: transform var(--transition-normal);
+}
+
+.github-link:hover .github-icon {
+    transform: rotate(360deg) scale(1.1);
+}
+
+.github-text {
+    font-weight: 600;
+    letter-spacing: 0.3px;
 }
 
 /* Container */
@@ -840,6 +904,16 @@ body {
 }
 
 /* Responsive Design */
+@media (max-width: 1024px) and (min-width: 769px) {
+    .github-text {
+        font-size: 0.85rem;
+    }
+
+    .nav-menu {
+        gap: 1rem;
+    }
+}
+
 @media (max-width: 768px) {
     .container {
         padding: 0;
@@ -860,6 +934,22 @@ body {
     .nav-link {
         padding: 0.4rem 0.8rem;
         font-size: 0.9rem;
+    }
+
+    .github-link {
+        padding: 0.5rem 0.7rem;
+        gap: 0.4rem;
+        font-size: 0.85rem;
+        min-width: unset;
+    }
+
+    .github-text {
+        display: none;
+    }
+
+    .github-icon {
+        width: 22px;
+        height: 22px;
     }
 
     .container {

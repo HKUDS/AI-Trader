@@ -211,6 +211,7 @@ class BaseAgent:
         max_retries: int = 3,
         base_delay: float = 0.5,
         openai_base_url: Optional[str] = None,
+        openai_api_key: Optional[str] = None,
         initial_cash: float = 10000.0,
         init_date: str = "2025-10-13",
         market: str = "us",
@@ -228,6 +229,7 @@ class BaseAgent:
             max_retries: Maximum retry attempts
             base_delay: Base delay time for retries
             openai_base_url: OpenAI API base URL
+            openai_api_key: OpenAI API key
             initial_cash: Initial cash amount
             init_date: Initialization date
             market: Market type, "us" for US stocks or "cn" for A-shares
@@ -255,8 +257,15 @@ class BaseAgent:
         self.base_log_path = log_path or "./data/agent_data"
 
         # Set OpenAI configuration
-        self.openai_base_url = openai_base_url or os.getenv("OPENAI_API_BASE")
-
+        if openai_base_url==None:
+            self.openai_base_url = os.getenv("OPENAI_API_BASE")
+        else:
+            self.openai_base_url = openai_base_url
+        if openai_api_key==None:
+            self.openai_api_key = os.getenv("OPENAI_API_KEY")
+        else:
+            self.openai_api_key = openai_api_key
+        
         # Initialize components
         self.client: Optional[MultiServerMCPClient] = None
         self.tools: Optional[List] = None
@@ -280,7 +289,7 @@ class BaseAgent:
             },
             "search": {
                 "transport": "streamable_http",
-                "url": f"http://localhost:{os.getenv('SEARCH_HTTP_PORT', '8001')}/mcp",
+                "url": f"http://localhost:{os.getenv('SEARCH_HTTP_PORT', '8004')}/mcp",
             },
             "trade": {
                 "transport": "streamable_http",
@@ -300,8 +309,14 @@ class BaseAgent:
         print(f"✅ Loaded {len(self.tools)} MCP tools")
 
         # Create AI model
-        self.model = ChatOpenAI(model=self.basemodel, base_url=self.openai_base_url, max_retries=3, timeout=30)
-
+        self.model = ChatOpenAI(
+            model=self.basemodel,
+            base_url=self.openai_base_url,
+            api_key=self.openai_api_key,
+            max_retries=3,
+            timeout=30
+        )
+        
         # Note: agent will be created in run_trading_session() based on specific date
         # because system_prompt needs the current date and price information
 

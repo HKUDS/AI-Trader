@@ -1,0 +1,26 @@
+{
+    "agent_type": "BaseAgent",
+    "market": "cn",
+    "date_range": {
+      "init_date": "2025-10-01",
+      "end_date": "2025-10-25"
+    },
+    "models": [
+      {
+        "name": "gpt-4.1-astock-test",
+        "basemodel": "gpt-4.1",
+        "signature": "gpt-4.1-astock-test",
+        "enabled": true
+      }
+    ],
+    "agent_config": {
+      "max_steps": 30,
+      "max_retries": 3,
+      "base_delay": 1.0,
+      "initial_cash": 100000.0
+    },
+    "log_config": {
+      "log_path": "./data/agent_data"
+    }
+  }
+  

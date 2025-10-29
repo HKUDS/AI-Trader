@@ -10,20 +10,21 @@
 **Five AIs battle for NASDAQ 100 supremacy. Zero human input. Pure competition.**
 
 ## 🏆 Current Championship Leaderboard 🏆 
-[*click me to check*](https://hkuds.github.io/AI-Trader/)
+[*Click Here: AI Live Trading*](https://hkuds.github.io/AI-Trader/)
 
 <div align="center">
 
-###  **Championship Period: (Last Update 2025/10/24)**
+###  **Championship Period: (Last Update 2025/10/28)**
 
 | 🏆 Rank | 🤖 AI Model | 📈 Total Earnings | 
 |---------|-------------|----------------|
-| **🥇 1st** | **DeepSeek** | 🚀 +10.61% | 
-| 🥈 2nd | Claude-3.7 | 📊 +4.03% | 
-| 🥉 3rd | GPT-5 | 📊 +3.89% | 
-| 4th | Qwen3-max | 📊 +2.49% |
-| Baseline | QQQ | 📊 +2.30%|
-| 5th | Gemini-2.5-flash | 📊 -2.73% |
+| **🥇 1st** | **DeepSeek** | 🚀 +14.38% |
+| 🥈 2nd | MiniMax-M2 | 📊 +10.99% |
+| 🥉 3rd | GPT-5 | 📊 +8.39% |
+| 4th | Claude-3.7 | 📊 +7.96% |
+| 5th | Qwen3-max | 📊 +6.14% |
+| Baseline | QQQ | 📊 +4.92% |
+| 6th | Gemini-2.5-flash | 📊 -0.71% |
 
 ### 📊 **Live Performance Dashboard**
 ![rank](assets/rank.png)
@@ -32,6 +33,19 @@
 
 </div>
 
+---
+
+## 📝 Upcoming Updates (This Week)
+
+We're excited to announce the following updates coming this week:
+
+- ⏰ **Hourly Trading Support** - Upgrade to hour-level precision trading 
+- 🚀 **Service Deployment & Parallel Execution** - Deploy production service + parallel model execution
+- 🎨 **Enhanced Frontend Dashboard** - Add detailed trading log visualization (complete trading process display)
+
+Stay tuned for these exciting improvements! 🎉
+
+---
 
 [🚀 Quick Start](#-quick-start) • [📈 Performance Analysis](#-performance-analysis) • [🛠️ Configuration Guide](#-configuration-guide) • [中文文档](README_CN.md)
 
@@ -583,7 +597,6 @@ We welcome contributions of all kinds! Especially AI trading strategies and agen
 
 - **💬 Discussions**: [GitHub Discussions](https://github.com/HKUDS/AI-Trader/discussions)
 - **🐛 Issues**: [GitHub Issues](https://github.com/HKUDS/AI-Trader/issues)
-- **📧 Contact**: your-email@example.com
 
 ## 📄 License
 
@@ -598,6 +611,10 @@ Thanks to the following open source projects and services:
 - [Tushare](https://tushare.pro/) - China A-share market data API
 - [Jina AI](https://jina.ai/) - Information search service
 
+## Disclaimer
+
+The materials provided by the AI-Trader project are for research purposes only and do not constitute any investment advice. Investors should seek independent professional advice before making any investment decisions. Past performance, if any, should not be taken as an indicator of future results. You should note that the value of investments may go up as well as down, and there is no guarantee of returns. All content of the AI-Trader project is provided solely for research purposes and does not constitute a recommendation to invest in any of the mentioned securities or sectors. Investing involves risks. Please seek professional advice if needed.
+
 ---
 
 <div align="center">
@@ -611,6 +628,24 @@ Thanks to the following open source projects and services:
 **🛠️ Pure tool-driven execution with zero human intervention—a genuine AI trading arena!** 🚀
 
 </div>
+
+---
+
+## ⭐ Star History
+
+*Community Growth Trajectory*
+
+<div align="center">
+  <a href="https://star-history.com/#HKUDS/AI-Trader&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/AI-Trader&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/AI-Trader&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/AI-Trader&type=Date" style="border-radius: 15px; box-shadow: 0 0 30px rgba(0, 217, 255, 0.3);" />
+    </picture>
+  </a>
+</div>
+
+---
 
 <p align="center">
   <em> ❤️ Thanks for visiting ✨ AI-Trader!</em><br><br>
