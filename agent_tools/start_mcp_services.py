@@ -11,7 +11,9 @@ import sys
 import threading
 import time
 from pathlib import Path
+
 from dotenv import load_dotenv
+
 load_dotenv()
 
 
@@ -53,10 +55,11 @@ class MCPServiceManager:
     def is_port_available(self, port):
         """Check if a port is available"""
         import socket
+
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(1)
-            result = sock.connect_ex(('localhost', port))
+            result = sock.connect_ex(("localhost", port))
             sock.close()
             return result != 0  # Port is available if connection failed
         except:
@@ -66,20 +69,21 @@ class MCPServiceManager:
         """Check for port conflicts before starting services"""
         conflicts = []
         for service_id, config in self.service_configs.items():
-            port = config['port']
+            port = config["port"]
             if not self.is_port_available(port):
-                conflicts.append((config['name'], port))
-        
+                conflicts.append((config["name"], port))
+
         if conflicts:
             print("⚠️  Port conflicts detected:")
             for name, port in conflicts:
                 print(f"   - {name}: Port {port} is already in use")
-            
+
             import socket
+
             response = input("\n❓ Do you want to automatically find available ports? (y/n): ")
-            if response.lower() == 'y':
+            if response.lower() == "y":
                 for service_id, config in self.service_configs.items():
-                    port = config['port']
+                    port = config["port"]
                     if not self.is_port_available(port):
                         # Find next available port
                         new_port = port
@@ -89,7 +93,7 @@ class MCPServiceManager:
                                 print(f"❌ Could not find available port for {config['name']}")
                                 return False
                         print(f"   ✅ {config['name']}: Changed port from {port} to {new_port}")
-                        config['port'] = new_port
+                        config["port"] = new_port
                         self.ports[service_id] = new_port
                 return True
             else:
@@ -223,12 +227,12 @@ class MCPServiceManager:
                 stopped_services = []
                 for service_id, service in self.services.items():
                     if service["process"].poll() is not None:
-                        stopped_services.append(service['name'])
-                
+                        stopped_services.append(service["name"])
+
                 if stopped_services:
                     print(f"\n⚠️  Following service(s) stopped unexpectedly: {', '.join(stopped_services)}")
                     print(f"📋 Active services: {len(self.services) - len(stopped_services)}/{len(self.services)}")
-                    
+
                     # Only stop all if all services have failed
                     if len(stopped_services) == len(self.services):
                         print("❌ All services have stopped, shutting down...")

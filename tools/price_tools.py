@@ -8,7 +8,6 @@ import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
-import sys
 
 # 将项目根目录加入 Python 路径，便于从子目录直接运行本文件
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -192,20 +191,20 @@ def get_merged_file_path(market: str = "us") -> Path:
 
 def is_trading_day(date: str, market: str = "us") -> bool:
     """Check if a given date is a trading day by looking up merged.jsonl.
-    
+
     Args:
         date: Date string in "YYYY-MM-DD" format
         market: Market type ("us" or "cn")
-        
+
     Returns:
         True if the date exists in merged.jsonl (is a trading day), False otherwise
     """
     merged_file_path = get_merged_file_path(market)
-    
+
     if not merged_file_path.exists():
         print(f"⚠️  Warning: {merged_file_path} not found, cannot validate trading day")
         return False
-    
+
     try:
         with open(merged_file_path, "r", encoding="utf-8") as f:
             # Read first line to check if date exists
@@ -226,19 +225,19 @@ def is_trading_day(date: str, market: str = "us") -> bool:
 
 def get_all_trading_days(market: str = "us") -> List[str]:
     """Get all available trading days from merged.jsonl.
-    
+
     Args:
         market: Market type ("us" or "cn")
-        
+
     Returns:
         Sorted list of trading dates in "YYYY-MM-DD" format
     """
     merged_file_path = get_merged_file_path(market)
-    
+
     if not merged_file_path.exists():
         print(f"⚠️  Warning: {merged_file_path} not found")
         return []
-    
+
     trading_days = set()
     try:
         with open(merged_file_path, "r", encoding="utf-8") as f:
@@ -258,18 +257,18 @@ def get_all_trading_days(market: str = "us") -> List[str]:
 
 def get_stock_name_mapping(market: str = "us") -> Dict[str, str]:
     """Get mapping from stock symbols to names.
-    
+
     Args:
         market: Market type ("us" or "cn")
-        
+
     Returns:
         Dictionary mapping symbols to names, e.g. {"600519.SH": "贵州茅台"}
     """
     merged_file_path = get_merged_file_path(market)
-    
+
     if not merged_file_path.exists():
         return {}
-    
+
     name_map = {}
     try:
         with open(merged_file_path, "r", encoding="utf-8") as f:
@@ -293,22 +292,22 @@ def format_price_dict_with_names(
     price_dict: Dict[str, Optional[float]], market: str = "us"
 ) -> Dict[str, Optional[float]]:
     """Format price dictionary to include stock names for display.
-    
+
     Args:
         price_dict: Original price dictionary with keys like "600519.SH_price"
         market: Market type ("us" or "cn")
-        
+
     Returns:
         New dictionary with keys like "600519.SH (贵州茅台)_price" for CN market,
         unchanged for US market
     """
     if market != "cn":
         return price_dict
-    
+
     name_map = get_stock_name_mapping(market)
     if not name_map:
         return price_dict
-    
+
     formatted_dict = {}
     for key, value in price_dict.items():
         if key.endswith("_price"):
@@ -321,7 +320,7 @@ def format_price_dict_with_names(
             formatted_dict[new_key] = value
         else:
             formatted_dict[key] = value
-    
+
     return formatted_dict
 
 
@@ -551,14 +550,14 @@ def get_today_init_position(today_date: str, modelname: str) -> Dict[str, float]
         {symbol: weight} 的字典；若未找到对应日期，则返回空字典。
     """
     from tools.general_tools import get_config_value
-    
+
     base_dir = Path(__file__).resolve().parents[1]
-    
+
     # Get log_path from config, default to "agent_data" for backward compatibility
     log_path = get_config_value("LOG_PATH", "./data/agent_data")
     if log_path.startswith("./data/"):
         log_path = log_path[7:]  # Remove "./data/" prefix
-    
+
     position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
 
     if not position_file.exists():
@@ -584,8 +583,9 @@ def get_today_init_position(today_date: str, modelname: str) -> Dict[str, float]
 
     # Sort by date (descending) then by id (descending) to get the most recent record
     all_records.sort(key=lambda x: (x.get("date", ""), x.get("id", 0)), reverse=True)
-    
+
     return all_records[0].get("positions", {})
+
 
 def get_latest_position(today_date: str, modelname: str) -> Tuple[Dict[str, float], int]:
     """
@@ -603,14 +603,14 @@ def get_latest_position(today_date: str, modelname: str) -> Tuple[Dict[str, floa
           - max_id: 选中记录的最大 id；若未找到任何记录，则为 -1.
     """
     from tools.general_tools import get_config_value
-    
+
     base_dir = Path(__file__).resolve().parents[1]
-    
+
     # Get log_path from config, default to "agent_data" for backward compatibility
     log_path = get_config_value("LOG_PATH", "./data/agent_data")
     if log_path.startswith("./data/"):
         log_path = log_path[7:]  # Remove "./data/" prefix
-    
+
     position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
 
     if not position_file.exists():
@@ -670,16 +670,16 @@ def add_no_trade_record(today_date: str, modelname: str):
     save_item["this_action"] = {"action": "no_trade", "symbol": "", "amount": 0}
 
     save_item["positions"] = current_position
-    
+
     from tools.general_tools import get_config_value
-    
+
     base_dir = Path(__file__).resolve().parents[1]
-    
+
     # Get log_path from config, default to "agent_data" for backward compatibility
     log_path = get_config_value("LOG_PATH", "./data/agent_data")
     if log_path.startswith("./data/"):
         log_path = log_path[7:]  # Remove "./data/" prefix
-    
+
     position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
 
     with position_file.open("a", encoding="utf-8") as f:

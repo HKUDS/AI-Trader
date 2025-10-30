@@ -6,7 +6,6 @@ Encapsulates core functionality including MCP tool management, AI agent creation
 import asyncio
 import json
 import os
-
 # Import project tools
 import sys
 from datetime import datetime, timedelta
@@ -22,7 +21,8 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 sys.path.insert(0, project_root)
 
 from prompts.agent_prompt import STOP_SIGNAL, get_agent_system_prompt
-from tools.general_tools import extract_conversation, extract_tool_messages, get_config_value, write_config_value
+from tools.general_tools import (extract_conversation, extract_tool_messages,
+                                 get_config_value, write_config_value)
 from tools.price_tools import add_no_trade_record
 
 # Load environment variables
@@ -257,15 +257,15 @@ class BaseAgent:
         self.base_log_path = log_path or "./data/agent_data"
 
         # Set OpenAI configuration
-        if openai_base_url==None:
+        if openai_base_url == None:
             self.openai_base_url = os.getenv("OPENAI_API_BASE")
         else:
             self.openai_base_url = openai_base_url
-        if openai_api_key==None:
+        if openai_api_key == None:
             self.openai_api_key = os.getenv("OPENAI_API_KEY")
         else:
             self.openai_api_key = openai_api_key
-        
+
         # Initialize components
         self.client: Optional[MultiServerMCPClient] = None
         self.tools: Optional[List] = None
@@ -300,17 +300,19 @@ class BaseAgent:
     async def initialize(self) -> None:
         """Initialize MCP client and AI model"""
         print(f"🚀 Initializing agent: {self.signature}")
-        
+
         # Validate OpenAI configuration
         if not self.openai_api_key:
-            raise ValueError("❌ OpenAI API key not set. Please configure OPENAI_API_KEY in environment or config file.")
+            raise ValueError(
+                "❌ OpenAI API key not set. Please configure OPENAI_API_KEY in environment or config file."
+            )
         if not self.openai_base_url:
             print("⚠️  OpenAI base URL not set, using default")
-        
+
         try:
             # Create MCP client
             self.client = MultiServerMCPClient(self.mcp_config)
-            
+
             # Get tools
             self.tools = await self.client.get_tools()
             if not self.tools:
@@ -324,7 +326,7 @@ class BaseAgent:
                 f"   Please ensure MCP services are running at the configured ports.\n"
                 f"   Run: python agent_tools/start_mcp_services.py"
             )
-        
+
         try:
             # Create AI model
             self.model = ChatOpenAI(
@@ -332,11 +334,11 @@ class BaseAgent:
                 base_url=self.openai_base_url,
                 api_key=self.openai_api_key,
                 max_retries=3,
-                timeout=30
+                timeout=30,
             )
         except Exception as e:
             raise RuntimeError(f"❌ Failed to initialize AI model: {e}")
-        
+
         # Note: agent will be created in run_trading_session() based on specific date
         # because system_prompt needs the current date and price information
 
@@ -490,7 +492,7 @@ class BaseAgent:
             List of trading dates (excluding weekends and holidays)
         """
         from tools.price_tools import is_trading_day
-        
+
         dates = []
         max_date = None
 

@@ -10,13 +10,10 @@ sys.path.insert(0, project_root)
 import json
 
 from tools.general_tools import get_config_value, write_config_value
-from tools.price_tools import (
-    get_latest_position,
-    get_open_prices,
-    get_yesterday_date,
-    get_yesterday_open_and_close_price,
-    get_yesterday_profit,
-)
+from tools.price_tools import (get_latest_position, get_open_prices,
+                               get_yesterday_date,
+                               get_yesterday_open_and_close_price,
+                               get_yesterday_profit)
 
 mcp = FastMCP("TradeTools")
 
@@ -63,7 +60,7 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
 
     # Auto-detect market type based on symbol format
     market = "cn" if symbol.endswith((".SH", ".SZ")) else "us"
-    
+
     # 🇨🇳 Chinese A-shares trading rule: Must trade in lots of 100 shares (一手 = 100股)
     if market == "cn" and amount % 100 != 0:
         return {
@@ -83,7 +80,7 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
         print(e)
         print(current_position, current_action_id)
         print(today_date, signature)
-    
+
     # Step 3: Get stock opening price for the day
     # Use get_open_prices function to get the opening price of specified stock for the day
     # If stock symbol does not exist or price data is missing, KeyError exception will be raised
@@ -158,12 +155,12 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
 def _get_today_buy_amount(symbol: str, today_date: str, signature: str) -> int:
     """
     Helper function to get the total amount bought today for T+1 restriction check
-    
+
     Args:
         symbol: Stock symbol
         today_date: Trading date
         signature: Model signature
-        
+
     Returns:
         Total shares bought today
     """
@@ -171,10 +168,10 @@ def _get_today_buy_amount(symbol: str, today_date: str, signature: str) -> int:
     if log_path.startswith("./data/"):
         log_path = log_path[7:]  # Remove "./data/" prefix
     position_file_path = os.path.join(project_root, "data", log_path, signature, "position", "position.jsonl")
-    
+
     if not os.path.exists(position_file_path):
         return 0
-    
+
     total_bought_today = 0
     with open(position_file_path, "r") as f:
         for line in f:
@@ -188,7 +185,7 @@ def _get_today_buy_amount(symbol: str, today_date: str, signature: str) -> int:
                         total_bought_today += this_action.get("amount", 0)
             except Exception:
                 continue
-    
+
     return total_bought_today
 
 
@@ -235,7 +232,7 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
 
     # Auto-detect market type based on symbol format
     market = "cn" if symbol.endswith((".SH", ".SZ")) else "us"
-    
+
     # 🇨🇳 Chinese A-shares trading rule: Must trade in lots of 100 shares (一手 = 100股)
     if market == "cn" and amount % 100 != 0:
         return {
@@ -282,7 +279,7 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
             "symbol": symbol,
             "date": today_date,
         }
-    
+
     # 🇨🇳 Chinese A-shares T+1 trading rule: Cannot sell shares bought on the same day
     if market == "cn":
         bought_today = _get_today_buy_amount(symbol, today_date, signature)

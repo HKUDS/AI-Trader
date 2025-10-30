@@ -16,6 +16,7 @@ load_dotenv()
 mcp = FastMCP("LocalPrices")
 from tools.general_tools import get_config_value
 
+
 def _workspace_data_path(filename: str) -> Path:
     base_dir = Path(__file__).resolve().parents[1]
     return base_dir / "data" / filename

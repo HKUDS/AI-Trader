@@ -1,13 +1,11 @@
 import json
 import os
 from pathlib import Path
-
 from typing import Any
+
 from dotenv import load_dotenv
 
 load_dotenv()
-
-
 
 
 def _load_runtime_env() -> dict:
@@ -31,6 +29,7 @@ def get_config_value(key: str, default=None):
     if key in _RUNTIME_ENV:
         return _RUNTIME_ENV[key]
     return os.getenv(key, default)
+
 
 def write_config_value(key: str, value: Any):
     path = os.environ.get("RUNTIME_ENV_PATH")

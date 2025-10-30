@@ -14,14 +14,10 @@ if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
 from tools.general_tools import get_config_value
-from tools.price_tools import (
-    all_nasdaq_100_symbols,
-    get_latest_position,
-    get_open_prices,
-    get_today_init_position,
-    get_yesterday_date,
-    get_yesterday_open_and_close_price,
-)
+from tools.price_tools import (all_nasdaq_100_symbols, get_latest_position,
+                               get_open_prices, get_today_init_position,
+                               get_yesterday_date,
+                               get_yesterday_open_and_close_price)
 
 
 def calculate_portfolio_value(
@@ -62,14 +58,14 @@ def get_available_date_range(modelname: str) -> Tuple[str, str]:
         Tuple of (earliest date, latest date) in YYYY-MM-DD format
     """
     from tools.general_tools import get_config_value
-    
+
     base_dir = Path(__file__).resolve().parents[1]
-    
+
     # Get log_path from config, default to "agent_data" for backward compatibility
     log_path = get_config_value("LOG_PATH", "./data/agent_data")
     if log_path.startswith("./data/"):
         log_path = log_path[7:]  # Remove "./data/" prefix
-    
+
     position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
 
     if not position_file.exists():
@@ -111,14 +107,14 @@ def get_daily_portfolio_values(
         Dictionary of daily portfolio values in format {date: portfolio_value}
     """
     from tools.general_tools import get_config_value
-    
+
     base_dir = Path(__file__).resolve().parents[1]
-    
+
     # Get log_path from config, default to "agent_data" for backward compatibility
     log_path = get_config_value("LOG_PATH", "./data/agent_data")
     if log_path.startswith("./data/"):
         log_path = log_path[7:]  # Remove "./data/" prefix
-    
+
     position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
     merged_file = base_dir / "data" / "merged.jsonl"
 
@@ -628,7 +624,7 @@ def save_metrics_to_jsonl(metrics: Dict[str, any], modelname: str, output_dir: O
         Path to saved file
     """
     from tools.general_tools import get_config_value
-    
+
     base_dir = Path(__file__).resolve().parents[1]
 
     if output_dir is None:
@@ -708,7 +704,7 @@ def get_latest_metrics(modelname: str, output_dir: Optional[str] = None) -> Opti
         Latest metrics record, or None if no records exist
     """
     from tools.general_tools import get_config_value
-    
+
     base_dir = Path(__file__).resolve().parents[1]
 
     if output_dir is None:
@@ -759,7 +755,7 @@ def get_metrics_history(
         List of metrics records, sorted by ID
     """
     from tools.general_tools import get_config_value
-    
+
     base_dir = Path(__file__).resolve().parents[1]
 
     if output_dir is None:

@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from prompts.agent_prompt import all_nasdaq_100_symbols
-
 # Import tools and prompts
 from tools.general_tools import get_config_value, write_config_value
 
@@ -155,8 +154,8 @@ async def main(config_path=None):
         model_name = model_config.get("name", "unknown")
         basemodel = model_config.get("basemodel")
         signature = model_config.get("signature")
-        openai_base_url = model_config.get("openai_base_url",None)
-        openai_api_key = model_config.get("openai_api_key",None)
+        openai_base_url = model_config.get("openai_base_url", None)
+        openai_api_key = model_config.get("openai_api_key", None)
 
         # Validate required fields
         if not basemodel:
