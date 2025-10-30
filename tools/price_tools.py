@@ -190,6 +190,72 @@ def get_merged_file_path(market: str = "us") -> Path:
         return base_dir / "data" / "merged.jsonl"
 
 
+def is_trading_day(date: str, market: str = "us") -> bool:
+    """Check if a given date is a trading day by looking up merged.jsonl.
+    
+    Args:
+        date: Date string in "YYYY-MM-DD" format
+        market: Market type ("us" or "cn")
+        
+    Returns:
+        True if the date exists in merged.jsonl (is a trading day), False otherwise
+    """
+    merged_file_path = get_merged_file_path(market)
+    
+    if not merged_file_path.exists():
+        print(f"⚠️  Warning: {merged_file_path} not found, cannot validate trading day")
+        return False
+    
+    try:
+        with open(merged_file_path, "r", encoding="utf-8") as f:
+            # Read first line to check if date exists
+            for line in f:
+                try:
+                    data = json.loads(line.strip())
+                    time_series = data.get("Time Series (Daily)", {})
+                    if date in time_series:
+                        return True
+                except json.JSONDecodeError:
+                    continue
+            # If we get here, checked all stocks and date was not found in any
+            return False
+    except Exception as e:
+        print(f"⚠️  Error checking trading day: {e}")
+        return False
+
+
+def get_all_trading_days(market: str = "us") -> List[str]:
+    """Get all available trading days from merged.jsonl.
+    
+    Args:
+        market: Market type ("us" or "cn")
+        
+    Returns:
+        Sorted list of trading dates in "YYYY-MM-DD" format
+    """
+    merged_file_path = get_merged_file_path(market)
+    
+    if not merged_file_path.exists():
+        print(f"⚠️  Warning: {merged_file_path} not found")
+        return []
+    
+    trading_days = set()
+    try:
+        with open(merged_file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    data = json.loads(line.strip())
+                    time_series = data.get("Time Series (Daily)", {})
+                    # Add all dates from this stock's time series
+                    trading_days.update(time_series.keys())
+                except json.JSONDecodeError:
+                    continue
+        return sorted(list(trading_days))
+    except Exception as e:
+        print(f"⚠️  Error reading trading days: {e}")
+        return []
+
+
 def get_yesterday_date(today_date: str) -> str:
     """
     获取昨日日期，考虑休市日。

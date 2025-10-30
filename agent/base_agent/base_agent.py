@@ -480,15 +480,17 @@ class BaseAgent:
 
     def get_trading_dates(self, init_date: str, end_date: str) -> List[str]:
         """
-        Get trading date list
+        Get trading date list, filtered by actual trading days in merged.jsonl
 
         Args:
             init_date: Start date
             end_date: End date
 
         Returns:
-            List of trading dates
+            List of trading dates (excluding weekends and holidays)
         """
+        from tools.price_tools import is_trading_day
+        
         dates = []
         max_date = None
 
@@ -516,13 +518,15 @@ class BaseAgent:
         if end_date_obj <= max_date_obj:
             return []
 
-        # Generate trading date list
+        # Generate trading date list, filtered by actual trading days
         trading_dates = []
         current_date = max_date_obj + timedelta(days=1)
 
         while current_date <= end_date_obj:
-            if current_date.weekday() < 5:  # Weekdays
-                trading_dates.append(current_date.strftime("%Y-%m-%d"))
+            date_str = current_date.strftime("%Y-%m-%d")
+            # Check if this is an actual trading day in merged.jsonl
+            if is_trading_day(date_str, market=self.market):
+                trading_dates.append(date_str)
             current_date += timedelta(days=1)
 
         return trading_dates
