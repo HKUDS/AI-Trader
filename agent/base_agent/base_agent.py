@@ -300,22 +300,42 @@ class BaseAgent:
     async def initialize(self) -> None:
         """Initialize MCP client and AI model"""
         print(f"🚀 Initializing agent: {self.signature}")
-
-        # Create MCP client
-        self.client = MultiServerMCPClient(self.mcp_config)
-
-        # Get tools
-        self.tools = await self.client.get_tools()
-        print(f"✅ Loaded {len(self.tools)} MCP tools")
-
-        # Create AI model
-        self.model = ChatOpenAI(
-            model=self.basemodel,
-            base_url=self.openai_base_url,
-            api_key=self.openai_api_key,
-            max_retries=3,
-            timeout=30
-        )
+        
+        # Validate OpenAI configuration
+        if not self.openai_api_key:
+            raise ValueError("❌ OpenAI API key not set. Please configure OPENAI_API_KEY in environment or config file.")
+        if not self.openai_base_url:
+            print("⚠️  OpenAI base URL not set, using default")
+        
+        try:
+            # Create MCP client
+            self.client = MultiServerMCPClient(self.mcp_config)
+            
+            # Get tools
+            self.tools = await self.client.get_tools()
+            if not self.tools:
+                print("⚠️  Warning: No MCP tools loaded. MCP services may not be running.")
+                print(f"   MCP configuration: {self.mcp_config}")
+            else:
+                print(f"✅ Loaded {len(self.tools)} MCP tools")
+        except Exception as e:
+            raise RuntimeError(
+                f"❌ Failed to initialize MCP client: {e}\n"
+                f"   Please ensure MCP services are running at the configured ports.\n"
+                f"   Run: python agent_tools/start_mcp_services.py"
+            )
+        
+        try:
+            # Create AI model
+            self.model = ChatOpenAI(
+                model=self.basemodel,
+                base_url=self.openai_base_url,
+                api_key=self.openai_api_key,
+                max_retries=3,
+                timeout=30
+            )
+        except Exception as e:
+            raise RuntimeError(f"❌ Failed to initialize AI model: {e}")
         
         # Note: agent will be created in run_trading_session() based on specific date
         # because system_prompt needs the current date and price information

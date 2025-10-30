@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "MRVL",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "90.7550",
+            "2. high": "91.5100",
+            "3. low": "89.0500",
+            "4. close": "90.1500",
+            "5. volume": "13337437"
+        },
         "2025-10-28": {
             "1. open": "88.9550",
             "2. high": "89.9800",
@@ -699,13 +706,6 @@
             "3. low": "68.9600",
             "4. close": "69.1400",
             "5. volume": "19351772"
-        },
-        "2025-06-06": {
-            "1. open": "66.9650",
-            "2. high": "69.7800",
-            "3. low": "66.3100",
-            "4. close": "68.3500",
-            "5. volume": "22926335"
         }
     }
 }

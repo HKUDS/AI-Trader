@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "VRSK",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "208.5000",
+            "2. high": "212.0000",
+            "3. low": "196.9950",
+            "4. close": "208.0000",
+            "5. volume": "4968829"
+        },
         "2025-10-28": {
             "1. open": "233.4400",
             "2. high": "235.8900",
@@ -699,13 +706,6 @@
             "3. low": "310.8500",
             "4. close": "313.2700",
             "5. volume": "642347"
-        },
-        "2025-06-06": {
-            "1. open": "320.8700",
-            "2. high": "321.8300",
-            "3. low": "317.8100",
-            "4. close": "319.6000",
-            "5. volume": "530802"
         }
     }
 }

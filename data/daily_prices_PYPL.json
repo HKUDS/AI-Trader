@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "PYPL",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "72.7000",
+            "2. high": "72.7300",
+            "3. low": "69.3150",
+            "4. close": "69.6800",
+            "5. volume": "37920526"
+        },
         "2025-10-28": {
             "1. open": "76.2100",
             "2. high": "79.2150",
@@ -699,13 +706,6 @@
             "3. low": "72.9500",
             "4. close": "73.5500",
             "5. volume": "6166472"
-        },
-        "2025-06-06": {
-            "1. open": "73.2650",
-            "2. high": "73.6200",
-            "3. low": "72.6400",
-            "4. close": "73.4300",
-            "5. volume": "7240199"
         }
     }
 }

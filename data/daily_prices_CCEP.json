@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "CCEP",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "90.9400",
+            "2. high": "91.2000",
+            "3. low": "88.2950",
+            "4. close": "88.6200",
+            "5. volume": "1275168"
+        },
         "2025-10-28": {
             "1. open": "91.3600",
             "2. high": "92.6500",
@@ -699,13 +706,6 @@
             "3. low": "91.4750",
             "4. close": "92.0600",
             "5. volume": "1494433"
-        },
-        "2025-06-06": {
-            "1. open": "92.0700",
-            "2. high": "93.4850",
-            "3. low": "92.0050",
-            "4. close": "93.3100",
-            "5. volume": "1415164"
         }
     }
 }

@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "QQQ",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "635.5900",
+            "2. high": "637.0100",
+            "3. low": "630.2500",
+            "4. close": "635.7700",
+            "5. volume": "66069316"
+        },
         "2025-10-28": {
             "1. open": "630.3600",
             "2. high": "634.6800",
@@ -699,13 +706,6 @@
             "3. low": "529.0100",
             "4. close": "530.7000",
             "5. volume": "33688671"
-        },
-        "2025-06-06": {
-            "1. open": "530.0000",
-            "2. high": "531.8000",
-            "3. low": "528.2100",
-            "4. close": "529.9200",
-            "5. volume": "42467021"
         }
     }
 }

@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "INTU",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "667.5800",
+            "2. high": "669.6200",
+            "3. low": "649.1000",
+            "4. close": "656.0400",
+            "5. volume": "1957756"
+        },
         "2025-10-28": {
             "1. open": "684.7300",
             "2. high": "688.8987",
@@ -699,13 +706,6 @@
             "3. low": "762.6400",
             "4. close": "764.3800",
             "5. volume": "1342425"
-        },
-        "2025-06-06": {
-            "1. open": "770.1400",
-            "2. high": "771.8600",
-            "3. low": "764.2650",
-            "4. close": "771.5800",
-            "5. volume": "1475468"
         }
     }
 }

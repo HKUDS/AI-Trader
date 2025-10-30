@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "DDOG",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "156.7600",
+            "2. high": "157.1100",
+            "3. low": "154.0103",
+            "4. close": "156.0000",
+            "5. volume": "3690641"
+        },
         "2025-10-28": {
             "1. open": "159.0200",
             "2. high": "160.1200",
@@ -699,13 +706,6 @@
             "3. low": "118.7700",
             "4. close": "121.1700",
             "5. volume": "4810659"
-        },
-        "2025-06-06": {
-            "1. open": "122.6400",
-            "2. high": "123.1500",
-            "3. low": "121.5400",
-            "4. close": "122.1600",
-            "5. volume": "4539401"
         }
     }
 }

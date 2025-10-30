@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "KLAC",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "1225.9900",
+            "2. high": "1259.5500",
+            "3. low": "1224.4700",
+            "4. close": "1235.2800",
+            "5. volume": "1455074"
+        },
         "2025-10-28": {
             "1. open": "1206.6800",
             "2. high": "1209.6558",
@@ -699,13 +706,6 @@
             "3. low": "811.0000",
             "4. close": "829.2900",
             "5. volume": "1529929"
-        },
-        "2025-06-06": {
-            "1. open": "801.2400",
-            "2. high": "813.9700",
-            "3. low": "799.7700",
-            "4. close": "808.0000",
-            "5. volume": "996383"
         }
     }
 }

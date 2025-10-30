@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "FANG",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "140.6900",
+            "2. high": "145.3600",
+            "3. low": "140.6900",
+            "4. close": "143.6300",
+            "5. volume": "1436347"
+        },
         "2025-10-28": {
             "1. open": "143.6400",
             "2. high": "143.9500",
@@ -699,13 +706,6 @@
             "3. low": "140.3500",
             "4. close": "142.1300",
             "5. volume": "1735560"
-        },
-        "2025-06-06": {
-            "1. open": "139.2700",
-            "2. high": "141.2075",
-            "3. low": "139.0000",
-            "4. close": "140.5600",
-            "5. volume": "1776691"
         }
     }
 }

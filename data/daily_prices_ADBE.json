@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "ADBE",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "355.5150",
+            "2. high": "355.5150",
+            "3. low": "337.0500",
+            "4. close": "337.8600",
+            "5. volume": "6673839"
+        },
         "2025-10-28": {
             "1. open": "360.0000",
             "2. high": "363.7000",
@@ -699,13 +706,6 @@
             "3. low": "415.1500",
             "4. close": "416.2600",
             "5. volume": "3034210"
-        },
-        "2025-06-06": {
-            "1. open": "417.5400",
-            "2. high": "419.6450",
-            "3. low": "415.2800",
-            "4. close": "416.9200",
-            "5. volume": "2146908"
         }
     }
 }

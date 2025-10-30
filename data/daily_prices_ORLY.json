@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "ORLY",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "95.5800",
+            "2. high": "96.5200",
+            "3. low": "94.1300",
+            "4. close": "94.5200",
+            "5. volume": "4930049"
+        },
         "2025-10-28": {
             "1. open": "95.6700",
             "2. high": "97.9200",
@@ -699,13 +706,6 @@
             "3. low": "1332.3000",
             "4. close": "1348.1000",
             "5. volume": "372411"
-        },
-        "2025-06-06": {
-            "1. open": "1378.7800",
-            "2. high": "1394.4100",
-            "3. low": "1367.3750",
-            "4. close": "1377.7200",
-            "5. volume": "333777"
         }
     }
 }

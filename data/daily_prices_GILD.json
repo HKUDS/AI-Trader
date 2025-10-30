@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "GILD",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "117.1200",
+            "2. high": "118.9600",
+            "3. low": "116.7000",
+            "4. close": "118.5000",
+            "5. volume": "5771939"
+        },
         "2025-10-28": {
             "1. open": "119.7700",
             "2. high": "120.2800",
@@ -699,13 +706,6 @@
             "3. low": "111.7700",
             "4. close": "113.0000",
             "5. volume": "6152957"
-        },
-        "2025-06-06": {
-            "1. open": "111.6900",
-            "2. high": "112.7600",
-            "3. low": "110.7700",
-            "4. close": "112.4600",
-            "5. volume": "5263662"
         }
     }
 }

@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "MCHP",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "63.6800",
+            "2. high": "64.3050",
+            "3. low": "62.1400",
+            "4. close": "62.5400",
+            "5. volume": "9620953"
+        },
         "2025-10-28": {
             "1. open": "64.5100",
             "2. high": "64.6100",
@@ -699,13 +706,6 @@
             "3. low": "65.9100",
             "4. close": "68.0500",
             "5. volume": "11974568"
-        },
-        "2025-06-06": {
-            "1. open": "65.6900",
-            "2. high": "66.0550",
-            "3. low": "65.0900",
-            "4. close": "65.2500",
-            "5. volume": "8884601"
         }
     }
 }

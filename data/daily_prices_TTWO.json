@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "TTWO",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "250.1200",
+            "2. high": "252.7500",
+            "3. low": "249.2400",
+            "4. close": "251.7300",
+            "5. volume": "1483536"
+        },
         "2025-10-28": {
             "1. open": "254.6400",
             "2. high": "256.2000",
@@ -699,13 +706,6 @@
             "3. low": "230.3900",
             "4. close": "233.5000",
             "5. volume": "1426462"
-        },
-        "2025-06-06": {
-            "1. open": "232.9800",
-            "2. high": "233.2000",
-            "3. low": "230.4700",
-            "4. close": "232.7200",
-            "5. volume": "1497156"
         }
     }
 }

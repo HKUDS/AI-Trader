@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "TRI",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "160.5100",
+            "2. high": "160.5100",
+            "3. low": "151.5300",
+            "4. close": "152.8400",
+            "5. volume": "1510890"
+        },
         "2025-10-28": {
             "1. open": "161.3450",
             "2. high": "163.6600",
@@ -699,13 +706,6 @@
             "3. low": "191.1850",
             "4. close": "192.6600",
             "5. volume": "543534"
-        },
-        "2025-06-06": {
-            "1. open": "195.4800",
-            "2. high": "196.2300",
-            "3. low": "194.8100",
-            "4. close": "195.0000",
-            "5. volume": "375975"
         }
     }
 }

@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "TTD",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "51.6200",
+            "2. high": "51.6200",
+            "3. low": "49.2300",
+            "4. close": "49.9600",
+            "5. volume": "11813265"
+        },
         "2025-10-28": {
             "1. open": "53.6000",
             "2. high": "53.9400",
@@ -699,13 +706,6 @@
             "3. low": "70.5500",
             "4. close": "71.4900",
             "5. volume": "5838285"
-        },
-        "2025-06-06": {
-            "1. open": "72.1600",
-            "2. high": "72.4039",
-            "3. low": "70.3410",
-            "4. close": "71.4600",
-            "5. volume": "9061395"
         }
     }
 }

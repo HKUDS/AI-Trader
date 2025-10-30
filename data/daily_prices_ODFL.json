@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "ODFL",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "142.0300",
+            "2. high": "146.9900",
+            "3. low": "134.0300",
+            "4. close": "136.1300",
+            "5. volume": "4267091"
+        },
         "2025-10-28": {
             "1. open": "138.0000",
             "2. high": "138.2400",
@@ -699,13 +706,6 @@
             "3. low": "159.4200",
             "4. close": "162.2100",
             "5. volume": "1199035"
-        },
-        "2025-06-06": {
-            "1. open": "162.5450",
-            "2. high": "163.3200",
-            "3. low": "159.7400",
-            "4. close": "160.3300",
-            "5. volume": "1232649"
         }
     }
 }

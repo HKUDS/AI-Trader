@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "KDP",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "28.5250",
+            "2. high": "28.6600",
+            "3. low": "27.0900",
+            "4. close": "27.1500",
+            "5. volume": "29860421"
+        },
         "2025-10-28": {
             "1. open": "29.0200",
             "2. high": "29.1000",
@@ -699,13 +706,6 @@
             "3. low": "32.6400",
             "4. close": "32.9700",
             "5. volume": "8992948"
-        },
-        "2025-06-06": {
-            "1. open": "32.6800",
-            "2. high": "32.8500",
-            "3. low": "32.5600",
-            "4. close": "32.7700",
-            "5. volume": "8121297"
         }
     }
 }

@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "AEP",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "120.3000",
+            "2. high": "122.7940",
+            "3. low": "120.0100",
+            "4. close": "122.1100",
+            "5. volume": "9528727"
+        },
         "2025-10-28": {
             "1. open": "116.5200",
             "2. high": "116.6129",
@@ -699,13 +706,6 @@
             "3. low": "100.8500",
             "4. close": "101.4100",
             "5. volume": "2418466"
-        },
-        "2025-06-06": {
-            "1. open": "101.8300",
-            "2. high": "102.0000",
-            "3. low": "101.1500",
-            "4. close": "101.7900",
-            "5. volume": "2045078"
         }
     }
 }

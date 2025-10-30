@@ -10,7 +10,7 @@ from fastmcp import FastMCP
 load_dotenv()
 
 mcp = FastMCP("LocalPrices")
-
+from tools.general_tools import get_config_value
 
 def _workspace_data_path(filename: str) -> Path:
     base_dir = Path(__file__).resolve().parents[1]
@@ -131,6 +131,5 @@ def get_price_local_function(symbol: str, date: str, filename: str = "merged.jso
 
 if __name__ == "__main__":
     # print("a test case")
-    # print(get_price_local_function("AAPL", "2025-10-16"))
     port = int(os.getenv("GETPRICE_HTTP_PORT", "8003"))
     mcp.run(transport="streamable-http", port=port)

@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "PLTR",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "191.0800",
+            "2. high": "199.8500",
+            "3. low": "190.4900",
+            "4. close": "198.8100",
+            "5. volume": "64750145"
+        },
         "2025-10-28": {
             "1. open": "189.4800",
             "2. high": "191.7800",
@@ -699,13 +706,6 @@
             "3. low": "124.8000",
             "4. close": "132.0600",
             "5. volume": "74785580"
-        },
-        "2025-06-06": {
-            "1. open": "123.7300",
-            "2. high": "128.1300",
-            "3. low": "121.9200",
-            "4. close": "127.7200",
-            "5. volume": "87175144"
         }
     }
 }

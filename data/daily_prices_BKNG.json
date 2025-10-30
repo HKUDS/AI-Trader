@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "BKNG",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "5200.0100",
+            "2. high": "5220.0000",
+            "3. low": "4928.1375",
+            "4. close": "5075.8600",
+            "5. volume": "459291"
+        },
         "2025-10-28": {
             "1. open": "5240.5800",
             "2. high": "5275.0000",
@@ -699,13 +706,6 @@
             "3. low": "5528.4500",
             "4. close": "5539.4100",
             "5. volume": "199369"
-        },
-        "2025-06-06": {
-            "1. open": "5615.5600",
-            "2. high": "5631.3400",
-            "3. low": "5553.7850",
-            "4. close": "5614.6100",
-            "5. volume": "174091"
         }
     }
 }

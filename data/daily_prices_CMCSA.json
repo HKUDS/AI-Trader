@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "CMCSA",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "29.1500",
+            "2. high": "29.2600",
+            "3. low": "28.4600",
+            "4. close": "28.5300",
+            "5. volume": "42251788"
+        },
         "2025-10-28": {
             "1. open": "29.3100",
             "2. high": "29.4200",
@@ -699,13 +706,6 @@
             "3. low": "34.5600",
             "4. close": "34.6000",
             "5. volume": "15056250"
-        },
-        "2025-06-06": {
-            "1. open": "34.5000",
-            "2. high": "34.7950",
-            "3. low": "34.4000",
-            "4. close": "34.7000",
-            "5. volume": "13753349"
         }
     }
 }

@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "TMUS",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "220.5400",
+            "2. high": "221.3725",
+            "3. low": "212.1200",
+            "4. close": "215.0100",
+            "5. volume": "8305925"
+        },
         "2025-10-28": {
             "1. open": "218.9200",
             "2. high": "222.8300",
@@ -699,13 +706,6 @@
             "3. low": "237.8700",
             "4. close": "237.9500",
             "5. volume": "4538561"
-        },
-        "2025-06-06": {
-            "1. open": "246.8800",
-            "2. high": "247.5500",
-            "3. low": "244.5200",
-            "4. close": "245.8600",
-            "5. volume": "2022635"
         }
     }
 }

@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "CTSH",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "75.1800",
+            "2. high": "75.6700",
+            "3. low": "71.1200",
+            "4. close": "71.6900",
+            "5. volume": "10717697"
+        },
         "2025-10-28": {
             "1. open": "67.8300",
             "2. high": "68.3950",
@@ -699,13 +706,6 @@
             "3. low": "80.1100",
             "4. close": "80.4700",
             "5. volume": "2385975"
-        },
-        "2025-06-06": {
-            "1. open": "80.0300",
-            "2. high": "80.4700",
-            "3. low": "79.7650",
-            "4. close": "80.2800",
-            "5. volume": "2510415"
         }
     }
 }

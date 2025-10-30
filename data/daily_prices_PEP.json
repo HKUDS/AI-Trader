@@ -2,11 +2,18 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "PEP",
-        "3. Last Refreshed": "2025-10-28",
+        "3. Last Refreshed": "2025-10-29",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-29": {
+            "1. open": "148.0500",
+            "2. high": "148.6648",
+            "3. low": "143.6700",
+            "4. close": "146.1600",
+            "5. volume": "7753647"
+        },
         "2025-10-28": {
             "1. open": "151.4100",
             "2. high": "153.2105",
@@ -699,13 +706,6 @@
             "3. low": "129.1800",
             "4. close": "129.9600",
             "5. volume": "8453146"
-        },
-        "2025-06-06": {
-            "1. open": "130.2450",
-            "2. high": "130.6650",
-            "3. low": "129.3400",
-            "4. close": "130.0300",
-            "5. volume": "7628224"
         }
     }
 }
