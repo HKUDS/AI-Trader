@@ -61,8 +61,16 @@ def get_available_date_range(modelname: str) -> Tuple[str, str]:
     Returns:
         Tuple of (earliest date, latest date) in YYYY-MM-DD format
     """
+    from tools.general_tools import get_config_value
+    
     base_dir = Path(__file__).resolve().parents[1]
-    position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
+    
+    # Get log_path from config, default to "agent_data" for backward compatibility
+    log_path = get_config_value("LOG_PATH", "./data/agent_data")
+    if log_path.startswith("./data/"):
+        log_path = log_path[7:]  # Remove "./data/" prefix
+    
+    position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
 
     if not position_file.exists():
         return "", ""
@@ -102,8 +110,16 @@ def get_daily_portfolio_values(
     Returns:
         Dictionary of daily portfolio values in format {date: portfolio_value}
     """
+    from tools.general_tools import get_config_value
+    
     base_dir = Path(__file__).resolve().parents[1]
-    position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
+    
+    # Get log_path from config, default to "agent_data" for backward compatibility
+    log_path = get_config_value("LOG_PATH", "./data/agent_data")
+    if log_path.startswith("./data/"):
+        log_path = log_path[7:]  # Remove "./data/" prefix
+    
+    position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
     merged_file = base_dir / "data" / "merged.jsonl"
 
     if not position_file.exists() or not merged_file.exists():
@@ -611,10 +627,16 @@ def save_metrics_to_jsonl(metrics: Dict[str, any], modelname: str, output_dir: O
     Returns:
         Path to saved file
     """
+    from tools.general_tools import get_config_value
+    
     base_dir = Path(__file__).resolve().parents[1]
 
     if output_dir is None:
-        output_dir = base_dir / "data" / "agent_data" / modelname / "metrics"
+        # Get log_path from config, default to "agent_data" for backward compatibility
+        log_path = get_config_value("LOG_PATH", "./data/agent_data")
+        if log_path.startswith("./data/"):
+            log_path = log_path[7:]  # Remove "./data/" prefix
+        output_dir = base_dir / "data" / log_path / modelname / "metrics"
     else:
         output_dir = Path(output_dir)
 
@@ -685,10 +707,16 @@ def get_latest_metrics(modelname: str, output_dir: Optional[str] = None) -> Opti
     Returns:
         Latest metrics record, or None if no records exist
     """
+    from tools.general_tools import get_config_value
+    
     base_dir = Path(__file__).resolve().parents[1]
 
     if output_dir is None:
-        output_dir = base_dir / "data" / "agent_data" / modelname / "metrics"
+        # Get log_path from config, default to "agent_data" for backward compatibility
+        log_path = get_config_value("LOG_PATH", "./data/agent_data")
+        if log_path.startswith("./data/"):
+            log_path = log_path[7:]  # Remove "./data/" prefix
+        output_dir = base_dir / "data" / log_path / modelname / "metrics"
     else:
         output_dir = Path(output_dir)
 
@@ -730,10 +758,16 @@ def get_metrics_history(
     Returns:
         List of metrics records, sorted by ID
     """
+    from tools.general_tools import get_config_value
+    
     base_dir = Path(__file__).resolve().parents[1]
 
     if output_dir is None:
-        output_dir = base_dir / "data" / "agent_data" / modelname / "metrics"
+        # Get log_path from config, default to "agent_data" for backward compatibility
+        log_path = get_config_value("LOG_PATH", "./data/agent_data")
+        if log_path.startswith("./data/"):
+            log_path = log_path[7:]  # Remove "./data/" prefix
+        output_dir = base_dir / "data" / log_path / modelname / "metrics"
     else:
         output_dir = Path(output_dir)
 

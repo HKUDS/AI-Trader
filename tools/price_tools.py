@@ -256,6 +256,75 @@ def get_all_trading_days(market: str = "us") -> List[str]:
         return []
 
 
+def get_stock_name_mapping(market: str = "us") -> Dict[str, str]:
+    """Get mapping from stock symbols to names.
+    
+    Args:
+        market: Market type ("us" or "cn")
+        
+    Returns:
+        Dictionary mapping symbols to names, e.g. {"600519.SH": "贵州茅台"}
+    """
+    merged_file_path = get_merged_file_path(market)
+    
+    if not merged_file_path.exists():
+        return {}
+    
+    name_map = {}
+    try:
+        with open(merged_file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    data = json.loads(line.strip())
+                    meta = data.get("Meta Data", {})
+                    symbol = meta.get("2. Symbol")
+                    name = meta.get("2.1. Name", "")
+                    if symbol and name:
+                        name_map[symbol] = name
+                except json.JSONDecodeError:
+                    continue
+        return name_map
+    except Exception as e:
+        print(f"⚠️  Error reading stock names: {e}")
+        return {}
+
+
+def format_price_dict_with_names(
+    price_dict: Dict[str, Optional[float]], market: str = "us"
+) -> Dict[str, Optional[float]]:
+    """Format price dictionary to include stock names for display.
+    
+    Args:
+        price_dict: Original price dictionary with keys like "600519.SH_price"
+        market: Market type ("us" or "cn")
+        
+    Returns:
+        New dictionary with keys like "600519.SH (贵州茅台)_price" for CN market,
+        unchanged for US market
+    """
+    if market != "cn":
+        return price_dict
+    
+    name_map = get_stock_name_mapping(market)
+    if not name_map:
+        return price_dict
+    
+    formatted_dict = {}
+    for key, value in price_dict.items():
+        if key.endswith("_price"):
+            symbol = key[:-6]  # Remove "_price" suffix
+            stock_name = name_map.get(symbol, "")
+            if stock_name:
+                new_key = f"{symbol} ({stock_name})_price"
+            else:
+                new_key = key
+            formatted_dict[new_key] = value
+        else:
+            formatted_dict[key] = value
+    
+    return formatted_dict
+
+
 def get_yesterday_date(today_date: str) -> str:
     """
     获取昨日日期，考虑休市日。
@@ -481,32 +550,42 @@ def get_today_init_position(today_date: str, modelname: str) -> Dict[str, float]
     Returns:
         {symbol: weight} 的字典；若未找到对应日期，则返回空字典。
     """
+    from tools.general_tools import get_config_value
+    
     base_dir = Path(__file__).resolve().parents[1]
-    position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
+    
+    # Get log_path from config, default to "agent_data" for backward compatibility
+    log_path = get_config_value("LOG_PATH", "./data/agent_data")
+    if log_path.startswith("./data/"):
+        log_path = log_path[7:]  # Remove "./data/" prefix
+    
+    position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
 
     if not position_file.exists():
         print(f"Position file {position_file} does not exist")
         return {}
 
-    yesterday_date = get_yesterday_date(today_date)
-    max_id = -1
-    latest_positions = {}
-
+    # Read all records and find the one with the latest date that is before today
+    all_records = []
     with position_file.open("r", encoding="utf-8") as f:
         for line in f:
             if not line.strip():
                 continue
             try:
                 doc = json.loads(line)
-                if doc.get("date") == yesterday_date:
-                    current_id = doc.get("id", 0)
-                    if current_id > max_id:
-                        max_id = current_id
-                        latest_positions = doc.get("positions", {})
+                record_date = doc.get("date")
+                if record_date and record_date < today_date:
+                    all_records.append(doc)
             except Exception:
                 continue
 
-    return latest_positions
+    if not all_records:
+        return {}
+
+    # Sort by date (descending) then by id (descending) to get the most recent record
+    all_records.sort(key=lambda x: (x.get("date", ""), x.get("id", 0)), reverse=True)
+    
+    return all_records[0].get("positions", {})
 
 def get_latest_position(today_date: str, modelname: str) -> Tuple[Dict[str, float], int]:
     """
@@ -523,53 +602,54 @@ def get_latest_position(today_date: str, modelname: str) -> Tuple[Dict[str, floa
           - positions: {symbol: weight} 的字典；若未找到任何记录，则为空字典。
           - max_id: 选中记录的最大 id；若未找到任何记录，则为 -1.
     """
+    from tools.general_tools import get_config_value
+    
     base_dir = Path(__file__).resolve().parents[1]
-    position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
+    
+    # Get log_path from config, default to "agent_data" for backward compatibility
+    log_path = get_config_value("LOG_PATH", "./data/agent_data")
+    if log_path.startswith("./data/"):
+        log_path = log_path[7:]  # Remove "./data/" prefix
+    
+    position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
 
     if not position_file.exists():
         return {}, -1
 
-    # 先尝试读取当天记录
-    max_id_today = -1
-    latest_positions_today: Dict[str, float] = {}
-
+    # Read all records and organize by date
+    all_records = []
     with position_file.open("r", encoding="utf-8") as f:
         for line in f:
             if not line.strip():
                 continue
             try:
                 doc = json.loads(line)
-                if doc.get("date") == today_date:
-                    current_id = doc.get("id", -1)
-                    if current_id > max_id_today:
-                        max_id_today = current_id
-                        latest_positions_today = doc.get("positions", {})
+                record_date = doc.get("date")
+                if record_date:
+                    all_records.append(doc)
             except Exception:
                 continue
 
-    if max_id_today >= 0:
-        return latest_positions_today, max_id_today
+    if not all_records:
+        return {}, -1
 
-    # 当天没有记录，则回退到上一个交易日
-    prev_date = get_yesterday_date(today_date)
-    max_id_prev = -1
-    latest_positions_prev: Dict[str, float] = {}
+    # First, try to find records for today
+    today_records = [r for r in all_records if r.get("date") == today_date]
+    if today_records:
+        # Return the record with the highest id for today
+        today_records.sort(key=lambda x: x.get("id", 0), reverse=True)
+        best_record = today_records[0]
+        return best_record.get("positions", {}), best_record.get("id", -1)
 
-    with position_file.open("r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                doc = json.loads(line)
-                if doc.get("date") == prev_date:
-                    current_id = doc.get("id", -1)
-                    if current_id > max_id_prev:
-                        max_id_prev = current_id
-                        latest_positions_prev = doc.get("positions", {})
-            except Exception:
-                continue
+    # If no records for today, find the most recent record before today
+    past_records = [r for r in all_records if r.get("date", "") < today_date]
+    if past_records:
+        # Sort by date (descending) then by id (descending)
+        past_records.sort(key=lambda x: (x.get("date", ""), x.get("id", 0)), reverse=True)
+        best_record = past_records[0]
+        return best_record.get("positions", {}), best_record.get("id", -1)
 
-    return latest_positions_prev, max_id_prev
+    return {}, -1
 
 
 def add_no_trade_record(today_date: str, modelname: str):
@@ -590,8 +670,17 @@ def add_no_trade_record(today_date: str, modelname: str):
     save_item["this_action"] = {"action": "no_trade", "symbol": "", "amount": 0}
 
     save_item["positions"] = current_position
+    
+    from tools.general_tools import get_config_value
+    
     base_dir = Path(__file__).resolve().parents[1]
-    position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
+    
+    # Get log_path from config, default to "agent_data" for backward compatibility
+    log_path = get_config_value("LOG_PATH", "./data/agent_data")
+    if log_path.startswith("./data/"):
+        log_path = log_path[7:]  # Remove "./data/" prefix
+    
+    position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
 
     with position_file.open("a", encoding="utf-8") as f:
         f.write(json.dumps(save_item) + "\n")

@@ -17,6 +17,7 @@ from tools.general_tools import get_config_value
 from tools.price_tools import (
     all_nasdaq_100_symbols,
     all_sse_50_symbols,
+    format_price_dict_with_names,
     get_open_prices,
     get_today_init_position,
     get_yesterday_date,
@@ -95,12 +96,17 @@ def get_agent_system_prompt(
     yesterday_profit = get_yesterday_profit(
         today_date, yesterday_buy_prices, yesterday_sell_prices, today_init_position, stock_symbols
     )
+    
+    # Format prices with stock names for display (only for CN market)
+    yesterday_sell_prices_display = format_price_dict_with_names(yesterday_sell_prices, market)
+    today_buy_price_display = format_price_dict_with_names(today_buy_price, market)
+    
     return agent_system_prompt.format(
         date=today_date,
         positions=today_init_position,
         STOP_SIGNAL=STOP_SIGNAL,
-        yesterday_close_price=yesterday_sell_prices,
-        today_buy_price=today_buy_price,
+        yesterday_close_price=yesterday_sell_prices_display,
+        today_buy_price=today_buy_price_display,
         yesterday_profit=yesterday_profit,
     )
 

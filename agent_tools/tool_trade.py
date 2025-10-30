@@ -126,10 +126,13 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
         new_position[symbol] += amount
 
         # Step 6: Record transaction to position.jsonl file
-        # Build file path: {project_root}/data/agent_data/{signature}/position/position.jsonl
+        # Build file path: {project_root}/data/{log_path}/{signature}/position/position.jsonl
         # Use append mode ("a") to write new transaction record
         # Each operation ID increments by 1, ensuring uniqueness of operation sequence
-        position_file_path = os.path.join(project_root, "data", "agent_data", signature, "position", "position.jsonl")
+        log_path = get_config_value("LOG_PATH", "./data/agent_data")
+        if log_path.startswith("./data/"):
+            log_path = log_path[7:]  # Remove "./data/" prefix
+        position_file_path = os.path.join(project_root, "data", log_path, signature, "position", "position.jsonl")
         with open(position_file_path, "a") as f:
             # Write JSON format transaction record, containing date, operation ID, transaction details and updated position
             print(
@@ -164,7 +167,10 @@ def _get_today_buy_amount(symbol: str, today_date: str, signature: str) -> int:
     Returns:
         Total shares bought today
     """
-    position_file_path = os.path.join(project_root, "data", "agent_data", signature, "position", "position.jsonl")
+    log_path = get_config_value("LOG_PATH", "./data/agent_data")
+    if log_path.startswith("./data/"):
+        log_path = log_path[7:]  # Remove "./data/" prefix
+    position_file_path = os.path.join(project_root, "data", log_path, signature, "position", "position.jsonl")
     
     if not os.path.exists(position_file_path):
         return 0
@@ -306,10 +312,13 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
     new_position["CASH"] = new_position.get("CASH", 0) + this_symbol_price * amount
 
     # Step 6: Record transaction to position.jsonl file
-    # Build file path: {project_root}/data/agent_data/{signature}/position/position.jsonl
+    # Build file path: {project_root}/data/{log_path}/{signature}/position/position.jsonl
     # Use append mode ("a") to write new transaction record
     # Each operation ID increments by 1, ensuring uniqueness of operation sequence
-    position_file_path = os.path.join(project_root, "data", "agent_data", signature, "position", "position.jsonl")
+    log_path = get_config_value("LOG_PATH", "./data/agent_data")
+    if log_path.startswith("./data/"):
+        log_path = log_path[7:]  # Remove "./data/" prefix
+    position_file_path = os.path.join(project_root, "data", log_path, signature, "position", "position.jsonl")
     with open(position_file_path, "a") as f:
         # Write JSON format transaction record, containing date, operation ID and updated position
         print(

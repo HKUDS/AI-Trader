@@ -178,6 +178,7 @@ async def main(config_path=None):
 
         # Get log path configuration
         log_path = log_config.get("log_path", "./data/agent_data")
+        write_config_value("LOG_PATH", log_path)  # Write to runtime config
 
         # Select stock symbols based on market
         if market == "cn":

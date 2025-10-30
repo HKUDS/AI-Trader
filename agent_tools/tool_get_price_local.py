@@ -1,11 +1,15 @@
 import json
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
+
+# Add parent directory to Python path to import tools module
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 load_dotenv()
 

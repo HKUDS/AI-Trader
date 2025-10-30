@@ -84,6 +84,7 @@ configs/day_config.json
 configs/hour_config.json
 configs/test_config.json
 configs/test_day_config.json
+configs/astock.json
 
 # Data directories (optional - uncomment if needed)
 data/agent_data/test*/
