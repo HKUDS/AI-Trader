@@ -96,8 +96,8 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
         position_file_path = os.path.join(project_root, "data", "agent_data", signature, "position", "position.jsonl")
         with open(position_file_path, "a") as f:
             # Write JSON format transaction record, containing date, operation ID, transaction details and updated position
-            print(f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'buy','symbol':symbol,'amount':amount},'positions': new_position})}")
-            f.write(json.dumps({"date": today_date, "id": current_action_id + 1, "this_action":{"action":"buy","symbol":symbol,"amount":amount},"positions": new_position}) + "\n")
+            print(f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'buy','symbol':symbol,'amount':amount,'price':this_symbol_price},'positions': new_position})}")
+            f.write(json.dumps({"date": today_date, "id": current_action_id + 1, "this_action":{"action":"buy","symbol":symbol,"amount":amount,"price":this_symbol_price},"positions": new_position}) + "\n")
         # Step 7: Return updated position
         write_config_value("IF_TRADE", True)
         print("IF_TRADE", get_config_value("IF_TRADE"))
@@ -181,8 +181,8 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
     position_file_path = os.path.join(project_root, "data", "agent_data", signature, "position", "position.jsonl")
     with open(position_file_path, "a") as f:
         # Write JSON format transaction record, containing date, operation ID and updated position
-        print(f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'sell','symbol':symbol,'amount':amount},'positions': new_position})}")
-        f.write(json.dumps({"date": today_date, "id": current_action_id + 1, "this_action":{"action":"sell","symbol":symbol,"amount":amount},"positions": new_position}) + "\n")
+        print(f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'sell','symbol':symbol,'amount':amount,'price':this_symbol_price},'positions': new_position})}")
+        f.write(json.dumps({"date": today_date, "id": current_action_id + 1, "this_action":{"action":"sell","symbol":symbol,"amount":amount,"price":this_symbol_price},"positions": new_position}) + "\n")
 
     # Step 7: Return updated position
     write_config_value("IF_TRADE", True)

@@ -147,41 +147,21 @@ class BaseAgent:
         """Initialize MCP client and AI model"""
         print(f"🚀 Initializing agent: {self.signature}")
         
-        # Validate OpenAI configuration
-        if not self.openai_api_key:
-            raise ValueError("❌ OpenAI API key not set. Please configure OPENAI_API_KEY in environment or config file.")
-        if not self.openai_base_url:
-            print("⚠️  OpenAI base URL not set, using default")
+        # Create MCP client
+        self.client = MultiServerMCPClient(self.mcp_config)
         
-        try:
-            # Create MCP client
-            self.client = MultiServerMCPClient(self.mcp_config)
-            
-            # Get tools
-            self.tools = await self.client.get_tools()
-            if not self.tools:
-                print("⚠️  Warning: No MCP tools loaded. MCP services may not be running.")
-                print(f"   MCP configuration: {self.mcp_config}")
-            else:
-                print(f"✅ Loaded {len(self.tools)} MCP tools")
-        except Exception as e:
-            raise RuntimeError(
-                f"❌ Failed to initialize MCP client: {e}\n"
-                f"   Please ensure MCP services are running at the configured ports.\n"
-                f"   Run: python agent_tools/start_mcp_services.py"
-            )
+        # Get tools
+        self.tools = await self.client.get_tools()
+        print(f"✅ Loaded {len(self.tools)} MCP tools")
         
-        try:
-            # Create AI model
-            self.model = ChatOpenAI(
-                model=self.basemodel,
-                base_url=self.openai_base_url,
-                api_key=self.openai_api_key,
-                max_retries=3,
-                timeout=30
-            )
-        except Exception as e:
-            raise RuntimeError(f"❌ Failed to initialize AI model: {e}")
+        # Create AI model
+        self.model = ChatOpenAI(
+            model=self.basemodel,
+            base_url=self.openai_base_url,
+            api_key=self.openai_api_key,
+            max_retries=3,
+            timeout=30
+        )
         
         # Note: agent will be created in run_trading_session() based on specific date
         # because system_prompt needs the current date and price information
@@ -198,7 +178,7 @@ class BaseAgent:
     def _log_message(self, log_file: str, new_messages: List[Dict[str, str]]) -> None:
         """Log messages to log file"""
         log_entry = {
-            "timestamp": datetime.now().isoformat(),
+            # "timestamp": datetime.now().isoformat(),
             "signature": self.signature,
             "new_messages": new_messages
         }
@@ -231,7 +211,7 @@ class BaseAgent:
         
         # Set up logging
         log_file = self._setup_logging(today_date)
-        
+        write_config_value("LOG_FILE", log_file)
         # Update system prompt
         self.agent = create_agent(
             self.model,

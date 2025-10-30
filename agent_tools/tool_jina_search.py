@@ -257,6 +257,16 @@ Content: {result['content'][:1000]}...
         if not formatted_results:
             return f"⚠️ Search query '{query}' returned empty results."
         
+
+        # log_file = get_config_value("LOG_FILE")     
+        # signature = get_config_value("SIGNATURE")
+        # log_entry = {
+        #     "signature": signature,
+        #     "new_messages": [{"role": "tool:jinasearch", "content": "\n".join(formatted_results)}]
+        # }
+        # with open(log_file, "a", encoding="utf-8") as f:
+        #     f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+
         return "\n".join(formatted_results)
         
     except Exception as e:
