@@ -21,7 +21,7 @@ all_nasdaq_100_symbols = [
 
 
 def update_json(data: dict, SYMBOL: str):
-    file_path = f'./daily_prices_{SYMBOL}.json'
+    file_path = f'./data/daily_prices_{SYMBOL}.json'
     
     try:
         if os.path.exists(file_path):
@@ -49,7 +49,7 @@ def update_json(data: dict, SYMBOL: str):
         
         # QQQ 特殊处理：同时保存到另一个文件
         if SYMBOL == "QQQ":
-            file_path_qqq = f'./Adaily_prices_{SYMBOL}.json'
+            file_path_qqq = f'./data/Adaily_prices_{SYMBOL}.json'
             if os.path.exists(file_path_qqq):
                 with open(file_path_qqq, 'r', encoding='utf-8') as f:
                     old_data = json.load(f)
