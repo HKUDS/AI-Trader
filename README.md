@@ -171,37 +171,54 @@ AI can only access market data from current time and before. No future informati
 ```
 AI-Trader Bench/
 ├── 🤖 Core System
-│   ├── main.py    # 🎯 Main program entry
-│   ├── agent/base_agent/          # 🧠 AI agent core
+│   ├── main.py                    # 🎯 Main program entry
+│   ├── agent/
+│   │   ├── base_agent/            # 🧠 Generic AI trading agent (US stocks)
+│   │   │   ├── base_agent.py      # Base agent class
+│   │   │   └── __init__.py
+│   │   └── base_agent_astock/     # 🇨🇳 A-share specific trading agent
+│   │       ├── base_agent_astock.py  # A-share agent class
+│   │       └── __init__.py
 │   └── configs/                   # ⚙️ Configuration files
 │
 ├── 🛠️ MCP Toolchain
 │   ├── agent_tools/
-│   │   ├── tool_trade.py          # 💰 Trade execution
-│   │   ├── tool_get_price_local.py # 📊 Price queries
+│   │   ├── tool_trade.py          # 💰 Trade execution (auto-adapts market rules)
+│   │   ├── tool_get_price_local.py # 📊 Price queries (supports US + A-shares)
 │   │   ├── tool_jina_search.py   # 🔍 Information search
-│   │   └── tool_math.py           # 🧮 Mathematical calculations
+│   │   ├── tool_math.py           # 🧮 Mathematical calculations
+│   │   └── start_mcp_services.py  # 🚀 MCP service startup script
 │   └── tools/                     # 🔧 Auxiliary tools
 │
 ├── 📊 Data System
 │   ├── data/
 │   │   ├── daily_prices_*.json    # 📈 NASDAQ 100 stock price data
 │   │   ├── merged.jsonl           # 🔄 US stocks unified data format
+│   │   ├── get_daily_price.py     # 📥 US stocks data fetching script
+│   │   ├── merge_jsonl.py         # 🔄 US stocks data format conversion
 │   │   ├── A_stock/               # 🇨🇳 A-share market data
-│   │   │   ├── sse_50_weight.csv      # 📋 SSE 50 constituent stocks
+│   │   │   ├── sse_50_weight.csv          # 📋 SSE 50 constituent stocks
 │   │   │   ├── daily_prices_sse_50.csv    # 📈 Daily price data (CSV)
 │   │   │   ├── merged.jsonl               # 🔄 A-share unified data format
-│   │   │   └── index_daily_sse_50.json    # 📊 SSE 50 index benchmark data
+│   │   │   ├── index_daily_sse_50.json    # 📊 SSE 50 index benchmark data
+│   │   │   ├── get_daily_price_a_stock.py # 📥 A-share data fetching script
+│   │   │   └── merge_a_stock_jsonl.py     # 🔄 A-share data format conversion
 │   │   ├── agent_data/            # 📝 AI trading records (NASDAQ 100)
-│   │   └── agent_data_astock/     # 📝 AI trading records (SSE 50)
+│   │   └── agent_data_astock/     # 📝 A-share AI trading records
 │   └── calculate_performance.py   # 📈 Performance analysis
+│
+├── 💬 Prompt System
+│   └── prompts/
+│       ├── agent_prompt.py        # 🌐 Generic trading prompts (US stocks)
+│       └── agent_prompt_astock.py # 🇨🇳 A-share specific trading prompts
 │
 ├── 🎨 Frontend Interface
 │   └── frontend/                  # 🌐 Web dashboard
 │
 └── 📋 Configuration & Documentation
     ├── configs/                   # ⚙️ System configuration
-    ├── prompts/                   # 💬 AI prompts
+    │   ├── default_config.json    # US stocks default configuration
+    │   └── astock_config.json     # A-share configuration example
     └── calc_perf.sh              # 🚀 Performance calculation script
 ```
 
@@ -209,25 +226,49 @@ AI-Trader Bench/
 
 #### 🎯 Main Program (`main.py`)
 - **Multi-Model Concurrency**: Run multiple AI models simultaneously for trading
+- **Dynamic Agent Loading**: Automatically load corresponding agent type based on configuration
 - **Configuration Management**: Support for JSON configuration files and environment variables
 - **Date Management**: Flexible trading calendar and date range settings
 - **Error Handling**: Comprehensive exception handling and retry mechanisms
 
+#### 🤖 AI Agent System
+| Agent Type | Module Path | Use Case | Features |
+|-----------|-------------|----------|----------|
+| **BaseAgent** | `agent.base_agent` | US/A-shares generic | Flexible market switching, configurable stock pool |
+| **BaseAgentAStock** | `agent.base_agent_astock` | A-share specific | Built-in A-share rules, SSE 50 default pool, Chinese prompts |
+
+**Architecture Advantages**:
+- 🔄 **Clear Separation**: US and A-share agents independently maintained without interference
+- 🎯 **Specialized Optimization**: A-share agent deeply optimized for Chinese market characteristics
+- 🔌 **Easy Extension**: Support adding more market-specific agents (e.g., Hong Kong stocks, cryptocurrencies)
+
 #### 🛠️ MCP Toolchain
-| Tool | Function | API |
-|------|----------|-----|
-| **Trading Tool** | Buy/sell stocks, position management | `buy()`, `sell()` |
-| **Price Tool** | Real-time and historical price queries | `get_price_local()` |
-| **Search Tool** | Market information search | `get_information()` |
-| **Math Tool** | Financial calculations and analysis | Basic mathematical operations |
+| Tool | Function | Market Support | API |
+|------|----------|----------------|-----|
+| **Trading Tool** | Buy/sell stocks, position management | 🇺🇸 US / 🇨🇳 A-shares | `buy()`, `sell()` |
+| **Price Tool** | Real-time and historical price queries | 🇺🇸 US / 🇨🇳 A-shares | `get_price_local()` |
+| **Search Tool** | Market information search | Global markets | `get_information()` |
+| **Math Tool** | Financial calculations and analysis | Generic | Basic mathematical operations |
+
+**Tool Features**:
+- 🔍 **Auto-Recognition**: Automatically select data source based on stock code suffix (.SH/.SZ)
+- 📏 **Rule Adaptation**: Auto-apply corresponding market trading rules (T+0/T+1, lot size limits, etc.)
+- 🌐 **Unified Interface**: Same API interface supports multi-market trading
 
 #### 📊 Data System
 - **📈 Price Data**: 
-  - 🇺🇸 Complete OHLCV data for NASDAQ 100 component stocks
+  - 🇺🇸 Complete OHLCV data for NASDAQ 100 component stocks (Alpha Vantage)
   - 🇨🇳 A-share market data (SSE 50 Index) via Tushare API
-- **📝 Trading Records**: Detailed trading history for each AI model
-- **📊 Performance Metrics**: Sharpe ratio, maximum drawdown, annualized returns, etc.
-- **🔄 Data Synchronization**: Automated data acquisition and update mechanisms
+  - 📁 Unified JSONL format for efficient reading
+- **📝 Trading Records**: 
+  - Detailed trading history for each AI model
+  - Stored separately by market: `agent_data/` (US), `agent_data_astock/` (A-shares)
+- **📊 Performance Metrics**: 
+  - Sharpe ratio, maximum drawdown, annualized returns, etc.
+  - Support multi-market performance comparison analysis
+- **🔄 Data Synchronization**: 
+  - Automated data acquisition and update mechanisms
+  - Independent data fetching scripts with incremental update support
 
 ## 🚀 Quick Start
 
@@ -311,7 +352,7 @@ python merge_jsonl.py
 
 ```bash
 # 📈 Get Chinese A-share market data (SSE 50 Index)
-cd data
+cd data/A_stock
 python get_daily_price_a_stock.py
 
 # 🔄 Convert to JSONL format (required for trading)
@@ -347,11 +388,11 @@ python main.py configs/astock_config.json
 
 ### ⏰ Time Settings Example
 
-#### 📅 Create Custom Time Configuration
+#### 📅 US Stock Configuration Example (Using BaseAgent)
 ```json
 {
   "agent_type": "BaseAgent",
-  "market": "us",              // Market type: "us" for US stocks, "cn" for A-shares
+  "market": "us",              // Market type: "us" for US stocks
   "date_range": {
     "init_date": "2024-01-01",  // Backtest start date
     "end_date": "2024-03-31"     // Backtest end date
@@ -365,10 +406,35 @@ python main.py configs/astock_config.json
     }
   ],
   "agent_config": {
-    "initial_cash": 10000.0    // Initial capital: $10,000 for US, ¥100,000 for A-shares
+    "initial_cash": 10000.0    // Initial capital: $10,000
   }
 }
 ```
+
+#### 📅 A-Share Configuration Example (Using BaseAgentAStock)
+```json
+{
+  "agent_type": "BaseAgentAStock",  // A-share specific agent
+  "market": "cn",                   // Market type: "cn" A-shares (optional, will be ignored, always uses cn)
+  "date_range": {
+    "init_date": "2025-10-09",      // Backtest start date
+    "end_date": "2025-10-31"         // Backtest end date
+  },
+  "models": [
+    {
+      "name": "claude-3.7-sonnet",
+      "basemodel": "anthropic/claude-3.7-sonnet",
+      "signature": "claude-3.7-sonnet",
+      "enabled": true
+    }
+  ],
+  "agent_config": {
+    "initial_cash": 100000.0        // Initial capital: ¥100,000
+  }
+}
+```
+
+> 💡 **Tip**: When using `BaseAgentAStock`, the `market` parameter is automatically set to `"cn"` and doesn't need to be specified manually.
 
 ### 📈 Start Web Interface
 
@@ -425,14 +491,21 @@ python3 -m http.server 8000
 
 ### 🔧 Configuration Parameters
 
-| Parameter | Description | Default Value |
-|-----------|-------------|---------------|
-| `agent_type` | AI agent type | "BaseAgent" |
-| `market` | Market type: "us" or "cn" | "us" |
-| `max_steps` | Maximum reasoning steps | 30 |
-| `max_retries` | Maximum retry attempts | 3 |
-| `base_delay` | Operation delay (seconds) | 1.0 |
-| `initial_cash` | Initial capital | $10,000 (US) / ¥100,000 (CN) |
+| Parameter | Description | Options | Default Value |
+|-----------|-------------|---------|---------------|
+| `agent_type` | AI agent type | "BaseAgent" (generic)<br>"BaseAgentAStock" (A-share specific) | "BaseAgent" |
+| `market` | Market type | "us" (US stocks)<br>"cn" (A-shares)<br>Note: Auto-set to "cn" when using BaseAgentAStock | "us" |
+| `max_steps` | Maximum reasoning steps | Positive integer | 30 |
+| `max_retries` | Maximum retry attempts | Positive integer | 3 |
+| `base_delay` | Operation delay (seconds) | Float | 1.0 |
+| `initial_cash` | Initial capital | Float | $10,000 (US)<br>¥100,000 (A-shares) |
+
+#### 📋 Agent Type Details
+
+| Agent Type | Applicable Markets | Features |
+|-----------|-------------------|----------|
+| **BaseAgent** | US / A-shares | • Generic trading agent<br>• Switch markets via `market` parameter<br>• Flexible stock pool configuration |
+| **BaseAgentAStock** | A-share specific | • Optimized for A-shares<br>• Built-in A-share trading rules (100-share lots, T+1)<br>• Default SSE 50 stock pool<br>• Chinese Yuan pricing |
 
 ### 📊 Data Format
 
@@ -512,7 +585,11 @@ AGENT_REGISTRY = {
         "module": "agent.base_agent.base_agent",
         "class": "BaseAgent"
     },
-    "CustomAgent": {  # New addition
+    "BaseAgentAStock": {
+        "module": "agent.base_agent_astock.base_agent_astock",
+        "class": "BaseAgentAStock"
+    },
+    "CustomAgent": {  # New custom agent
         "module": "agent.custom.custom_agent",
         "class": "CustomAgent"
     },

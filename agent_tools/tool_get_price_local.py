@@ -19,19 +19,19 @@ from tools.general_tools import get_config_value
 
 def _workspace_data_path(filename: str, symbol: Optional[str] = None) -> Path:
     """Get data file path based on symbol (auto-detect market type).
-    
+
     Args:
         filename: Data filename (e.g., 'merged.jsonl')
-        symbol: Stock symbol for auto-detecting market type. 
+        symbol: Stock symbol for auto-detecting market type.
                 If symbol ends with .SH or .SZ, use A-stock data path.
-    
+
     Returns:
         Path to the data file
     """
     base_dir = Path(__file__).resolve().parents[1]
-    
+
     # Auto-detect market type from symbol
-    if symbol and (symbol.endswith('.SH') or symbol.endswith('.SZ')):
+    if symbol and (symbol.endswith(".SH") or symbol.endswith(".SZ")):
         # Chinese A-shares
         return base_dir / "data" / "A_stock" / filename
     else:

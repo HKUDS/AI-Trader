@@ -250,6 +250,7 @@ class BaseAgent:
             if market == "cn":
                 # Import A-shares symbols when needed
                 from prompts.agent_prompt import all_sse_50_symbols
+
                 self.stock_symbols = all_sse_50_symbols
             else:
                 # Default to US NASDAQ 100

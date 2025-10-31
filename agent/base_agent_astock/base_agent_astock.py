@@ -82,7 +82,8 @@ class DeepSeekChatOpenAI(ChatOpenAI):
         return result
 
 
-from prompts.agent_prompt_astock import STOP_SIGNAL, get_agent_system_prompt_astock
+from prompts.agent_prompt_astock import (STOP_SIGNAL,
+                                         get_agent_system_prompt_astock)
 from tools.general_tools import (extract_conversation, extract_tool_messages,
                                  get_config_value, write_config_value)
 from tools.price_tools import add_no_trade_record
@@ -584,4 +585,3 @@ class BaseAgentAStock:
 
     def __repr__(self) -> str:
         return self.__str__()
-

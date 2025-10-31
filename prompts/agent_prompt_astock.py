@@ -2,6 +2,7 @@
 A股专用Agent提示词模块
 Chinese A-shares specific agent prompt module
 """
+
 import os
 
 from dotenv import load_dotenv
@@ -81,17 +82,15 @@ agent_system_prompt_astock = """
 """
 
 
-def get_agent_system_prompt_astock(
-    today_date: str, signature: str, stock_symbols: Optional[List[str]] = None
-) -> str:
+def get_agent_system_prompt_astock(today_date: str, signature: str, stock_symbols: Optional[List[str]] = None) -> str:
     """
     生成A股专用系统提示词
-    
+
     Args:
         today_date: 今日日期
         signature: Agent签名
         stock_symbols: 股票代码列表，默认为上证50成分股
-    
+
     Returns:
         格式化的系统提示词字符串
     """
@@ -133,4 +132,3 @@ if __name__ == "__main__":
     if signature is None:
         raise ValueError("SIGNATURE environment variable is not set")
     print(get_agent_system_prompt_astock(today_date, signature))
-
