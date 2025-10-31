@@ -15,6 +15,7 @@ from tools.general_tools import get_config_value, write_config_value
 # Agent class mapping table - for dynamic import and instantiation
 AGENT_REGISTRY = {
     "BaseAgent": {"module": "agent.base_agent.base_agent", "class": "BaseAgent"},
+    "BaseAgentAStock": {"module": "agent.base_agent_astock.base_agent_astock", "class": "BaseAgentAStock"},
 }
 
 
@@ -106,6 +107,9 @@ async def main(config_path=None):
 
     # Get market type from configuration
     market = config.get("market", "us")
+    # Auto-detect market from agent_type (BaseAgentAStock always uses CN market)
+    if agent_type == "BaseAgentAStock":
+        market = "cn"
     print(f"🌍 Market type: {'A-shares (China)' if market == 'cn' else 'US stocks'}")
 
     # Get date range from configuration file
@@ -180,8 +184,11 @@ async def main(config_path=None):
         log_path = log_config.get("log_path", "./data/agent_data")
         write_config_value("LOG_PATH", log_path)  # Write to runtime config
 
-        # Select stock symbols based on market
-        if market == "cn":
+        # Select stock symbols based on agent type and market
+        # BaseAgentAStock has its own default symbols, only set for BaseAgent
+        if agent_type == "BaseAgentAStock":
+            stock_symbols = None  # Let BaseAgentAStock use its default SSE 50
+        elif market == "cn":
             from prompts.agent_prompt import all_sse_50_symbols
 
             stock_symbols = all_sse_50_symbols
@@ -215,7 +222,8 @@ async def main(config_path=None):
 
             # Display final position summary
             summary = agent.get_position_summary()
-            currency_symbol = "¥" if market == "cn" else "$"
+            # Get currency symbol from agent's actual market (more accurate)
+            currency_symbol = "¥" if agent.market == "cn" else "$"
             print(f"📊 Final position summary:")
             print(f"   - Latest date: {summary.get('latest_date')}")
             print(f"   - Total records: {summary.get('total_records')}")

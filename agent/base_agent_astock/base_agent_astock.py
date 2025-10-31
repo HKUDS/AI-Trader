@@ -1,6 +1,7 @@
 """
-BaseAgent class - Base class for trading agents
-Encapsulates core functionality including MCP tool management, AI agent creation, and trading execution
+BaseAgentAStock class - A股专用交易Agent基类
+Chinese A-shares specific trading agent base class
+Encapsulates core functionality for A-shares trading including MCP tool management, AI agent creation, and trading execution
 """
 
 import asyncio
@@ -81,7 +82,7 @@ class DeepSeekChatOpenAI(ChatOpenAI):
         return result
 
 
-from prompts.agent_prompt import STOP_SIGNAL, get_agent_system_prompt
+from prompts.agent_prompt_astock import STOP_SIGNAL, get_agent_system_prompt_astock
 from tools.general_tools import (extract_conversation, extract_tool_messages,
                                  get_config_value, write_config_value)
 from tools.price_tools import add_no_trade_record
@@ -90,121 +91,71 @@ from tools.price_tools import add_no_trade_record
 load_dotenv()
 
 
-class BaseAgent:
+class BaseAgentAStock:
     """
-    Base class for trading agents
+    A股专用交易Agent基类
+    Chinese A-shares specific trading agent base class
 
     Main functionalities:
     1. MCP tool management and connection
     2. AI agent creation and configuration
-    3. Trading execution and decision loops
+    3. Trading execution and decision loops (with A-shares specific rules)
     4. Logging and management
     5. Position and configuration management
     """
 
-    # Default NASDAQ 100 stock symbols
-    DEFAULT_STOCK_SYMBOLS = [
-        "NVDA",
-        "MSFT",
-        "AAPL",
-        "GOOG",
-        "GOOGL",
-        "AMZN",
-        "META",
-        "AVGO",
-        "TSLA",
-        "NFLX",
-        "PLTR",
-        "COST",
-        "ASML",
-        "AMD",
-        "CSCO",
-        "AZN",
-        "TMUS",
-        "MU",
-        "LIN",
-        "PEP",
-        "SHOP",
-        "APP",
-        "INTU",
-        "AMAT",
-        "LRCX",
-        "PDD",
-        "QCOM",
-        "ARM",
-        "INTC",
-        "BKNG",
-        "AMGN",
-        "TXN",
-        "ISRG",
-        "GILD",
-        "KLAC",
-        "PANW",
-        "ADBE",
-        "HON",
-        "CRWD",
-        "CEG",
-        "ADI",
-        "ADP",
-        "DASH",
-        "CMCSA",
-        "VRTX",
-        "MELI",
-        "SBUX",
-        "CDNS",
-        "ORLY",
-        "SNPS",
-        "MSTR",
-        "MDLZ",
-        "ABNB",
-        "MRVL",
-        "CTAS",
-        "TRI",
-        "MAR",
-        "MNST",
-        "CSX",
-        "ADSK",
-        "PYPL",
-        "FTNT",
-        "AEP",
-        "WDAY",
-        "REGN",
-        "ROP",
-        "NXPI",
-        "DDOG",
-        "AXON",
-        "ROST",
-        "IDXX",
-        "EA",
-        "PCAR",
-        "FAST",
-        "EXC",
-        "TTWO",
-        "XEL",
-        "ZS",
-        "PAYX",
-        "WBD",
-        "BKR",
-        "CPRT",
-        "CCEP",
-        "FANG",
-        "TEAM",
-        "CHTR",
-        "KDP",
-        "MCHP",
-        "GEHC",
-        "VRSK",
-        "CTSH",
-        "CSGP",
-        "KHC",
-        "ODFL",
-        "DXCM",
-        "TTD",
-        "ON",
-        "BIIB",
-        "LULU",
-        "CDW",
-        "GFS",
+    # Default SSE 50 stock symbols (A-shares only)
+    DEFAULT_SSE50_SYMBOLS = [
+        "600519.SH",
+        "601318.SH",
+        "600036.SH",
+        "601899.SH",
+        "600900.SH",
+        "601166.SH",
+        "600276.SH",
+        "600030.SH",
+        "603259.SH",
+        "688981.SH",
+        "688256.SH",
+        "601398.SH",
+        "688041.SH",
+        "601211.SH",
+        "601288.SH",
+        "601328.SH",
+        "688008.SH",
+        "600887.SH",
+        "600150.SH",
+        "601816.SH",
+        "601127.SH",
+        "600031.SH",
+        "688012.SH",
+        "603501.SH",
+        "601088.SH",
+        "600309.SH",
+        "601601.SH",
+        "601668.SH",
+        "603993.SH",
+        "601012.SH",
+        "601728.SH",
+        "600690.SH",
+        "600809.SH",
+        "600941.SH",
+        "600406.SH",
+        "601857.SH",
+        "601766.SH",
+        "601919.SH",
+        "600050.SH",
+        "600760.SH",
+        "601225.SH",
+        "600028.SH",
+        "601988.SH",
+        "688111.SH",
+        "601985.SH",
+        "601888.SH",
+        "601628.SH",
+        "601600.SH",
+        "601658.SH",
+        "600048.SH",
     ]
 
     def __init__(
@@ -219,41 +170,35 @@ class BaseAgent:
         base_delay: float = 0.5,
         openai_base_url: Optional[str] = None,
         openai_api_key: Optional[str] = None,
-        initial_cash: float = 10000.0,
-        init_date: str = "2025-10-13",
-        market: str = "us",
+        initial_cash: float = 100000.0,  # 默认10万人民币
+        init_date: str = "2025-10-09",
+        market: str = "cn",  # 接受但忽略此参数，始终使用"cn"
     ):
         """
-        Initialize BaseAgent
+        Initialize BaseAgentAStock
 
         Args:
             signature: Agent signature/name
             basemodel: Base model name
-            stock_symbols: List of stock symbols, defaults to NASDAQ 100 for US market
+            stock_symbols: List of stock symbols, defaults to SSE 50
             mcp_config: MCP tool configuration, including port and URL information
-            log_path: Log path, defaults to ./data/agent_data
+            log_path: Log path, defaults to ./data/agent_data_astock
             max_steps: Maximum reasoning steps
             max_retries: Maximum retry attempts
             base_delay: Base delay time for retries
             openai_base_url: OpenAI API base URL
             openai_api_key: OpenAI API key
-            initial_cash: Initial cash amount
+            initial_cash: Initial cash amount (default: 100000.0 RMB)
             init_date: Initialization date
-            market: Market type, "us" for US stocks or "cn" for A-shares
+            market: Market type (accepted for compatibility, but always uses "cn")
         """
         self.signature = signature
         self.basemodel = basemodel
-        self.market = market
+        self.market = "cn"  # 硬编码为A股市场
 
-        # Auto-select stock symbols based on market if not provided
+        # 默认使用上证50成分股
         if stock_symbols is None:
-            if market == "cn":
-                # Import A-shares symbols when needed
-                from prompts.agent_prompt import all_sse_50_symbols
-                self.stock_symbols = all_sse_50_symbols
-            else:
-                # Default to US NASDAQ 100
-                self.stock_symbols = self.DEFAULT_STOCK_SYMBOLS
+            self.stock_symbols = self.DEFAULT_SSE50_SYMBOLS
         else:
             self.stock_symbols = stock_symbols
 
@@ -266,8 +211,8 @@ class BaseAgent:
         # Set MCP configuration
         self.mcp_config = mcp_config or self._get_default_mcp_config()
 
-        # Set log path
-        self.base_log_path = log_path or "./data/agent_data"
+        # Set log path - A股专用路径
+        self.base_log_path = log_path or "./data/agent_data_astock"
 
         # Set OpenAI configuration
         if openai_base_url == None:
@@ -312,7 +257,7 @@ class BaseAgent:
 
     async def initialize(self) -> None:
         """Initialize MCP client and AI model"""
-        print(f"🚀 Initializing agent: {self.signature}")
+        print(f"🚀 Initializing A-shares agent: {self.signature}")
 
         # Validate OpenAI configuration
         if not self.openai_api_key:
@@ -365,7 +310,7 @@ class BaseAgent:
         # Note: agent will be created in run_trading_session() based on specific date
         # because system_prompt needs the current date and price information
 
-        print(f"✅ Agent {self.signature} initialization completed")
+        print(f"✅ A-shares agent {self.signature} initialization completed")
 
     def _setup_logging(self, today_date: str) -> str:
         """Set up log file path"""
@@ -394,25 +339,25 @@ class BaseAgent:
 
     async def run_trading_session(self, today_date: str) -> None:
         """
-        Run single day trading session
+        Run single day trading session (A-shares specific)
 
         Args:
             today_date: Trading date
         """
-        print(f"📈 Starting trading session: {today_date}")
+        print(f"📈 Starting A-shares trading session: {today_date}")
 
         # Set up logging
         log_file = self._setup_logging(today_date)
 
-        # Update system prompt
+        # Update system prompt - 使用A股专用提示词
         self.agent = create_agent(
             self.model,
             tools=self.tools,
-            system_prompt=get_agent_system_prompt(today_date, self.signature, self.market, self.stock_symbols),
+            system_prompt=get_agent_system_prompt_astock(today_date, self.signature, self.stock_symbols),
         )
 
         # Initial user query
-        user_query = [{"role": "user", "content": f"Please analyze and update today's ({today_date}) positions."}]
+        user_query = [{"role": "user", "content": f"请分析并更新今日（{today_date}）的持仓。"}]
         message = user_query.copy()
 
         # Log initial message
@@ -472,7 +417,7 @@ class BaseAgent:
         else:
             print("📊 No trading, maintaining positions")
             try:
-                add_no_trade_record(today_date, self.signature)
+                add_no_trade_record(today_date, self.signature, market="cn")
             except NameError as e:
                 print(f"❌ NameError: {e}")
                 raise
@@ -498,15 +443,14 @@ class BaseAgent:
         with open(self.position_file, "w") as f:  # Use "w" mode to ensure creating new file
             f.write(json.dumps({"date": self.init_date, "id": 0, "positions": init_position}) + "\n")
 
-        print(f"✅ Agent {self.signature} registration completed")
+        print(f"✅ A-shares agent {self.signature} registration completed")
         print(f"📁 Position file: {self.position_file}")
-        currency_symbol = "¥" if self.market == "cn" else "$"
-        print(f"💰 Initial cash: {currency_symbol}{self.initial_cash:,.2f}")
+        print(f"💰 Initial cash: ¥{self.initial_cash:,.2f}")
         print(f"📊 Number of stocks: {len(self.stock_symbols)}")
 
     def get_trading_dates(self, init_date: str, end_date: str) -> List[str]:
         """
-        Get trading date list, filtered by actual trading days in merged.jsonl
+        Get trading date list, filtered by actual trading days in A-shares market
 
         Args:
             init_date: Start date
@@ -544,14 +488,14 @@ class BaseAgent:
         if end_date_obj <= max_date_obj:
             return []
 
-        # Generate trading date list, filtered by actual trading days
+        # Generate trading date list, filtered by actual trading days (A-shares market)
         trading_dates = []
         current_date = max_date_obj + timedelta(days=1)
 
         while current_date <= end_date_obj:
             date_str = current_date.strftime("%Y-%m-%d")
-            # Check if this is an actual trading day in merged.jsonl
-            if is_trading_day(date_str, market=self.market):
+            # Check if this is an actual trading day in A-shares market
+            if is_trading_day(date_str, market="cn"):
                 trading_dates.append(date_str)
             current_date += timedelta(days=1)
 
@@ -583,7 +527,7 @@ class BaseAgent:
             init_date: Start date
             end_date: End date
         """
-        print(f"📅 Running date range: {init_date} to {end_date}")
+        print(f"📅 Running A-shares date range: {init_date} to {end_date}")
 
         # Get trading date list
         trading_dates = self.get_trading_dates(init_date, end_date)
@@ -634,8 +578,10 @@ class BaseAgent:
 
     def __str__(self) -> str:
         return (
-            f"BaseAgent(signature='{self.signature}', basemodel='{self.basemodel}', stocks={len(self.stock_symbols)})"
+            f"BaseAgentAStock(signature='{self.signature}', basemodel='{self.basemodel}', "
+            f"market='cn', stocks={len(self.stock_symbols)})"
         )
 
     def __repr__(self) -> str:
         return self.__str__()
+

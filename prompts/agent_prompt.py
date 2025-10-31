@@ -40,18 +40,6 @@ Notes:
 - You don't need to request user permission during operations, you can execute directly
 - You must execute operations by calling tools, directly output operations will not be accepted
 
-🇨🇳 IMPORTANT - Chinese A-shares Trading Rules (for .SH and .SZ symbols):
-1. **Lot Size Requirement (一手交易)**: All buy and sell orders MUST be in multiples of 100 shares (1 lot = 100 shares)
-   - ✅ Correct: buy("600519.SH", 100), buy("600519.SH", 300), sell("600519.SH", 200)
-   - ❌ Wrong: buy("600519.SH", 13), buy("600519.SH", 497), sell("600519.SH", 50)
-
-2. **T+1 Settlement Rule**: Shares bought TODAY cannot be sold TODAY
-   - You can only sell shares that were purchased BEFORE today
-   - If you buy 100 shares of 600519.SH today, you must wait until tomorrow to sell them
-   - You can still sell shares you held from previous days
-
-These rules do NOT apply to US stocks (AAPL, MSFT, etc.) - US stocks can be traded in any quantity and support T+0 (same-day buy and sell).
-
 Here is the information you need:
 
 Today's date:

@@ -1,5 +1,5 @@
 {
-  "agent_type": "BaseAgent",
+  "agent_type": "BaseAgentAStock",
   "market": "cn",
   "date_range": {
     "init_date": "2025-10-01",
@@ -10,7 +10,7 @@
       "name": "claude-3.7-sonnet",
       "basemodel": "claude-3-7-sonnet-20250219", 
       "signature": "claude-3.7-sonnet",
-      "enabled": false,
+      "enabled": false
     },
     {
       "name": "deepseek-chat-v3.1",
@@ -22,7 +22,7 @@
       "name": "qwen3-max",
       "basemodel": "qwen3-max",
       "signature": "qwen3-max",
-      "enabled": false,
+      "enabled": false
     },
     {
       "name": "gemini-2.5-flash",
