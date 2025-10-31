@@ -69,7 +69,10 @@ async function loadAgentPortfolio(agentName) {
         await updateAllocationChart(agentName);
 
         // Update trade history
-        updateTradeHistory(agentName);
+        await updateTradeHistory(agentName);
+
+        // Update realized PnL table
+        await updateRealizedPnLTable(agentName);
 
     } catch (error) {
         console.error('Error loading portfolio:', error);
@@ -79,90 +82,115 @@ async function loadAgentPortfolio(agentName) {
 }
 
 // Update performance metrics
-function updateMetrics(data) {
+async function updateMetrics(data) {
     const totalAsset = data.currentValue;
     const totalReturn = data.return;
     const latestPosition = data.positions && data.positions.length > 0 ? data.positions[data.positions.length - 1] : null;
     const cashPosition = latestPosition && latestPosition.positions ? latestPosition.positions.CASH || 0 : 0;
-    const totalTrades = data.positions ? data.positions.filter(p => p.this_action).length : 0;
+    const totalTrades = data.positions ? data.positions.filter(p => p.this_action && p.this_action.action !== 'no_trade').length : 0;
+
+    // Calculate realized and unrealized PnL
+    const realizedData = await dataLoader.calculateRealizedPnL(currentAgent);
+    const unrealizedData = await dataLoader.calculateUnrealizedPnL(currentAgent);
 
     document.getElementById('totalAsset').textContent = dataLoader.formatCurrency(totalAsset);
     document.getElementById('totalReturn').textContent = dataLoader.formatPercent(totalReturn);
     document.getElementById('totalReturn').className = `metric-value ${totalReturn >= 0 ? 'positive' : 'negative'}`;
+    
+    document.getElementById('totalUnrealizedPnL').textContent = dataLoader.formatCurrency(unrealizedData.totalUnrealizedPnL);
+    document.getElementById('totalUnrealizedPnL').className = `metric-value ${unrealizedData.totalUnrealizedPnL >= 0 ? 'positive' : 'negative'}`;
+    
+    document.getElementById('totalRealizedPnL').textContent = dataLoader.formatCurrency(realizedData.totalRealizedPnL);
+    document.getElementById('totalRealizedPnL').className = `metric-value ${realizedData.totalRealizedPnL >= 0 ? 'positive' : 'negative'}`;
+    
     document.getElementById('cashPosition').textContent = dataLoader.formatCurrency(cashPosition);
     document.getElementById('totalTrades').textContent = totalTrades;
 }
 
 // Update holdings table
 async function updateHoldingsTable(agentName) {
-    const holdings = dataLoader.getCurrentHoldings(agentName);
     const tableBody = document.getElementById('holdingsTableBody');
     tableBody.innerHTML = '';
-
-    if (!holdings) {
-        return;
-    }
 
     const data = allAgentsData[agentName];
     if (!data || !data.assetHistory || data.assetHistory.length === 0) {
         return;
     }
 
-    const latestDate = data.assetHistory[data.assetHistory.length - 1].date;
     const totalValue = data.currentValue;
 
-    // Get all stocks with non-zero holdings
-    const stocks = Object.entries(holdings)
-        .filter(([symbol, shares]) => symbol !== 'CASH' && shares > 0);
+    // Get unrealized PnL data which includes all the information we need
+    const unrealizedData = await dataLoader.calculateUnrealizedPnL(agentName);
+    const holdings = unrealizedData.holdings;
+
+    if (holdings.length === 0) {
+        const latestPosition = data.positions[data.positions.length - 1];
+        const cashPosition = latestPosition && latestPosition.positions ? latestPosition.positions.CASH || 0 : 0;
+        
+        // Only show cash row if there's cash
+        if (cashPosition > 0) {
+            const cashWeight = (cashPosition / totalValue * 100).toFixed(2);
+            const cashRow = document.createElement('tr');
+            cashRow.innerHTML = `
+                <td class="symbol">CASH</td>
+                <td>-</td>
+                <td>-</td>
+                <td>-</td>
+                <td>${dataLoader.formatCurrency(cashPosition)}</td>
+                <td>-</td>
+                <td>${cashWeight}%</td>
+            `;
+            tableBody.appendChild(cashRow);
+        } else {
+            const noDataRow = document.createElement('tr');
+            noDataRow.innerHTML = `
+                <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                    No holdings data available
+                </td>
+            `;
+            tableBody.appendChild(noDataRow);
+        }
+        return;
+    }
 
     // Sort by market value (descending)
-    const holdingsData = await Promise.all(
-        stocks.map(async ([symbol, shares]) => {
-            const price = await dataLoader.getClosingPrice(symbol, latestDate);
-            const marketValue = price ? shares * price : 0;
-            return { symbol, shares, price, marketValue };
-        })
-    );
-
-    holdingsData.sort((a, b) => b.marketValue - a.marketValue);
+    holdings.sort((a, b) => b.marketValue - a.marketValue);
 
     // Create table rows
-    holdingsData.forEach(holding => {
+    holdings.forEach(holding => {
         const weight = (holding.marketValue / totalValue * 100).toFixed(2);
+        const pnlClass = holding.unrealizedPnL >= 0 ? 'positive' : 'negative';
+        
         const row = document.createElement('tr');
         row.innerHTML = `
             <td class="symbol">${holding.symbol}</td>
             <td>${holding.shares}</td>
-            <td>${dataLoader.formatCurrency(holding.price || 0)}</td>
+            <td>${dataLoader.formatCurrency(holding.avgCost)}</td>
+            <td>${dataLoader.formatCurrency(holding.currentPrice)}</td>
             <td>${dataLoader.formatCurrency(holding.marketValue)}</td>
+            <td class="${pnlClass}">${dataLoader.formatCurrency(holding.unrealizedPnL)}</td>
             <td>${weight}%</td>
         `;
         tableBody.appendChild(row);
     });
 
     // Add cash row
-    if (holdings.CASH > 0) {
-        const cashWeight = (holdings.CASH / totalValue * 100).toFixed(2);
+    const latestPosition = data.positions[data.positions.length - 1];
+    const cashPosition = latestPosition && latestPosition.positions ? latestPosition.positions.CASH || 0 : 0;
+    
+    if (cashPosition > 0) {
+        const cashWeight = (cashPosition / totalValue * 100).toFixed(2);
         const cashRow = document.createElement('tr');
         cashRow.innerHTML = `
             <td class="symbol">CASH</td>
             <td>-</td>
             <td>-</td>
-            <td>${dataLoader.formatCurrency(holdings.CASH)}</td>
+            <td>-</td>
+            <td>${dataLoader.formatCurrency(cashPosition)}</td>
+            <td>-</td>
             <td>${cashWeight}%</td>
         `;
         tableBody.appendChild(cashRow);
-    }
-
-    // If no holdings data, show a message
-    if (holdingsData.length === 0 && (!holdings.CASH || holdings.CASH === 0)) {
-        const noDataRow = document.createElement('tr');
-        noDataRow.innerHTML = `
-            <td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">
-                No holdings data available
-            </td>
-        `;
-        tableBody.appendChild(noDataRow);
     }
 }
 
@@ -260,37 +288,146 @@ async function updateAllocationChart(agentName) {
 }
 
 // Update trade history timeline
-function updateTradeHistory(agentName) {
-    const trades = dataLoader.getTradeHistory(agentName);
+async function updateTradeHistory(agentName) {
     const timeline = document.getElementById('tradeTimeline');
     timeline.innerHTML = '';
 
-    if (trades.length === 0) {
+    const data = allAgentsData[agentName];
+    if (!data || !data.positions) {
         timeline.innerHTML = '<p style="color: var(--text-muted);">No trade history available.</p>';
         return;
     }
 
-    // Show latest 20 trades
-    const recentTrades = trades.slice(0, 20);
+    // Get all trades with actions
+    const tradesWithActions = data.positions.filter(p => p.this_action && p.this_action.action !== 'no_trade');
+    
+    if (tradesWithActions.length === 0) {
+        timeline.innerHTML = '<p style="color: var(--text-muted);">No trade history available.</p>';
+        return;
+    }
 
-    recentTrades.forEach(trade => {
+    // Get realized PnL data for sell trades and calculate cost basis
+    const costBasis = {}; // Track cost basis for percentage calculation
+    const realizedTradesMap = {};
+    
+    // Build cost basis and realized trades map
+    for (const position of data.positions) {
+        if (!position.this_action || position.this_action.action === 'no_trade') continue;
+        
+        const { action, symbol, amount } = position.this_action;
+        const date = position.date;
+        const price = await dataLoader.getOpeningPrice(symbol, date);
+        
+        if (!price) continue;
+        
+        if (action === 'buy') {
+            if (!costBasis[symbol]) costBasis[symbol] = [];
+            costBasis[symbol].push({ quantity: amount, price: price });
+        } else if (action === 'sell') {
+            if (!costBasis[symbol] || costBasis[symbol].length === 0) continue;
+            
+            let remainingToSell = amount;
+            let totalCost = 0;
+            let soldQuantity = 0;
+            
+            // Calculate average cost basis for sold shares (use deep copy to avoid mutation)
+            const tempCostBasis = JSON.parse(JSON.stringify(costBasis[symbol]));
+            while (remainingToSell > 0 && tempCostBasis.length > 0) {
+                const lot = tempCostBasis[0];
+                const quantityToSell = Math.min(remainingToSell, lot.quantity);
+                totalCost += lot.price * quantityToSell;
+                soldQuantity += quantityToSell;
+                lot.quantity -= quantityToSell;
+                remainingToSell -= quantityToSell;
+                if (lot.quantity <= 0) tempCostBasis.shift();
+            }
+            
+            const avgCost = soldQuantity > 0 ? totalCost / soldQuantity : 0;
+            const pnl = (price - avgCost) * amount;
+            const pnlPercent = avgCost > 0 ? ((price - avgCost) / avgCost * 100) : 0;
+            
+            const key = `${date}-${symbol}-${amount}`;
+            realizedTradesMap[key] = { pnl, pnlPercent, avgCost };
+            
+            // Update actual cost basis
+            remainingToSell = amount;
+            while (remainingToSell > 0 && costBasis[symbol].length > 0) {
+                const lot = costBasis[symbol][0];
+                const quantityToSell = Math.min(remainingToSell, lot.quantity);
+                lot.quantity -= quantityToSell;
+                remainingToSell -= quantityToSell;
+                if (lot.quantity <= 0) costBasis[symbol].shift();
+            }
+        }
+    }
+
+    // Show latest 20 trades (reversed to show most recent first)
+    const recentTrades = tradesWithActions.slice(-20).reverse();
+
+    for (const position of recentTrades) {
+        const trade = position.this_action;
+        const date = position.date;
+        
+        // Get the opening price for this trade
+        const price = await dataLoader.getOpeningPrice(trade.symbol, date);
+        
         const tradeItem = document.createElement('div');
         tradeItem.className = 'trade-item';
 
-        const icon = trade.action === 'buy' ? '📈' : '📉';
-        const iconClass = trade.action === 'buy' ? 'buy' : 'sell';
-        const actionText = trade.action === 'buy' ? 'Bought' : 'Sold';
-
-        tradeItem.innerHTML = `
-            <div class="trade-icon ${iconClass}">${icon}</div>
-            <div class="trade-details">
-                <div class="trade-action">${actionText} ${trade.amount} shares of ${trade.symbol}</div>
-                <div class="trade-meta">${trade.date}</div>
-            </div>
-        `;
+        if (trade.action === 'buy') {
+            tradeItem.innerHTML = `
+                <div class="trade-icon buy">📈</div>
+                <div class="trade-details">
+                    <div class="trade-action">
+                        <span><strong>Bought ${trade.amount}</strong> shares of <strong>${trade.symbol}</strong>
+                        ${price ? ` @ ${dataLoader.formatCurrency(price)}` : ''}</span>
+                    </div>
+                    <div class="trade-meta">
+                        ${date}
+                        ${price ? ` • Total: ${dataLoader.formatCurrency(price * trade.amount)}` : ''}
+                    </div>
+                </div>
+            `;
+        } else if (trade.action === 'sell') {
+            // Look up realized PnL for this trade
+            const key = `${date}-${trade.symbol}-${trade.amount}`;
+            const realizedTrade = realizedTradesMap[key];
+            const pnl = realizedTrade ? realizedTrade.pnl : null;
+            const pnlPercent = realizedTrade ? realizedTrade.pnlPercent : null;
+            const pnlClass = pnl !== null ? (pnl >= 0 ? 'positive' : 'negative') : '';
+            const pnlSign = pnl !== null && pnl >= 0 ? '+' : '';
+            const percentSign = pnlPercent !== null && pnlPercent >= 0 ? '+' : '';
+            
+            tradeItem.innerHTML = `
+                <div class="trade-icon sell">📉</div>
+                <div class="trade-details">
+                    <div class="trade-action">
+                        <span><strong>Sold ${trade.amount}</strong> shares of <strong>${trade.symbol}</strong>
+                        ${price ? ` @ ${dataLoader.formatCurrency(price)}` : ''}</span>
+                        ${pnl !== null ? `
+                            <div class="trade-pnl ${pnlClass}">
+                                <span class="trade-pnl-amount">${pnlSign}${dataLoader.formatCurrency(pnl)}</span>
+                                <span class="trade-pnl-percent">(${percentSign}${pnlPercent.toFixed(2)}%)</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="trade-meta">
+                        ${date}
+                        ${price ? ` • Total: ${dataLoader.formatCurrency(price * trade.amount)}` : ''}
+                    </div>
+                </div>
+            `;
+        }
 
         timeline.appendChild(tradeItem);
-    });
+    }
+}
+
+// Update realized PnL table (not needed anymore but keeping for compatibility)
+async function updateRealizedPnLTable(agentName) {
+    // This function is no longer used as we integrated the info into trade history
+    // Keeping it to avoid breaking the code flow
+    return;
 }
 
 // Set up event listeners
