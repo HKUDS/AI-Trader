@@ -17,6 +17,10 @@ AGENT_REGISTRY = {
         "module": "agent.base_agent.base_agent",
         "class": "BaseAgent"
     },
+    "AnthropicAgent": {
+        "module": "agent.anthropic_agent.anthropic_agent",
+        "class": "AnthropicAgent"
+    },
 }
 
 
@@ -182,19 +186,37 @@ async def main(config_path=None):
 
         try:
             # Dynamically create Agent instance
-            agent = AgentClass(
-                signature=signature,
-                basemodel=basemodel,
-                stock_symbols=all_nasdaq_100_symbols,
-                log_path=log_path,
-                openai_base_url=openai_base_url,
-                openai_api_key=openai_api_key,
-                max_steps=max_steps,
-                max_retries=max_retries,
-                base_delay=base_delay,
-                initial_cash=initial_cash,
-                init_date=INIT_DATE
-            )
+            # Different agent types have different parameters
+            if agent_type == "AnthropicAgent":
+                # AnthropicAgent uses anthropic_api_key
+                anthropic_api_key = model_config.get("anthropic_api_key", None)
+                agent = AgentClass(
+                    signature=signature,
+                    basemodel=basemodel,
+                    stock_symbols=all_nasdaq_100_symbols,
+                    log_path=log_path,
+                    anthropic_api_key=anthropic_api_key,
+                    max_steps=max_steps,
+                    max_retries=max_retries,
+                    base_delay=base_delay,
+                    initial_cash=initial_cash,
+                    init_date=INIT_DATE
+                )
+            else:
+                # BaseAgent uses openai_base_url and openai_api_key
+                agent = AgentClass(
+                    signature=signature,
+                    basemodel=basemodel,
+                    stock_symbols=all_nasdaq_100_symbols,
+                    log_path=log_path,
+                    openai_base_url=openai_base_url,
+                    openai_api_key=openai_api_key,
+                    max_steps=max_steps,
+                    max_retries=max_retries,
+                    base_delay=base_delay,
+                    initial_cash=initial_cash,
+                    init_date=INIT_DATE
+                )
             
             print(f"✅ {agent_type} instance created successfully: {agent}")
             
