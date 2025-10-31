@@ -1,7 +1,8 @@
+import json
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 import pandas as pd
 import tushare as ts
@@ -140,7 +141,131 @@ def get_daily_price_a_stock(
         return None
 
 
+def convert_index_daily_to_json(
+    df: pd.DataFrame,
+    symbol: str = "000016.SH",
+    output_file: Optional[Path] = None,
+) -> Dict:
+    """Convert index daily data to JSON format similar to Alpha Vantage format.
+
+    Args:
+        df: DataFrame from pro.index_daily() with columns: ts_code, trade_date, close, open, high, low, pre_close, change, pct_chg, vol, amount
+        symbol: Index symbol
+        output_file: Output JSON file path, if None will not save to file
+
+    Returns:
+        Dict: JSON-formatted data
+    """
+    if df.empty:
+        print("Warning: Empty DataFrame provided")
+        return {}
+
+    # Sort by trade_date in descending order (latest first)
+    df = df.sort_values(by="trade_date", ascending=False).reset_index(drop=True)
+
+    # Get the last refreshed date
+    last_refreshed = df.iloc[0]["trade_date"]
+    last_refreshed_formatted = f"{last_refreshed[:4]}-{last_refreshed[4:6]}-{last_refreshed[6:]}"
+
+    # Build the JSON structure
+    json_data = {
+        "Meta Data": {
+            "1. Information": "Daily Prices (open, high, low, close) and Volumes",
+            "2. Symbol": symbol,
+            "3. Last Refreshed": last_refreshed_formatted,
+            "4. Output Size": "Compact",
+            "5. Time Zone": "Asia/Shanghai",
+        },
+        "Time Series (Daily)": {},
+    }
+
+    # Convert each row to the time series format
+    for _, row in df.iterrows():
+        trade_date = row["trade_date"]
+        date_formatted = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
+
+        json_data["Time Series (Daily)"][date_formatted] = {
+            "1. open": f"{row['open']:.4f}",
+            "2. high": f"{row['high']:.4f}",
+            "3. low": f"{row['low']:.4f}",
+            "4. close": f"{row['close']:.4f}",
+            "5. volume": str(int(row["vol"])) if pd.notna(row["vol"]) else "0",
+        }
+
+    # Save to file if output_file is specified
+    if output_file:
+        output_file = Path(output_file)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(json_data, f, indent=4, ensure_ascii=False)
+        print(f"JSON data saved to: {output_file}")
+
+    return json_data
+
+
+def get_index_daily_data(
+    index_code: str = "000016.SH",
+    start_date: str = "20250101",
+    end_date: Optional[str] = None,
+    output_dir: Optional[Path] = None,
+) -> Optional[pd.DataFrame]:
+    """Get index daily data and convert to JSON format.
+
+    Args:
+        index_code: Index code, default is SSE 50 (000016.SH)
+        start_date: Start date in 'YYYYMMDD' format
+        end_date: End date in 'YYYYMMDD' format, defaults to today if None
+        output_dir: Output directory, defaults to './data/A_stock' if None
+
+    Returns:
+        pd.DataFrame: DataFrame containing index daily data, None if failed
+    """
+    token = os.getenv("TUSHARE_TOKEN")
+    if not token:
+        print("Error: TUSHARE_TOKEN not found")
+        return None
+
+    ts.set_token(token)
+    pro = ts.pro_api()
+
+    # Set end_date to today if not specified
+    if end_date is None:
+        end_date = datetime.now().strftime("%Y%m%d")
+
+    try:
+        df = pro.index_daily(ts_code=index_code, start_date=start_date, end_date=end_date)
+
+        if df.empty:
+            print(f"No index daily data found for {index_code}")
+            return None
+
+        if output_dir is None:
+            output_dir = Path(__file__).parent / "A_stock"
+        else:
+            output_dir = Path(output_dir)
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save JSON
+        index_name = "sse_50" if index_code == "000016.SH" else index_code.replace(".", "_")
+        json_file = output_dir / f"index_daily_{index_name}.json"
+        convert_index_daily_to_json(df, symbol=index_code, output_file=json_file)
+
+        return df
+
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return None
+
+
 if __name__ == "__main__":
     fallback_path = Path(__file__).parent / "A_stock" / "sse_50_weight.csv"
 
+    # Get constituent stocks daily prices
     df = get_daily_price_a_stock(index_code="000016.SH", daily_start_date="20250101", fallback_csv=fallback_path)
+
+    # Get index daily data and convert to JSON
+    print("\n" + "=" * 50)
+    print("Fetching index daily data...")
+    print("=" * 50)
+    df_index = get_index_daily_data(index_code="000016.SH", start_date="20250101")

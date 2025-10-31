@@ -125,6 +125,41 @@ body {
     box-shadow: 0 0 10px rgba(0, 212, 255, 0.3);
 }
 
+/* Market Selector */
+.market-selector {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.market-btn {
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: rgba(26, 34, 56, 0.8);
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: all var(--transition-normal);
+    white-space: nowrap;
+}
+
+.market-btn:hover {
+    background: rgba(0, 212, 255, 0.1);
+    border-color: var(--accent-blue);
+    color: var(--text-primary);
+    transform: translateY(-2px);
+}
+
+.market-btn.active {
+    background: linear-gradient(135deg, rgba(0, 212, 255, 0.2), rgba(0, 255, 204, 0.2));
+    border-color: var(--accent-cyan);
+    color: var(--accent-cyan);
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
+    font-weight: 600;
+}
+
 /* GitHub Link */
 .github-link {
     display: flex;

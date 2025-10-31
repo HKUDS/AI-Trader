@@ -14,10 +14,10 @@ from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain_openai import ChatOpenAI
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
@@ -28,57 +28,58 @@ class DeepSeekChatOpenAI(ChatOpenAI):
     Custom ChatOpenAI wrapper for DeepSeek API compatibility.
     Handles the case where DeepSeek returns tool_calls.args as JSON strings instead of dicts.
     """
-    
+
     def _create_message_dicts(self, messages: list, stop: Optional[list] = None) -> list:
         """Override to handle response parsing"""
         message_dicts = super()._create_message_dicts(messages, stop)
         return message_dicts
-    
+
     def _generate(self, messages: list, stop: Optional[list] = None, **kwargs):
         """Override generation to fix tool_calls format in responses"""
         # Call parent's generate method
         result = super()._generate(messages, stop, **kwargs)
-        
+
         # Fix tool_calls format in the generated messages
         for generation in result.generations:
             for gen in generation:
-                if hasattr(gen, 'message') and hasattr(gen.message, 'additional_kwargs'):
-                    tool_calls = gen.message.additional_kwargs.get('tool_calls')
+                if hasattr(gen, "message") and hasattr(gen.message, "additional_kwargs"):
+                    tool_calls = gen.message.additional_kwargs.get("tool_calls")
                     if tool_calls:
                         for tool_call in tool_calls:
-                            if 'function' in tool_call and 'arguments' in tool_call['function']:
-                                args = tool_call['function']['arguments']
+                            if "function" in tool_call and "arguments" in tool_call["function"]:
+                                args = tool_call["function"]["arguments"]
                                 # If arguments is a string, parse it
                                 if isinstance(args, str):
                                     try:
-                                        tool_call['function']['arguments'] = json.loads(args)
+                                        tool_call["function"]["arguments"] = json.loads(args)
                                     except json.JSONDecodeError:
                                         pass  # Keep as string if parsing fails
-        
+
         return result
-    
+
     async def _agenerate(self, messages: list, stop: Optional[list] = None, **kwargs):
         """Override async generation to fix tool_calls format in responses"""
         # Call parent's async generate method
         result = await super()._agenerate(messages, stop, **kwargs)
-        
+
         # Fix tool_calls format in the generated messages
         for generation in result.generations:
             for gen in generation:
-                if hasattr(gen, 'message') and hasattr(gen.message, 'additional_kwargs'):
-                    tool_calls = gen.message.additional_kwargs.get('tool_calls')
+                if hasattr(gen, "message") and hasattr(gen.message, "additional_kwargs"):
+                    tool_calls = gen.message.additional_kwargs.get("tool_calls")
                     if tool_calls:
                         for tool_call in tool_calls:
-                            if 'function' in tool_call and 'arguments' in tool_call['function']:
-                                args = tool_call['function']['arguments']
+                            if "function" in tool_call and "arguments" in tool_call["function"]:
+                                args = tool_call["function"]["arguments"]
                                 # If arguments is a string, parse it
                                 if isinstance(args, str):
                                     try:
-                                        tool_call['function']['arguments'] = json.loads(args)
+                                        tool_call["function"]["arguments"] = json.loads(args)
                                     except json.JSONDecodeError:
                                         pass  # Keep as string if parsing fails
-        
+
         return result
+
 
 from prompts.agent_prompt import STOP_SIGNAL, get_agent_system_prompt
 from tools.general_tools import (extract_conversation, extract_tool_messages,
@@ -547,7 +548,8 @@ class BaseAgent:
 
         print(f"✅ Agent {self.signature} registration completed")
         print(f"📁 Position file: {self.position_file}")
-        print(f"💰 Initial cash: ${self.initial_cash}")
+        currency_symbol = "¥" if self.market == "cn" else "$"
+        print(f"💰 Initial cash: {currency_symbol}{self.initial_cash:,.2f}")
         print(f"📊 Number of stocks: {len(self.stock_symbols)}")
 
     def get_trading_dates(self, init_date: str, end_date: str) -> List[str]:

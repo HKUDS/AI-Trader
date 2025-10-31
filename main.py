@@ -174,6 +174,7 @@ async def main(config_path=None):
         write_config_value("SIGNATURE", signature)
         write_config_value("TODAY_DATE", END_DATE)
         write_config_value("IF_TRADE", False)
+        write_config_value("MARKET", market)  # Store market type for other tools
 
         # Get log path configuration
         log_path = log_config.get("log_path", "./data/agent_data")
@@ -214,10 +215,11 @@ async def main(config_path=None):
 
             # Display final position summary
             summary = agent.get_position_summary()
+            currency_symbol = "¥" if market == "cn" else "$"
             print(f"📊 Final position summary:")
             print(f"   - Latest date: {summary.get('latest_date')}")
             print(f"   - Total records: {summary.get('total_records')}")
-            print(f"   - Cash balance: ${summary.get('positions', {}).get('CASH', 0):.2f}")
+            print(f"   - Cash balance: {currency_symbol}{summary.get('positions', {}).get('CASH', 0):,.2f}")
 
         except Exception as e:
             print(f"❌ Error processing model {model_name} ({signature}): {str(e)}")

@@ -20,6 +20,11 @@ from tools.price_tools import (all_nasdaq_100_symbols, get_latest_position,
                                get_yesterday_open_and_close_price)
 
 
+def get_currency_symbol(market: str = "us") -> str:
+    """Get currency symbol based on market type"""
+    return "¥" if market == "cn" else "$"
+
+
 def calculate_portfolio_value(
     positions: Dict[str, float], prices: Dict[str, Optional[float]], cash: float = 0.0
 ) -> float:
@@ -532,13 +537,16 @@ def calculate_all_metrics(
     }
 
 
-def print_performance_report(metrics: Dict[str, any]) -> None:
+def print_performance_report(metrics: Dict[str, any], market: str = "us") -> None:
     """
     Print performance report
 
     Args:
         metrics: Dictionary containing all metrics
+        market: Market type ("us" or "cn")
     """
+    currency_symbol = get_currency_symbol(market)
+
     print("=" * 60)
     print("Portfolio Performance Report")
     print("=" * 60)
@@ -577,9 +585,9 @@ def print_performance_report(metrics: Dict[str, any]) -> None:
         final_value = portfolio_values[sorted_dates[-1]]
 
         print("Portfolio Value:")
-        print(f"  Initial Value: ${initial_value:,.2f}")
-        print(f"  Final Value: ${final_value:,.2f}")
-        print(f"  Value Change: ${final_value - initial_value:,.2f}")
+        print(f"  Initial Value: {currency_symbol}{initial_value:,.2f}")
+        print(f"  Final Value: {currency_symbol}{final_value:,.2f}")
+        print(f"  Value Change: {currency_symbol}{final_value - initial_value:,.2f}")
 
 
 def get_next_id(filepath: Path) -> int:
@@ -848,6 +856,7 @@ def calculate_and_save_metrics(
     end_date: Optional[str] = None,
     output_dir: Optional[str] = None,
     print_report: bool = True,
+    market: str = "us",
 ) -> Dict[str, any]:
     """
     Entry function to calculate all metrics and save in JSONL format
@@ -858,6 +867,7 @@ def calculate_and_save_metrics(
         end_date: End date in YYYY-MM-DD format, uses latest date if None
         output_dir: Output directory, defaults to data/agent_data/{modelname}/metrics/
         print_report: Whether to print report
+        market: Market type ("us" or "cn")
 
     Returns:
         Dictionary containing all metrics and saved file path
@@ -901,7 +911,7 @@ def calculate_and_save_metrics(
 
     # Print report
     if print_report:
-        print_performance_report(metrics)
+        print_performance_report(metrics, market=market)
 
     return metrics
 
@@ -915,5 +925,8 @@ if __name__ == "__main__":
         print("请设置环境变量 SIGNATURE，例如: export SIGNATURE=claude-3.7-sonnet")
         sys.exit(1)
 
+    # Get market type from config, default to "us"
+    market = get_config_value("MARKET", "us")
+
     # 使用入口函数计算和保存指标
-    result = calculate_and_save_metrics(modelname)
+    result = calculate_and_save_metrics(modelname, market=market)
