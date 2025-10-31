@@ -3,7 +3,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from dotenv import load_dotenv
 from fastmcp import FastMCP
@@ -17,9 +17,26 @@ mcp = FastMCP("LocalPrices")
 from tools.general_tools import get_config_value
 
 
-def _workspace_data_path(filename: str) -> Path:
+def _workspace_data_path(filename: str, symbol: Optional[str] = None) -> Path:
+    """Get data file path based on symbol (auto-detect market type).
+    
+    Args:
+        filename: Data filename (e.g., 'merged.jsonl')
+        symbol: Stock symbol for auto-detecting market type. 
+                If symbol ends with .SH or .SZ, use A-stock data path.
+    
+    Returns:
+        Path to the data file
+    """
     base_dir = Path(__file__).resolve().parents[1]
-    return base_dir / "data" / filename
+    
+    # Auto-detect market type from symbol
+    if symbol and (symbol.endswith('.SH') or symbol.endswith('.SZ')):
+        # Chinese A-shares
+        return base_dir / "data" / "A_stock" / filename
+    else:
+        # US stocks (default)
+        return base_dir / "data" / filename
 
 
 def _validate_date(date_str: str) -> None:
@@ -46,7 +63,7 @@ def get_price_local(symbol: str, date: str) -> Dict[str, Any]:
     except ValueError as e:
         return {"error": str(e), "symbol": symbol, "date": date}
 
-    data_path = _workspace_data_path(filename)
+    data_path = _workspace_data_path(filename, symbol)
     if not data_path.exists():
         return {"error": f"Data file not found: {data_path}", "symbol": symbol, "date": date}
 
@@ -98,7 +115,7 @@ def get_price_local_function(symbol: str, date: str, filename: str = "merged.jso
     except ValueError as e:
         return {"error": str(e), "symbol": symbol, "date": date}
 
-    data_path = _workspace_data_path(filename)
+    data_path = _workspace_data_path(filename, symbol)
     if not data_path.exists():
         return {"error": f"Data file not found: {data_path}", "symbol": symbol, "date": date}
 

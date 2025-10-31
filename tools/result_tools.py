@@ -98,7 +98,7 @@ def get_available_date_range(modelname: str) -> Tuple[str, str]:
 
 
 def get_daily_portfolio_values(
-    modelname: str, start_date: Optional[str] = None, end_date: Optional[str] = None
+    modelname: str, start_date: Optional[str] = None, end_date: Optional[str] = None, market: str = "us"
 ) -> Dict[str, float]:
     """
     Get daily portfolio values
@@ -107,11 +107,13 @@ def get_daily_portfolio_values(
         modelname: Model name
         start_date: Start date in YYYY-MM-DD format, uses earliest date if None
         end_date: End date in YYYY-MM-DD format, uses latest date if None
+        market: Market type, "us" for US stocks or "cn" for A-shares
 
     Returns:
         Dictionary of daily portfolio values in format {date: portfolio_value}
     """
     from tools.general_tools import get_config_value
+    from tools.price_tools import get_merged_file_path, all_nasdaq_100_symbols, all_sse_50_symbols
 
     base_dir = Path(__file__).resolve().parents[1]
 
@@ -121,7 +123,7 @@ def get_daily_portfolio_values(
         log_path = log_path[7:]  # Remove "./data/" prefix
 
     position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
-    merged_file = base_dir / "data" / "merged.jsonl"
+    merged_file = get_merged_file_path(market)
 
     if not position_file.exists() or not merged_file.exists():
         return {}
@@ -164,6 +166,9 @@ def get_daily_portfolio_values(
             except Exception:
                 continue
 
+    # Select stock symbols based on market
+    stock_symbols = all_sse_50_symbols if market == "cn" else all_nasdaq_100_symbols
+
     # Calculate daily portfolio values
     daily_values = {}
 
@@ -189,7 +194,7 @@ def get_daily_portfolio_values(
 
         # Get daily prices
         daily_prices = {}
-        for symbol in all_nasdaq_100_symbols:
+        for symbol in stock_symbols:
             if symbol in price_data:
                 symbol_prices = price_data[symbol]
                 if date in symbol_prices:
@@ -440,7 +445,7 @@ def calculate_profit_loss_ratio(returns: List[float]) -> float:
 
 
 def calculate_all_metrics(
-    modelname: str, start_date: Optional[str] = None, end_date: Optional[str] = None
+    modelname: str, start_date: Optional[str] = None, end_date: Optional[str] = None, market: str = "us"
 ) -> Dict[str, any]:
     """
     Calculate all performance metrics
@@ -449,6 +454,7 @@ def calculate_all_metrics(
         modelname: Model name
         start_date: Start date in YYYY-MM-DD format, uses earliest date if None
         end_date: End date in YYYY-MM-DD format, uses latest date if None
+        market: Market type, "us" for US stocks or "cn" for A-shares
 
     Returns:
         Dictionary containing all metrics
@@ -481,7 +487,7 @@ def calculate_all_metrics(
             end_date = latest_date
 
     # 获取每日投资组合价值
-    portfolio_values = get_daily_portfolio_values(modelname, start_date, end_date)
+    portfolio_values = get_daily_portfolio_values(modelname, start_date, end_date, market)
 
     if not portfolio_values:
         return {
@@ -888,7 +894,7 @@ def calculate_and_save_metrics(
             print("❌ Unable to get available data date range")
 
     # Calculate all metrics
-    metrics = calculate_all_metrics(modelname, start_date, end_date)
+    metrics = calculate_all_metrics(modelname, start_date, end_date, market)
 
     if "error" in metrics:
         print(f"Error: {metrics['error']}")
