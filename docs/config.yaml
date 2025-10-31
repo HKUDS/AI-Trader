@@ -11,84 +11,84 @@ data:
 # Each agent should have a directory under data/agent_data/{folder}/position/position.jsonl
 agents:
   # Test agents (current batch)
-  - folder: "test-claude-3.7-sonnet"
-    display_name: "Claude 3.7 Sonnet"
-    icon: "./figs/claude-color.svg"
-    color: "#cc785c"
-    enabled: true
+  # - folder: "test-claude-3.7-sonnet"
+  #   display_name: "Claude 3.7 Sonnet"
+  #   icon: "./figs/claude-color.svg"
+  #   color: "#cc785c"
+  #   enabled: true
 
-  - folder: "test-deepseek-chat-v3.1"
-    display_name: "DeepSeek Chat v3.1"
-    icon: "./figs/deepseek.svg"
-    color: "#4a90e2"
-    enabled: true
+  # - folder: "test-deepseek-chat-v3.1"
+  #   display_name: "DeepSeek Chat v3.1"
+  #   icon: "./figs/deepseek.svg"
+  #   color: "#4a90e2"
+  #   enabled: true
 
-  - folder: "test-deepseek-chat-v3.1-"
-    display_name: "DeepSeek Chat v3.1 (Alt)"
-    icon: "./figs/deepseek.svg"
-    color: "#5ba0f2"
-    enabled: true
+  # - folder: "test-deepseek-chat-v3.1-"
+  #   display_name: "DeepSeek Chat v3.1 (Alt)"
+  #   icon: "./figs/deepseek.svg"
+  #   color: "#5ba0f2"
+  #   enabled: true
 
-  - folder: "test-gemini-2.5-pro"
-    display_name: "Gemini 2.5 Pro"
-    icon: "./figs/google.svg"
-    color: "#8A2BE2"
-    enabled: true
+  # - folder: "test-gemini-2.5-pro"
+  #   display_name: "Gemini 2.5 Pro"
+  #   icon: "./figs/google.svg"
+  #   color: "#8A2BE2"
+  #   enabled: true
 
-  - folder: "test-gpt-4.1"
-    display_name: "GPT-4.1"
-    icon: "./figs/openai.svg"
-    color: "#10a37f"
-    enabled: true
+  # - folder: "test-gpt-4.1"
+  #   display_name: "GPT-4.1"
+  #   icon: "./figs/openai.svg"
+  #   color: "#10a37f"
+  #   enabled: true
 
-  - folder: "test-MiniMax-M2"
-    display_name: "MiniMax M2"
-    icon: "./figs/stock.svg"
-    color: "#ff6b6b"
-    enabled: true
+  # - folder: "test-MiniMax-M2"
+  #   display_name: "MiniMax M2"
+  #   icon: "./figs/stock.svg"
+  #   color: "#ff6b6b"
+  #   enabled: true
 
-  - folder: "test-qwen3-max"
-    display_name: "Qwen3 Max"
-    icon: "./figs/qwen.svg"
-    color: "#0066ff"
-    enabled: true
+  # - folder: "test-qwen3-max"
+  #   display_name: "Qwen3 Max"
+  #   icon: "./figs/qwen.svg"
+  #   color: "#0066ff"
+  #   enabled: true
 
-  - folder: "testmodel"
-    display_name: "Test Model"
-    icon: "./figs/stock.svg"
-    color: "#00d4ff"
-    enabled: true
+  # - folder: "testmodel"
+  #   display_name: "Test Model"
+  #   icon: "./figs/stock.svg"
+  #   color: "#00d4ff"
+  #   enabled: true
 
   # Legacy agents (if they exist)
   - folder: "gemini-2.5-flash"
     display_name: "Gemini 2.5 Flash"
     icon: "./figs/google.svg"
     color: "#8A2BE2"
-    enabled: false
+    enabled: true
 
   - folder: "qwen3-max"
     display_name: "Qwen3 Max"
     icon: "./figs/qwen.svg"
     color: "#0066ff"
-    enabled: false
+    enabled: true
 
   - folder: "deepseek-chat-v3.1"
     display_name: "DeepSeek Chat v3.1"
     icon: "./figs/deepseek.svg"
     color: "#4a90e2"
-    enabled: false
+    enabled: true
 
   - folder: "gpt-5"
     display_name: "GPT-5"
     icon: "./figs/openai.svg"
     color: "#10a37f"
-    enabled: false
+    enabled: true
 
   - folder: "claude-3.7-sonnet"
     display_name: "Claude 3.7 Sonnet"
     icon: "./figs/claude-color.svg"
     color: "#cc785c"
-    enabled: false
+    enabled: true
 
 # Benchmark configuration
 benchmark:
