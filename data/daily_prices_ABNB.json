@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "ABNB",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "125.4700",
+            "2. high": "128.2750",
+            "3. low": "125.2600",
+            "4. close": "126.3400",
+            "5. volume": "3968539"
+        },
         "2025-10-29": {
             "1. open": "127.8700",
             "2. high": "128.6800",
             "3. low": "125.4650",
             "4. close": "126.4800",
-            "5. volume": "4722081"
+            "5. volume": "5102906"
         },
         "2025-10-28": {
             "1. open": "129.5900",
@@ -699,13 +706,6 @@
             "3. low": "138.1350",
             "4. close": "138.5600",
             "5. volume": "4138000"
-        },
-        "2025-06-09": {
-            "1. open": "141.4700",
-            "2. high": "141.5255",
-            "3. low": "138.3400",
-            "4. close": "139.0100",
-            "5. volume": "3989978"
         }
     }
 }

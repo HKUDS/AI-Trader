@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "ISRG",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "534.3700",
+            "2. high": "538.0000",
+            "3. low": "529.3080",
+            "4. close": "530.0200",
+            "5. volume": "1771096"
+        },
         "2025-10-29": {
             "1. open": "543.0000",
             "2. high": "544.9500",
             "3. low": "534.4500",
             "4. close": "537.5900",
-            "5. volume": "1675993"
+            "5. volume": "1721812"
         },
         "2025-10-28": {
             "1. open": "546.6200",
@@ -699,13 +706,6 @@
             "3. low": "520.3000",
             "4. close": "529.6000",
             "5. volume": "2027596"
-        },
-        "2025-06-09": {
-            "1. open": "531.5000",
-            "2. high": "531.5875",
-            "3. low": "498.1672",
-            "4. close": "526.1500",
-            "5. volume": "4806226"
         }
     }
 }

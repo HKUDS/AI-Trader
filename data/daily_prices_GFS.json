@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "GFS",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "34.6100",
+            "2. high": "37.2000",
+            "3. low": "34.4500",
+            "4. close": "36.0600",
+            "5. volume": "5988069"
+        },
         "2025-10-29": {
             "1. open": "34.9200",
             "2. high": "34.9800",
             "3. low": "34.1850",
             "4. close": "34.3500",
-            "5. volume": "2096579"
+            "5. volume": "2171994"
         },
         "2025-10-28": {
             "1. open": "34.7400",
@@ -699,13 +706,6 @@
             "3. low": "38.5000",
             "4. close": "39.4700",
             "5. volume": "1618042"
-        },
-        "2025-06-09": {
-            "1. open": "38.0600",
-            "2. high": "39.1578",
-            "3. low": "37.9850",
-            "4. close": "38.3900",
-            "5. volume": "1814175"
         }
     }
 }

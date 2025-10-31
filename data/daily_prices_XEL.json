@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "XEL",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "81.0900",
+            "2. high": "82.6900",
+            "3. low": "78.4300",
+            "4. close": "81.5900",
+            "5. volume": "9255869"
+        },
         "2025-10-29": {
             "1. open": "79.3300",
             "2. high": "80.3600",
             "3. low": "78.9450",
             "4. close": "79.6900",
-            "5. volume": "3862293"
+            "5. volume": "4254530"
         },
         "2025-10-28": {
             "1. open": "80.6700",
@@ -699,13 +706,6 @@
             "3. low": "68.2400",
             "4. close": "68.9600",
             "5. volume": "2640751"
-        },
-        "2025-06-09": {
-            "1. open": "68.2500",
-            "2. high": "69.2400",
-            "3. low": "68.0943",
-            "4. close": "68.3800",
-            "5. volume": "2509611"
         }
     }
 }

@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 logs/
 data/*.json
 data/*.jsonl
@@ -20,7 +19,6 @@ runtime_env.json
 *.log
 mcp_services*.log
 test_run*.log
-=======
 # Environment variables
 .env
 .env.local
@@ -105,4 +103,3 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
->>>>>>> main

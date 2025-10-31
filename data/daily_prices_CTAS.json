@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "CTAS",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "184.2100",
+            "2. high": "186.8600",
+            "3. low": "183.4000",
+            "4. close": "183.9800",
+            "5. volume": "1968785"
+        },
         "2025-10-29": {
             "1. open": "186.8500",
             "2. high": "187.5950",
             "3. low": "182.6450",
             "4. close": "183.9000",
-            "5. volume": "2282912"
+            "5. volume": "2327511"
         },
         "2025-10-28": {
             "1. open": "188.1100",
@@ -699,13 +706,6 @@
             "3. low": "221.0350",
             "4. close": "222.2200",
             "5. volume": "2099871"
-        },
-        "2025-06-09": {
-            "1. open": "226.9400",
-            "2. high": "227.1700",
-            "3. low": "222.6700",
-            "4. close": "224.6000",
-            "5. volume": "1154904"
         }
     }
 }

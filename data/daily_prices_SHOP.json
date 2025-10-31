@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "SHOP",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "176.9250",
+            "2. high": "178.2300",
+            "3. low": "172.6900",
+            "4. close": "173.6100",
+            "5. volume": "9357877"
+        },
         "2025-10-29": {
             "1. open": "180.0000",
             "2. high": "182.1900",
             "3. low": "176.3000",
             "4. close": "179.0100",
-            "5. volume": "10738287"
+            "5. volume": "10790096"
         },
         "2025-10-28": {
             "1. open": "173.4250",
@@ -699,13 +706,6 @@
             "3. low": "107.3500",
             "4. close": "110.2600",
             "5. volume": "6548526"
-        },
-        "2025-06-09": {
-            "1. open": "110.4200",
-            "2. high": "111.0000",
-            "3. low": "107.7600",
-            "4. close": "107.8000",
-            "5. volume": "7738770"
         }
     }
 }

@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "MELI",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "2210.5500",
+            "2. high": "2428.0000",
+            "3. low": "2210.0000",
+            "4. close": "2360.7600",
+            "5. volume": "890394"
+        },
         "2025-10-29": {
             "1. open": "2283.4200",
             "2. high": "2319.2800",
             "3. low": "2251.0000",
             "4. close": "2295.9200",
-            "5. volume": "525315"
+            "5. volume": "545820"
         },
         "2025-10-28": {
             "1. open": "2290.5400",
@@ -699,13 +706,6 @@
             "3. low": "2364.5400",
             "4. close": "2396.4400",
             "5. volume": "502668"
-        },
-        "2025-06-09": {
-            "1. open": "2477.5000",
-            "2. high": "2486.9100",
-            "3. low": "2448.6000",
-            "4. close": "2448.6000",
-            "5. volume": "399676"
         }
     }
 }

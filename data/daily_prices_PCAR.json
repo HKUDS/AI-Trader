@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "PCAR",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "97.7200",
+            "2. high": "99.8000",
+            "3. low": "97.0000",
+            "4. close": "98.8200",
+            "5. volume": "2222208"
+        },
         "2025-10-29": {
             "1. open": "98.7900",
             "2. high": "100.8800",
             "3. low": "97.5300",
             "4. close": "98.2100",
-            "5. volume": "2959984"
+            "5. volume": "3037516"
         },
         "2025-10-28": {
             "1. open": "100.3500",
@@ -699,13 +706,6 @@
             "3. low": "93.7500",
             "4. close": "94.7800",
             "5. volume": "1485359"
-        },
-        "2025-06-09": {
-            "1. open": "93.8900",
-            "2. high": "95.2000",
-            "3. low": "93.7450",
-            "4. close": "94.4300",
-            "5. volume": "1989141"
         }
     }
 }

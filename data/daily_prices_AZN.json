@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "AZN",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "82.0900",
+            "2. high": "82.8200",
+            "3. low": "81.2906",
+            "4. close": "82.3400",
+            "5. volume": "5784928"
+        },
         "2025-10-29": {
             "1. open": "83.3900",
             "2. high": "83.4600",
             "3. low": "81.6400",
             "4. close": "82.2300",
-            "5. volume": "3569237"
+            "5. volume": "3570044"
         },
         "2025-10-28": {
             "1. open": "84.0400",
@@ -699,13 +706,6 @@
             "3. low": "73.1550",
             "4. close": "73.8300",
             "5. volume": "2955796"
-        },
-        "2025-06-09": {
-            "1. open": "72.5400",
-            "2. high": "73.5700",
-            "3. low": "72.5400",
-            "4. close": "73.0100",
-            "5. volume": "3547424"
         }
     }
 }

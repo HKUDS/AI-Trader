@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "WDAY",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "231.9000",
+            "2. high": "235.5900",
+            "3. low": "230.7600",
+            "4. close": "232.8700",
+            "5. volume": "1930766"
+        },
         "2025-10-29": {
             "1. open": "234.9900",
             "2. high": "234.9900",
             "3. low": "228.0500",
             "4. close": "231.3600",
-            "5. volume": "2032859"
+            "5. volume": "2202058"
         },
         "2025-10-28": {
             "1. open": "238.3600",
@@ -699,13 +706,6 @@
             "3. low": "252.2900",
             "4. close": "252.7300",
             "5. volume": "1894927"
-        },
-        "2025-06-09": {
-            "1. open": "252.7200",
-            "2. high": "253.4300",
-            "3. low": "250.5400",
-            "4. close": "252.9000",
-            "5. volume": "1225350"
         }
     }
 }

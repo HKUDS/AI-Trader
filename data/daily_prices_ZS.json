@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "ZS",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "320.9600",
+            "2. high": "327.8500",
+            "3. low": "319.1800",
+            "4. close": "322.0400",
+            "5. volume": "910477"
+        },
         "2025-10-29": {
             "1. open": "321.3700",
             "2. high": "323.0000",
             "3. low": "317.1800",
             "4. close": "320.9600",
-            "5. volume": "1209222"
+            "5. volume": "1210685"
         },
         "2025-10-28": {
             "1. open": "327.0950",
@@ -699,13 +706,6 @@
             "3. low": "296.2050",
             "4. close": "297.9700",
             "5. volume": "1637002"
-        },
-        "2025-06-09": {
-            "1. open": "303.6050",
-            "2. high": "305.4999",
-            "3. low": "299.5900",
-            "4. close": "299.9000",
-            "5. volume": "2294088"
         }
     }
 }

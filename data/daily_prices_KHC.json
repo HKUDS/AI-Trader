@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "KHC",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "24.3200",
+            "2. high": "24.7750",
+            "3. low": "24.1000",
+            "4. close": "24.5800",
+            "5. volume": "30863881"
+        },
         "2025-10-29": {
             "1. open": "25.0100",
             "2. high": "25.2200",
             "3. low": "24.1050",
             "4. close": "24.3800",
-            "5. volume": "44674463"
+            "5. volume": "44944188"
         },
         "2025-10-28": {
             "1. open": "25.4900",
@@ -699,13 +706,6 @@
             "3. low": "26.3600",
             "4. close": "26.5900",
             "5. volume": "10787161"
-        },
-        "2025-06-09": {
-            "1. open": "26.7050",
-            "2. high": "26.7550",
-            "3. low": "26.2532",
-            "4. close": "26.4800",
-            "5. volume": "12632834"
         }
     }
 }

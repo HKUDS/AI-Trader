@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "CDNS",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "340.0000",
+            "2. high": "342.2000",
+            "3. low": "333.4100",
+            "4. close": "336.0900",
+            "5. volume": "1550316"
+        },
         "2025-10-29": {
             "1. open": "337.3000",
             "2. high": "347.0000",
             "3. low": "334.0000",
             "4. close": "341.4300",
-            "5. volume": "2391201"
+            "5. volume": "2413024"
         },
         "2025-10-28": {
             "1. open": "339.0100",
@@ -699,13 +706,6 @@
             "3. low": "300.4650",
             "4. close": "305.6900",
             "5. volume": "1603667"
-        },
-        "2025-06-09": {
-            "1. open": "307.5800",
-            "2. high": "310.9500",
-            "3. low": "301.5170",
-            "4. close": "301.6600",
-            "5. volume": "2517418"
         }
     }
 }

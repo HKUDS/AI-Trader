@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "MAR",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "263.3000",
+            "2. high": "267.3200",
+            "3. low": "261.7000",
+            "4. close": "262.2700",
+            "5. volume": "1214548"
+        },
         "2025-10-29": {
             "1. open": "263.3700",
             "2. high": "267.1100",
             "3. low": "262.0300",
             "4. close": "263.1200",
-            "5. volume": "1368733"
+            "5. volume": "1378536"
         },
         "2025-10-28": {
             "1. open": "269.8800",
@@ -699,13 +706,6 @@
             "3. low": "265.7500",
             "4. close": "268.0400",
             "5. volume": "1478986"
-        },
-        "2025-06-09": {
-            "1. open": "265.9900",
-            "2. high": "267.7250",
-            "3. low": "264.6720",
-            "4. close": "265.9300",
-            "5. volume": "1207503"
         }
     }
 }

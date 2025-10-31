@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "DASH",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "264.1650",
+            "2. high": "265.4550",
+            "3. low": "254.0300",
+            "4. close": "254.0700",
+            "5. volume": "3191897"
+        },
         "2025-10-29": {
             "1. open": "261.2900",
             "2. high": "268.0000",
             "3. low": "259.1100",
             "4. close": "266.0600",
-            "5. volume": "3789977"
+            "5. volume": "4231831"
         },
         "2025-10-28": {
             "1. open": "263.1600",
@@ -699,13 +706,6 @@
             "3. low": "210.9266",
             "4. close": "214.9700",
             "5. volume": "3916697"
-        },
-        "2025-06-09": {
-            "1. open": "218.0300",
-            "2. high": "219.8300",
-            "3. low": "216.9550",
-            "4. close": "217.4900",
-            "5. volume": "2710304"
         }
     }
 }

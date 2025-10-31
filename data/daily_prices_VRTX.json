@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "VRTX",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "417.1900",
+            "2. high": "422.9500",
+            "3. low": "415.0000",
+            "4. close": "419.8900",
+            "5. volume": "1230552"
+        },
         "2025-10-29": {
             "1. open": "418.0200",
             "2. high": "422.9800",
             "3. low": "415.7700",
             "4. close": "417.2100",
-            "5. volume": "1320570"
+            "5. volume": "1325187"
         },
         "2025-10-28": {
             "1. open": "418.0000",
@@ -699,13 +706,6 @@
             "3. low": "441.9200",
             "4. close": "451.5200",
             "5. volume": "1286958"
-        },
-        "2025-06-09": {
-            "1. open": "450.7800",
-            "2. high": "451.5150",
-            "3. low": "444.8400",
-            "4. close": "446.1500",
-            "5. volume": "912586"
         }
     }
 }

@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "AMAT",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "237.7800",
+            "2. high": "242.5000",
+            "3. low": "232.0800",
+            "4. close": "232.5500",
+            "5. volume": "7229552"
+        },
         "2025-10-29": {
             "1. open": "232.9000",
             "2. high": "237.3900",
             "3. low": "232.0000",
             "4. close": "235.7500",
-            "5. volume": "7762600"
+            "5. volume": "7784456"
         },
         "2025-10-28": {
             "1. open": "229.6800",
@@ -699,13 +706,6 @@
             "3. low": "169.9900",
             "4. close": "173.7700",
             "5. volume": "5711575"
-        },
-        "2025-06-09": {
-            "1. open": "167.8100",
-            "2. high": "171.8200",
-            "3. low": "167.8100",
-            "4. close": "169.7900",
-            "5. volume": "6320019"
         }
     }
 }

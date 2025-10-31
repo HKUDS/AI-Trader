@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "ADSK",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "295.2500",
+            "2. high": "303.5700",
+            "3. low": "295.2500",
+            "4. close": "300.7700",
+            "5. volume": "1515282"
+        },
         "2025-10-29": {
             "1. open": "306.5300",
             "2. high": "307.0000",
             "3. low": "296.0200",
             "4. close": "297.0800",
-            "5. volume": "1644793"
+            "5. volume": "1682473"
         },
         "2025-10-28": {
             "1. open": "312.8700",
@@ -699,13 +706,6 @@
             "3. low": "295.9700",
             "4. close": "297.5400",
             "5. volume": "896703"
-        },
-        "2025-06-09": {
-            "1. open": "297.0000",
-            "2. high": "298.7850",
-            "3. low": "290.6300",
-            "4. close": "297.2100",
-            "5. volume": "1316928"
         }
     }
 }

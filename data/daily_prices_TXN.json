@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "TXN",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "160.1500",
+            "2. high": "162.6400",
+            "3. low": "159.9700",
+            "4. close": "160.5100",
+            "5. volume": "9324339"
+        },
         "2025-10-29": {
             "1. open": "166.7200",
             "2. high": "166.7200",
             "3. low": "159.8300",
             "4. close": "160.2600",
-            "5. volume": "11940062"
+            "5. volume": "11961933"
         },
         "2025-10-28": {
             "1. open": "169.1400",
@@ -699,13 +706,6 @@
             "3. low": "199.4800",
             "4. close": "202.2900",
             "5. volume": "6247697"
-        },
-        "2025-06-09": {
-            "1. open": "193.7400",
-            "2. high": "200.4300",
-            "3. low": "193.4650",
-            "4. close": "199.2100",
-            "5. volume": "6869729"
         }
     }
 }

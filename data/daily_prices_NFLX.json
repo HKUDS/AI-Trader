@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "NFLX",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "1094.4000",
+            "2. high": "1106.1600",
+            "3. low": "1088.1100",
+            "4. close": "1089.0000",
+            "5. volume": "3825975"
+        },
         "2025-10-29": {
             "1. open": "1099.8400",
             "2. high": "1108.5500",
             "3. low": "1096.0000",
             "4. close": "1100.4100",
-            "5. volume": "3325620"
+            "5. volume": "3399487"
         },
         "2025-10-28": {
             "1. open": "1094.0000",
@@ -699,13 +706,6 @@
             "3. low": "1180.6100",
             "4. close": "1203.6200",
             "5. volume": "4454447"
-        },
-        "2025-06-09": {
-            "1. open": "1238.8800",
-            "2. high": "1238.8800",
-            "3. low": "1221.5700",
-            "4. close": "1224.4600",
-            "5. volume": "2403117"
         }
     }
 }

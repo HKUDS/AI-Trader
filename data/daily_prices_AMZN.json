@@ -2,17 +2,24 @@
     "Meta Data": {
         "1. Information": "Daily Prices (open, high, low, close) and Volumes",
         "2. Symbol": "AMZN",
-        "3. Last Refreshed": "2025-10-29",
+        "3. Last Refreshed": "2025-10-30",
         "4. Output Size": "Compact",
         "5. Time Zone": "US/Eastern"
     },
     "Time Series (Daily)": {
+        "2025-10-30": {
+            "1. open": "227.0600",
+            "2. high": "228.4400",
+            "3. low": "222.7500",
+            "4. close": "222.8600",
+            "5. volume": "88331899"
+        },
         "2025-10-29": {
             "1. open": "231.6720",
             "2. high": "232.8200",
             "3. low": "227.7600",
             "4. close": "230.3000",
-            "5. volume": "50403008"
+            "5. volume": "52036151"
         },
         "2025-10-28": {
             "1. open": "228.2150",
@@ -699,13 +706,6 @@
             "3. low": "214.1500",
             "4. close": "217.6100",
             "5. volume": "31303317"
-        },
-        "2025-06-09": {
-            "1. open": "214.7500",
-            "2. high": "217.8500",
-            "3. low": "212.8800",
-            "4. close": "216.9800",
-            "5. volume": "38102502"
         }
     }
 }
