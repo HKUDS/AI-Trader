@@ -418,7 +418,7 @@ class BaseAgentAStock:
         else:
             print("📊 No trading, maintaining positions")
             try:
-                add_no_trade_record(today_date, self.signature, market="cn")
+                add_no_trade_record(today_date, self.signature)
             except NameError as e:
                 print(f"❌ NameError: {e}")
                 raise
