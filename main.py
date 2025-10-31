@@ -21,6 +21,10 @@ AGENT_REGISTRY = {
         "module": "agent.anthropic_agent.anthropic_agent",
         "class": "AnthropicAgent"
     },
+    "ClaudeSDKAgent": {
+        "module": "agent.claude_sdk_agent.claude_sdk_agent",
+        "class": "ClaudeSDKAgent"
+    },
 }
 
 
@@ -188,7 +192,22 @@ async def main(config_path=None):
             # Dynamically create Agent instance
             # Different agent types have different parameters
             if agent_type == "AnthropicAgent":
-                # AnthropicAgent uses anthropic_api_key
+                # AnthropicAgent uses anthropic_api_key (manual SDK implementation)
+                anthropic_api_key = model_config.get("anthropic_api_key", None)
+                agent = AgentClass(
+                    signature=signature,
+                    basemodel=basemodel,
+                    stock_symbols=all_nasdaq_100_symbols,
+                    log_path=log_path,
+                    anthropic_api_key=anthropic_api_key,
+                    max_steps=max_steps,
+                    max_retries=max_retries,
+                    base_delay=base_delay,
+                    initial_cash=initial_cash,
+                    init_date=INIT_DATE
+                )
+            elif agent_type == "ClaudeSDKAgent":
+                # ClaudeSDKAgent uses official claude-agent-sdk
                 anthropic_api_key = model_config.get("anthropic_api_key", None)
                 agent = AgentClass(
                     signature=signature,

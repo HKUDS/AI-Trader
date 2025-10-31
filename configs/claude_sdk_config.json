@@ -1,0 +1,25 @@
+{
+  "agent_type": "ClaudeSDKAgent",
+  "date_range": {
+    "init_date": "2025-10-20",
+    "end_date": "2025-10-21"
+  },
+  "models": [
+    {
+      "name": "claude-sonnet-4",
+      "basemodel": "claude-sonnet-4-20250514",
+      "signature": "claude-sdk-agent",
+      "enabled": true,
+      "anthropic_api_key": "Optional: YOUR_ANTHROPIC_API_KEY, you can write it in .env file"
+    }
+  ],
+  "agent_config": {
+    "max_steps": 30,
+    "max_retries": 3,
+    "base_delay": 1.0,
+    "initial_cash": 10000.0
+  },
+  "log_config": {
+    "log_path": "./data/agent_data"
+  }
+}
