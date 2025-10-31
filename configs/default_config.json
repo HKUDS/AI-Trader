@@ -1,5 +1,6 @@
 {
   "agent_type": "BaseAgent",
+  "market": "us",
   "date_range": {
     "init_date": "2025-10-01",
     "end_date": "2025-10-21"

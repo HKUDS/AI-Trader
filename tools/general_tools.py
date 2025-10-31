@@ -1,10 +1,12 @@
-
-import os
 import json
+import os
 from pathlib import Path
 from typing import Any
+
 from dotenv import load_dotenv
+
 load_dotenv()
+
 
 def _load_runtime_env() -> dict:
     path = os.environ.get("RUNTIME_ENV_PATH")
@@ -23,10 +25,11 @@ def _load_runtime_env() -> dict:
 
 def get_config_value(key: str, default=None):
     _RUNTIME_ENV = _load_runtime_env()
-    
+
     if key in _RUNTIME_ENV:
         return _RUNTIME_ENV[key]
     return os.getenv(key, default)
+
 
 def write_config_value(key: str, value: Any):
     path = os.environ.get("RUNTIME_ENV_PATH")
@@ -40,6 +43,7 @@ def write_config_value(key: str, value: Any):
             json.dump(_RUNTIME_ENV, f, ensure_ascii=False, indent=4)
     except Exception as e:
         print(f"❌ Error writing config to {path}: {e}")
+
 
 def extract_conversation(conversation: dict, output_type: str):
     """Extract information from a conversation payload.
@@ -148,4 +152,3 @@ def extract_first_tool_message_content(conversation: dict):
     if isinstance(first, dict):
         return first.get("content")
     return getattr(first, "content", None)
-

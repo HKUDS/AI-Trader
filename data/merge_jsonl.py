@@ -1,36 +1,125 @@
+import glob
 import json
 import os
-import glob
-
 
 all_nasdaq_100_symbols = [
-    "NVDA", "MSFT", "AAPL", "GOOG", "GOOGL", "AMZN", "META", "AVGO", "TSLA",
-    "NFLX", "PLTR", "COST", "ASML", "AMD", "CSCO", "AZN", "TMUS", "MU", "LIN",
-    "PEP", "SHOP", "APP", "INTU", "AMAT", "LRCX", "PDD", "QCOM", "ARM", "INTC",
-    "BKNG", "AMGN", "TXN", "ISRG", "GILD", "KLAC", "PANW", "ADBE", "HON",
-    "CRWD", "CEG", "ADI", "ADP", "DASH", "CMCSA", "VRTX", "MELI", "SBUX",
-    "CDNS", "ORLY", "SNPS", "MSTR", "MDLZ", "ABNB", "MRVL", "CTAS", "TRI",
-    "MAR", "MNST", "CSX", "ADSK", "PYPL", "FTNT", "AEP", "WDAY", "REGN", "ROP",
-    "NXPI", "DDOG", "AXON", "ROST", "IDXX", "EA", "PCAR", "FAST", "EXC", "TTWO",
-    "XEL", "ZS", "PAYX", "WBD", "BKR", "CPRT", "CCEP", "FANG", "TEAM", "CHTR",
-    "KDP", "MCHP", "GEHC", "VRSK", "CTSH", "CSGP", "KHC", "ODFL", "DXCM", "TTD",
-    "ON", "BIIB", "LULU", "CDW", "GFS"
+    "NVDA",
+    "MSFT",
+    "AAPL",
+    "GOOG",
+    "GOOGL",
+    "AMZN",
+    "META",
+    "AVGO",
+    "TSLA",
+    "NFLX",
+    "PLTR",
+    "COST",
+    "ASML",
+    "AMD",
+    "CSCO",
+    "AZN",
+    "TMUS",
+    "MU",
+    "LIN",
+    "PEP",
+    "SHOP",
+    "APP",
+    "INTU",
+    "AMAT",
+    "LRCX",
+    "PDD",
+    "QCOM",
+    "ARM",
+    "INTC",
+    "BKNG",
+    "AMGN",
+    "TXN",
+    "ISRG",
+    "GILD",
+    "KLAC",
+    "PANW",
+    "ADBE",
+    "HON",
+    "CRWD",
+    "CEG",
+    "ADI",
+    "ADP",
+    "DASH",
+    "CMCSA",
+    "VRTX",
+    "MELI",
+    "SBUX",
+    "CDNS",
+    "ORLY",
+    "SNPS",
+    "MSTR",
+    "MDLZ",
+    "ABNB",
+    "MRVL",
+    "CTAS",
+    "TRI",
+    "MAR",
+    "MNST",
+    "CSX",
+    "ADSK",
+    "PYPL",
+    "FTNT",
+    "AEP",
+    "WDAY",
+    "REGN",
+    "ROP",
+    "NXPI",
+    "DDOG",
+    "AXON",
+    "ROST",
+    "IDXX",
+    "EA",
+    "PCAR",
+    "FAST",
+    "EXC",
+    "TTWO",
+    "XEL",
+    "ZS",
+    "PAYX",
+    "WBD",
+    "BKR",
+    "CPRT",
+    "CCEP",
+    "FANG",
+    "TEAM",
+    "CHTR",
+    "KDP",
+    "MCHP",
+    "GEHC",
+    "VRSK",
+    "CTSH",
+    "CSGP",
+    "KHC",
+    "ODFL",
+    "DXCM",
+    "TTD",
+    "ON",
+    "BIIB",
+    "LULU",
+    "CDW",
+    "GFS",
 ]
 
 # 合并所有以 daily_price 开头的 json，逐文件一行写入 merged.jsonl
 current_dir = os.path.dirname(__file__)
-pattern = os.path.join(current_dir, 'daily_price*.json')
+pattern = os.path.join(current_dir, "daily_price*.json")
 files = sorted(glob.glob(pattern))
 
-output_file = os.path.join(current_dir, 'merged.jsonl')
+output_file = os.path.join(current_dir, "merged.jsonl")
 
-with open(output_file, 'w', encoding='utf-8') as fout:
+with open(output_file, "w", encoding="utf-8") as fout:
     for fp in files:
         basename = os.path.basename(fp)
         # 仅当文件名包含任一纳指100成分符号时才写入
         if not any(symbol in basename for symbol in all_nasdaq_100_symbols):
             continue
-        with open(fp, 'r', encoding='utf-8') as f:
+        with open(fp, "r", encoding="utf-8") as f:
             data = json.load(f)
         # 统一重命名："1. open" -> "1. buy price"；"4. close" -> "4. sell price"
         # 对于最新的一天，只保留并写入 "1. buy price"
