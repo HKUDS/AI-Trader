@@ -7,14 +7,14 @@
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 
-**一个AI股票交易代理系统，让多个大语言模型在纳斯达克100股票池中完全自主决策、同台竞技！**
+**一个AI股票交易代理系统，让多个大语言模型在纳斯达克100和上证50股票池中完全自主决策、同台竞技！**
 
 ## 🏆 当前锦标赛排行榜 
 [*点击查看*](https://hkuds.github.io/AI-Trader/)
 
 <div align="center">
 
-### 🥇 **锦标赛期间： (Last Update 2025/10/30)**
+### 🇺🇸 **美股市场（纳斯达克100）- 最后更新: 2025/10/30**
 
 | 🏆 Rank | 🤖 AI Model | 📈 Total Earnings | 
 |---------|-------------|----------------|
@@ -26,10 +26,24 @@
 | 5th | Qwen3-max | 📊 +3.44% |
 | 6th | Gemini-2.5-flash | 📊 -0.54% |
 
-### 📊 **实时性能仪表板**
-![rank](assets/rank.png)
+### 🇨🇳 **A股市场（上证50）- 最后更新: 2025/10/29**
 
-*每日追踪AI模型在纳斯达克100交易中的表现*
+| 🏆 Rank | 🤖 AI Model | 📈 Total Earnings | 
+|---------|-------------|----------------|
+| **🥇 1st** | **MiniMax-M2** | 🚀 +2.81% |
+| 🥈 2nd(Baseline) | SSE-50 | 📊 +1.40% |
+| 🥉 3rd | Gemini-2.5-flash | 📊 +0.97% |
+| 4th | Claude-3.7 | 📊 -0.71% |
+| 5th | DeepSeek | 📊 -1.98% |
+| 6th | GPT-5 | 📊 -2.53% |
+
+### 📊 **实时性能仪表板**
+#### 🇺🇸 美股市场（纳斯达克100）
+![rank_us](assets/rankus.png)
+#### 🇨🇳 A股市场（上证50）
+![rank_cn](assets/rankcn.png)
+
+*每日追踪AI模型在美股（纳斯达克100）和A股（上证50）市场的交易表现*
 
 </div>
 
@@ -57,7 +71,7 @@
 
 ## 🌟 项目介绍
 
-> **AI-Trader让五个不同的AI模型，每个都采用独特的投资策略，在同一个市场中完全自主决策、竞争，看谁能在纳斯达克100交易中赚得最多！**
+> **AI-Trader让六个不同的AI模型，每个都采用独特的投资策略，在同一个市场中完全自主决策、竞争，看谁能在纳斯达克100或上证50交易中赚得最多！**
 
 ### 🎯 核心特性
 
@@ -74,10 +88,10 @@
 ---
 
 ### 🎮 交易环境
-每个AI模型以$10,000起始资金在受控环境中交易纳斯达克100股票，使用真实市场数据和历史回放功能。
+每个AI模型以$10,000或100,000¥起始资金在受控环境中交易纳斯达克100股票和上证50股票，使用真实市场数据和历史回放功能。
 
-- 💰 **初始资金**: $10,000美元起始余额
-- 📈 **交易范围**: 纳斯达克100成分股（100只顶级科技股）
+- 💰 **初始资金**: $10,000美元或100,000¥人民币起始余额
+- 📈 **交易范围**: 纳斯达克100成分股（100只顶级科技股）或上证50成分股
 - ⏰ **交易时间**: 工作日市场时间，支持历史模拟
 - 📊 **数据集成**: Alpha Vantage API结合Jina AI市场情报
 - 🔄 **时间管理**: 历史期间回放，自动过滤未来信息
@@ -97,7 +111,7 @@ AI代理完全自主运行，进行市场研究、制定交易决策，并在无
 ### 🏁 竞赛规则
 所有AI模型在相同条件下竞争，使用相同的资金、数据访问、工具和评估指标，确保公平比较。
 
-- 💰 **起始资金**: $10,000美元初始投资
+- 💰 **起始资金**: $10,000美元或100,000¥人民币初始投资
 - 📊 **数据访问**: 统一的市场数据和信息源
 - ⏰ **运行时间**: 同步的交易时间窗口
 - 📈 **性能指标**: 所有模型的标准评估标准
@@ -174,9 +188,15 @@ AI-Trader Bench/
 │
 ├── 📊 数据系统
 │   ├── data/
-│   │   ├── daily_prices_*.json    # 📈 股票价格数据
-│   │   ├── merged.jsonl           # 🔄 统一数据格式
-│   │   └── agent_data/            # 📝 AI交易记录
+│   │   ├── daily_prices_*.json    # 📈 纳斯达克100股票价格数据
+│   │   ├── merged.jsonl           # 🔄 美股统一数据格式
+│   │   ├── A_stock/               # 🇨🇳 A股市场数据
+│   │   │   ├── sse_50_weight.csv      # 📋 上证50成分股
+│   │   │   ├── daily_prices_sse_50.csv # 📈 日线价格数据（CSV）
+│   │   │   └── merged.jsonl           # 🔄 A股统一数据格式
+│   │   │   └── index_daily_sse_50.json    # � 上证50指数基准数据
+│   │   └── agent_data/            # 📝 AI交易记录（纳斯达克100）
+│   │   └── agent_data_astock/     # 📝 A股AI交易记录
 │   └── calculate_performance.py   # 📈 性能分析
 │
 ├── 🎨 前端界面
@@ -205,7 +225,9 @@ AI-Trader Bench/
 | **数学工具** | 财务计算和分析 | 基础数学运算 |
 
 #### 📊 数据系统
-- **📈 价格数据**: 纳斯达克100成分股的完整OHLCV数据
+- **📈 价格数据**: 
+  - 🇺🇸 纳斯达克100成分股的完整OHLCV数据
+  - 🇨🇳 A股市场数据（上证50指数）通过Tushare API
 - **📝 交易记录**: 每个AI模型的详细交易历史
 - **📊 性能指标**: 夏普比率、最大回撤、年化收益等
 - **🔄 数据同步**: 自动化的数据获取和更新机制
@@ -215,7 +237,11 @@ AI-Trader Bench/
 ### 📋 前置要求
 
 - **Python 3.10+** 
-- **API密钥**: OpenAI、Alpha Vantage、Jina AI
+- **API密钥**: 
+  - OpenAI（用于AI模型）
+  - Alpha Vantage（用于纳斯达克100数据）
+  - Jina AI（用于市场信息搜索）
+  - Tushare（用于A股市场数据，可选）
 
 
 ### ⚡ 一键安装
@@ -243,8 +269,9 @@ OPENAI_API_BASE=https://your-openai-proxy.com/v1
 OPENAI_API_KEY=your_openai_key
 
 # 📊 数据源配置
-ALPHAADVANTAGE_API_KEY=your_alpha_vantage_key
+ALPHAADVANTAGE_API_KEY=your_alpha_vantage_key  # 用于纳斯达克100数据
 JINA_API_KEY=your_jina_api_key
+TUSHARE_TOKEN=your_tushare_token               # 用于A股数据
 
 # ⚙️ 系统配置
 RUNTIME_ENV_PATH=./runtime_env.json #推荐使用绝对路径
@@ -265,13 +292,14 @@ AGENT_MAX_STEP=30             # 最大推理步数
 pip install -r requirements.txt
 
 # 或手动安装核心依赖
-pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas
+pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas tushare
 ```
 
 ## 🎮 运行指南
 
-### 📊 步骤1: 数据准备 (`./fresh_data.sh`)
+### 📊 步骤1: 数据准备
 
+#### 🇺🇸 纳斯达克100数据 (`./fresh_data.sh`)
 
 ```bash
 # 📈 获取纳斯达克100股票数据
@@ -280,6 +308,19 @@ python get_daily_price.py
 
 # 🔄 合并数据为统一格式
 python merge_jsonl.py
+```
+
+#### 🇨🇳 A股市场数据（上证50）
+
+```bash
+# 📈 获取中国A股市场数据（上证50指数）
+cd data
+python get_daily_price_a_stock.py
+
+# 🔄 转换为JSONL格式（交易系统必需）
+python merge_a_stock_jsonl.py
+
+# 📊 数据将保存至: data/A_stock/merged.jsonl
 ```
 
 ### 🛠️ 步骤2: 启动MCP服务
@@ -291,12 +332,19 @@ python start_mcp_services.py
 
 ### 🚀 步骤3: 启动AI竞技场
 
+#### 美股交易（纳斯达克100）：
 ```bash
-# 🎯 运行主程序 - 让AI们开始交易！
+# 🎯 使用默认配置运行
 python main.py
 
-# 🎯 或使用自定义配置
-python main.py configs/my_config.json
+# 🎯 或指定美股配置
+python main.py configs/default_config.json
+```
+
+#### A股交易（上证50）：
+```bash
+# 🎯 运行A股交易
+python main.py configs/astock_config.json
 ```
 
 ### ⏰ 时间设置示例
@@ -305,6 +353,7 @@ python main.py configs/my_config.json
 ```json
 {
   "agent_type": "BaseAgent",
+  "market": "us",              // 市场类型："us" 美股，"cn" A股
   "date_range": {
     "init_date": "2024-01-01",  // 回测开始日期
     "end_date": "2024-03-31"     // 回测结束日期
@@ -316,7 +365,10 @@ python main.py configs/my_config.json
       "signature": "claude-3.7-sonnet",
       "enabled": true
     }
-  ]
+  ],
+  "agent_config": {
+    "initial_cash": 10000.0    // 初始资金：美股 $10,000，A股 ¥100,000
+  }
 }
 ```
 
@@ -333,13 +385,14 @@ python3 -m http.server 8000
 
 ### 🏆 竞技规则
 
-| 规则项 | 设置 | 说明 |
-|--------|------|------|
-| **💰 初始资金** | $10,000 | 每个AI模型起始资金 |
-| **📈 交易标的** | 纳斯达克100 | 100只顶级科技股 |
-| **⏰ 交易时间** | 工作日 | 周一至周五 |
-| **💲 价格基准** | 开盘价 | 使用当日开盘价交易 |
-| **📝 记录方式** | JSONL格式 | 完整交易历史记录 |
+| 规则项 | 美股 | A股（中国） |
+|--------|------|------------|
+| **💰 初始资金** | $10,000 | ¥100,000 |
+| **📈 交易标的** | 纳斯达克100 | 上证50 |
+| **🌍 市场** | 美国股市 | 中国A股市场 |
+| **⏰ 交易时间** | 工作日 | 工作日 |
+| **💲 价格基准** | 开盘价 | 开盘价 |
+| **📝 记录方式** | JSONL格式 | JSONL格式 |
 
 ## ⚙️ 配置指南
 
@@ -348,6 +401,7 @@ python3 -m http.server 8000
 ```json
 {
   "agent_type": "BaseAgent",
+  "market": "us",
   "date_range": {
     "init_date": "2025-01-01",
     "end_date": "2025-01-31"
@@ -377,10 +431,11 @@ python3 -m http.server 8000
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
 | `agent_type` | AI代理类型 | "BaseAgent" |
+| `market` | 市场类型："us" 或 "cn" | "us" |
 | `max_steps` | 最大推理步数 | 30 |
 | `max_retries` | 最大重试次数 | 3 |
 | `base_delay` | 操作延迟(秒) | 1.0 |
-| `initial_cash` | 初始资金 | $10,000 |
+| `initial_cash` | 初始资金 | $10,000（美股）/ ¥100,000（A股） |
 
 ### 📊 数据格式
 
@@ -500,7 +555,7 @@ class CustomTool:
 ## 🚀 路线图
 
 ### 🌟 未来计划
-- [ ] **🇨🇳 A股支持** - 扩展至中国股市
+- [x] **🇨🇳 A股支持** - ✅ 上证50指数数据集成已完成
 - [ ] **📊 收盘后统计** - 自动收益分析
 - [ ] **🔌 策略市场** - 添加第三方策略分享平台
 - [ ] **🎨 炫酷前端界面** - 现代化Web仪表板
@@ -562,7 +617,8 @@ class CustomTool:
 感谢以下开源项目和服务：
 - [LangChain](https://github.com/langchain-ai/langchain) - AI应用开发框架
 - [MCP](https://github.com/modelcontextprotocol) - Model Context Protocol
-- [Alpha Vantage](https://www.alphavantage.co/) - 金融数据API
+- [Alpha Vantage](https://www.alphavantage.co/) - 美股金融数据API
+- [Tushare](https://tushare.pro/) - A股市场数据API
 - [Jina AI](https://jina.ai/) - 信息搜索服务
 
 ## 免责声明

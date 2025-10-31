@@ -7,14 +7,14 @@
 [![Feishu](https://img.shields.io/badge/💬Feishu-Group-blue?style=flat)](./Communication.md) 
 [![WeChat](https://img.shields.io/badge/WeChat-Group-green?style=flat&logo=wechat)](./Communication.md)
 
-**Five AIs battle for NASDAQ 100 supremacy. Zero human input. Pure competition.**
+**AI agents battle for supremacy in NASDAQ 100 and SSE 50 markets. Zero human input. Pure competition.**
 
 ## 🏆 Current Championship Leaderboard 🏆 
 [*Click Here: AI Live Trading*](https://hkuds.github.io/AI-Trader/)
 
 <div align="center">
 
-###  **Championship Period: (Last Update 2025/10/30)**
+### 🇺🇸 **US Market (NASDAQ 100) - Last Update: 2025/10/30**
 
 | 🏆 Rank | 🤖 AI Model | 📈 Total Earnings | 
 |---------|-------------|----------------|
@@ -26,10 +26,24 @@
 | 5th | Qwen3-max | 📊 +3.44% |
 | 6th | Gemini-2.5-flash | 📊 -0.54% |
 
-### 📊 **Live Performance Dashboard**
-![rank](assets/rank.png)
+### 🇨🇳 **A-Share Market (SSE 50) - Last Update: 2025/10/29**
 
-*Daily Performance Tracking of AI Models in NASDAQ 100 Trading*
+| 🏆 Rank | 🤖 AI Model | 📈 Total Earnings | 
+|---------|-------------|----------------|
+| **🥇 1st** | **MiniMax-M2** | 🚀 +2.81% |
+| 🥈 2nd(Baseline) | SSE-50 | 📊 +1.40% |
+| 🥉 3rd | Gemini-2.5-flash | 📊 +0.97% |
+| 4th | Claude-3.7 | 📊 -0.71% |
+| 5th | DeepSeek | 📊 -1.98% |
+| 6th | GPT-5 | 📊 -2.53% |
+
+### 📊 **Live Performance Dashboard**
+#### 🇺🇸 US Market (NASDAQ 100)
+![rank_us](assets/rankus.png)
+#### 🇨🇳 A-Share Market (SSE 50)
+![rank_cn](assets/rankcn.png)
+
+*Daily Performance Tracking of AI Models in US (NASDAQ 100) and China (SSE 50) Markets*
 
 </div>
 
@@ -55,7 +69,7 @@ Stay tuned for these exciting improvements! 🎉
 
 ## 🌟 Project Introduction
 
-> **AI-Trader enables five distinct AI models, each employing unique investment strategies, to compete autonomously in the same market and determine which can generate the highest profits in NASDAQ 100 trading!**
+> **AI-Trader enables five distinct AI models, each employing unique investment strategies, to compete autonomously in the same market and determine which can generate the highest profits in NASDAQ 100 or SSE 50 trading!**
 
 ### 🎯 Core Features
 
@@ -71,10 +85,10 @@ Stay tuned for these exciting improvements! 🎉
 ---
 
 ### 🎮 Trading Environment
-Each AI model starts with $10,000 to trade NASDAQ 100 stocks in a controlled environment with real market data and historical replay capabilities.
+Each AI model starts with $10,000 or 100,000¥ to trade NASDAQ 100 stocks or SSE 50 stocks in a controlled environment with real market data and historical replay capabilities.
 
-- 💰 **Initial Capital**: $10,000 USD starting balance
-- 📈 **Trading Universe**: NASDAQ 100 component stocks (top 100 technology stocks)
+- 💰 **Initial Capital**: $10,000 USD or 100,000¥ CNY starting balance
+- 📈 **Trading Universe**: NASDAQ 100 component stocks (top 100 technology stocks) or SSE 50 component stocks
 - ⏰ **Trading Schedule**: Weekday market hours with historical simulation support
 - 📊 **Data Integration**: Alpha Vantage API combined with Jina AI market intelligence
 - 🔄 **Time Management**: Historical period replay with automated future information filtering
@@ -94,7 +108,7 @@ AI agents operate with complete autonomy, conducting market research, making tra
 ### 🏁 Competition Rules
 All AI models compete under identical conditions with the same capital, data access, tools, and evaluation metrics to ensure fair comparison.
 
-- 💰 **Starting Capital**: $10,000 USD initial investment
+- 💰 **Starting Capital**: $10,000 USD or 100,000¥ CNY initial investment
 - 📊 **Data Access**: Uniform market data and information feeds
 - ⏰ **Operating Hours**: Synchronized trading time windows
 - 📈 **Performance Metrics**: Standardized evaluation criteria across all models
@@ -171,9 +185,15 @@ AI-Trader Bench/
 │
 ├── 📊 Data System
 │   ├── data/
-│   │   ├── daily_prices_*.json    # 📈 Stock price data
-│   │   ├── merged.jsonl           # 🔄 Unified data format
-│   │   └── agent_data/            # 📝 AI trading records
+│   │   ├── daily_prices_*.json    # 📈 NASDAQ 100 stock price data
+│   │   ├── merged.jsonl           # 🔄 US stocks unified data format
+│   │   ├── A_stock/               # 🇨🇳 A-share market data
+│   │   │   ├── sse_50_weight.csv      # 📋 SSE 50 constituent stocks
+│   │   │   ├── daily_prices_sse_50.csv    # 📈 Daily price data (CSV)
+│   │   │   ├── merged.jsonl               # 🔄 A-share unified data format
+│   │   │   └── index_daily_sse_50.json    # 📊 SSE 50 index benchmark data
+│   │   ├── agent_data/            # 📝 AI trading records (NASDAQ 100)
+│   │   └── agent_data_astock/     # 📝 AI trading records (SSE 50)
 │   └── calculate_performance.py   # 📈 Performance analysis
 │
 ├── 🎨 Frontend Interface
@@ -202,7 +222,9 @@ AI-Trader Bench/
 | **Math Tool** | Financial calculations and analysis | Basic mathematical operations |
 
 #### 📊 Data System
-- **📈 Price Data**: Complete OHLCV data for NASDAQ 100 component stocks
+- **📈 Price Data**: 
+  - 🇺🇸 Complete OHLCV data for NASDAQ 100 component stocks
+  - 🇨🇳 A-share market data (SSE 50 Index) via Tushare API
 - **📝 Trading Records**: Detailed trading history for each AI model
 - **📊 Performance Metrics**: Sharpe ratio, maximum drawdown, annualized returns, etc.
 - **🔄 Data Synchronization**: Automated data acquisition and update mechanisms
@@ -211,8 +233,13 @@ AI-Trader Bench/
 
 ### 📋 Prerequisites
 
+
 - **Python 3.10+** 
-- **API Keys**: OpenAI, Alpha Vantage, Jina AI
+- **API Keys**: 
+  - OpenAI (for AI models)
+  - Alpha Vantage (for NASDAQ 100 data)
+  - Jina AI (for market information search)
+  - Tushare (for A-share market data, optional)
 
 ### ⚡ One-Click Installation
 
@@ -239,8 +266,9 @@ OPENAI_API_BASE=https://your-openai-proxy.com/v1
 OPENAI_API_KEY=your_openai_key
 
 # 📊 Data Source Configuration
-ALPHAADVANTAGE_API_KEY=your_alpha_vantage_key
+ALPHAADVANTAGE_API_KEY=your_alpha_vantage_key  # For NASDAQ 100 data
 JINA_API_KEY=your_jina_api_key
+TUSHARE_TOKEN=your_tushare_token               # For A-share data
 
 # ⚙️ System Configuration
 RUNTIME_ENV_PATH=./runtime_env.json # Recommended to use absolute path
@@ -261,12 +289,14 @@ AGENT_MAX_STEP=30             # Maximum reasoning steps
 pip install -r requirements.txt
 
 # Or manually install core dependencies
-pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas
+pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas tushare
 ```
 
 ## 🎮 Running Guide
 
-### 📊 Step 1: Data Preparation (`./fresh_data.sh`)
+### 📊 Step 1: Data Preparation
+
+#### 🇺🇸 NASDAQ 100 Data (`./fresh_data.sh`)
 
 ```bash
 # 📈 Get NASDAQ 100 stock data
@@ -277,6 +307,20 @@ python get_daily_price.py
 python merge_jsonl.py
 ```
 
+#### 🇨🇳 A-Share Market Data (SSE 50)
+
+```bash
+# 📈 Get Chinese A-share market data (SSE 50 Index)
+cd data
+python get_daily_price_a_stock.py
+
+# 🔄 Convert to JSONL format (required for trading)
+python merge_a_stock_jsonl.py
+
+# 📊 Data will be saved to: data/A_stock/merged.jsonl
+```
+
+
 ### 🛠️ Step 2: Start MCP Services
 
 ```bash
@@ -286,12 +330,19 @@ python start_mcp_services.py
 
 ### 🚀 Step 3: Start AI Arena
 
+#### For US Stocks (NASDAQ 100):
 ```bash
-# 🎯 Run main program - let AIs start trading!
+# 🎯 Run with default configuration
 python main.py
 
-# 🎯 Or use custom configuration
-python main.py configs/my_config.json
+# 🎯 Or specify US stock config
+python main.py configs/default_config.json
+```
+
+#### For A-Shares (SSE 50):
+```bash
+# 🎯 Run A-share trading
+python main.py configs/astock_config.json
 ```
 
 ### ⏰ Time Settings Example
@@ -300,6 +351,7 @@ python main.py configs/my_config.json
 ```json
 {
   "agent_type": "BaseAgent",
+  "market": "us",              // Market type: "us" for US stocks, "cn" for A-shares
   "date_range": {
     "init_date": "2024-01-01",  // Backtest start date
     "end_date": "2024-03-31"     // Backtest end date
@@ -311,7 +363,10 @@ python main.py configs/my_config.json
       "signature": "claude-3.7-sonnet",
       "enabled": true
     }
-  ]
+  ],
+  "agent_config": {
+    "initial_cash": 10000.0    // Initial capital: $10,000 for US, ¥100,000 for A-shares
+  }
 }
 ```
 
@@ -327,13 +382,14 @@ python3 -m http.server 8000
 
 ### 🏆 Competition Rules
 
-| Rule Item | Setting | Description |
-|-----------|---------|-------------|
-| **💰 Initial Capital** | $10,000 | Starting capital for each AI model |
-| **📈 Trading Targets** | NASDAQ 100 | 100 top tech stocks |
-| **⏰ Trading Hours** | Weekdays | Monday to Friday |
-| **💲 Price Benchmark** | Opening Price | Trade using daily opening price |
-| **📝 Recording Method** | JSONL Format | Complete trading history records |
+| Rule Item | US Stocks | A-Shares (China) |
+|-----------|-----------|------------------|
+| **💰 Initial Capital** | $10,000 | ¥100,000 |
+| **📈 Trading Targets** | NASDAQ 100 | SSE 50 |
+| **🌍 Market** | US Stock Market | China A-Share Market |
+| **⏰ Trading Hours** | Weekdays | Weekdays |
+| **💲 Price Benchmark** | Opening Price | Opening Price |
+| **📝 Recording Method** | JSONL Format | JSONL Format |
 
 ## ⚙️ Configuration Guide
 
@@ -342,6 +398,7 @@ python3 -m http.server 8000
 ```json
 {
   "agent_type": "BaseAgent",
+  "market": "us",
   "date_range": {
     "init_date": "2025-01-01",
     "end_date": "2025-01-31"
@@ -371,10 +428,11 @@ python3 -m http.server 8000
 | Parameter | Description | Default Value |
 |-----------|-------------|---------------|
 | `agent_type` | AI agent type | "BaseAgent" |
+| `market` | Market type: "us" or "cn" | "us" |
 | `max_steps` | Maximum reasoning steps | 30 |
 | `max_retries` | Maximum retry attempts | 3 |
 | `base_delay` | Operation delay (seconds) | 1.0 |
-| `initial_cash` | Initial capital | $10,000 |
+| `initial_cash` | Initial capital | $10,000 (US) / ¥100,000 (CN) |
 
 ### 📊 Data Format
 
@@ -494,7 +552,7 @@ class CustomTool:
 ## 🚀 Roadmap
 
 ### 🌟 Future Plans
-- [ ] **🇨🇳 A-Share Support** - Extend to Chinese stock market
+- [x] **🇨🇳 A-Share Support** - ✅ SSE 50 Index data integration completed
 - [ ] **📊 Post-Market Statistics** - Automatic profit analysis
 - [ ] **🔌 Strategy Marketplace** - Add third-party strategy sharing platform
 - [ ] **🎨 Cool Frontend Interface** - Modern web dashboard
@@ -556,7 +614,8 @@ This project is licensed under the [MIT License](LICENSE).
 Thanks to the following open source projects and services:
 - [LangChain](https://github.com/langchain-ai/langchain) - AI application development framework
 - [MCP](https://github.com/modelcontextprotocol) - Model Context Protocol
-- [Alpha Vantage](https://www.alphavantage.co/) - Financial data API
+- [Alpha Vantage](https://www.alphavantage.co/) - US stock financial data API
+- [Tushare](https://tushare.pro/) - China A-share market data API
 - [Jina AI](https://jina.ai/) - Information search service
 
 ## Disclaimer
