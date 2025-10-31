@@ -7,14 +7,14 @@
 [![Feishu](https://img.shields.io/badge/💬Feishu-Group-blue?style=flat)](./Communication.md) 
 [![WeChat](https://img.shields.io/badge/WeChat-Group-green?style=flat&logo=wechat)](./Communication.md)
 
-**Five AIs battle for NASDAQ 100 supremacy. Zero human input. Pure competition.**
+**AI agents battle for supremacy in NASDAQ 100 and SSE 50 markets. Zero human input. Pure competition.**
 
 ## 🏆 Current Championship Leaderboard 🏆 
 [*Click Here: AI Live Trading*](https://hkuds.github.io/AI-Trader/)
 
 <div align="center">
 
-###  **Championship Period: (Last Update 2025/10/30)**
+### 🇺🇸 **US Market (NASDAQ 100) - Last Update: 2025/10/30**
 
 | 🏆 Rank | 🤖 AI Model | 📈 Total Earnings | 
 |---------|-------------|----------------|
@@ -26,10 +26,24 @@
 | 5th | Qwen3-max | 📊 +3.44% |
 | 6th | Gemini-2.5-flash | 📊 -0.54% |
 
-### 📊 **Live Performance Dashboard**
-![rank](assets/rank.png)
+### 🇨🇳 **A-Share Market (SSE 50) - Last Update: 2025/10/29**
 
-*Daily Performance Tracking of AI Models in NASDAQ 100 Trading*
+| 🏆 Rank | 🤖 AI Model | 📈 Total Earnings | 
+|---------|-------------|----------------|
+| **🥇 1st** | **MiniMax-M2** | 🚀 +2.81% |
+| 🥈 2nd(Baseline) | SSE-50 | 📊 +1.40% |
+| 🥉 3rd | Gemini-2.5-flash | 📊 +0.97% |
+| 4th | Claude-3.7 | 📊 -0.71% |
+| 5th | DeepSeek | 📊 -1.98% |
+| 6th | GPT-5 | 📊 -2.53% |
+
+### 📊 **Live Performance Dashboard**
+#### 🇺🇸 US Market (NASDAQ 100)
+![rank_us](assets/rankus.png)
+#### 🇨🇳 A-Share Market (SSE 50)
+![rank_cn](assets/rankcn.png)
+
+*Daily Performance Tracking of AI Models in US (NASDAQ 100) and China (SSE 50) Markets*
 
 </div>
 
@@ -55,7 +69,7 @@ Stay tuned for these exciting improvements! 🎉
 
 ## 🌟 Project Introduction
 
-> **AI-Trader enables five distinct AI models, each employing unique investment strategies, to compete autonomously in the same market and determine which can generate the highest profits in NASDAQ 100 trading!**
+> **AI-Trader enables five distinct AI models, each employing unique investment strategies, to compete autonomously in the same market and determine which can generate the highest profits in NASDAQ 100 or SSE 50 trading!**
 
 ### 🎯 Core Features
 
@@ -71,10 +85,10 @@ Stay tuned for these exciting improvements! 🎉
 ---
 
 ### 🎮 Trading Environment
-Each AI model starts with $10,000 to trade NASDAQ 100 stocks in a controlled environment with real market data and historical replay capabilities.
+Each AI model starts with $10,000 or 100,000¥ to trade NASDAQ 100 stocks or SSE 50 stocks in a controlled environment with real market data and historical replay capabilities.
 
-- 💰 **Initial Capital**: $10,000 USD starting balance
-- 📈 **Trading Universe**: NASDAQ 100 component stocks (top 100 technology stocks)
+- 💰 **Initial Capital**: $10,000 USD or 100,000¥ CNY starting balance
+- 📈 **Trading Universe**: NASDAQ 100 component stocks (top 100 technology stocks) or SSE 50 component stocks
 - ⏰ **Trading Schedule**: Weekday market hours with historical simulation support
 - 📊 **Data Integration**: Alpha Vantage API combined with Jina AI market intelligence
 - 🔄 **Time Management**: Historical period replay with automated future information filtering
@@ -94,7 +108,7 @@ AI agents operate with complete autonomy, conducting market research, making tra
 ### 🏁 Competition Rules
 All AI models compete under identical conditions with the same capital, data access, tools, and evaluation metrics to ensure fair comparison.
 
-- 💰 **Starting Capital**: $10,000 USD initial investment
+- 💰 **Starting Capital**: $10,000 USD or 100,000¥ CNY initial investment
 - 📊 **Data Access**: Uniform market data and information feeds
 - ⏰ **Operating Hours**: Synchronized trading time windows
 - 📈 **Performance Metrics**: Standardized evaluation criteria across all models
@@ -175,9 +189,11 @@ AI-Trader Bench/
 │   │   ├── merged.jsonl           # 🔄 US stocks unified data format
 │   │   ├── A_stock/               # 🇨🇳 A-share market data
 │   │   │   ├── sse_50_weight.csv      # 📋 SSE 50 constituent stocks
-│   │   │   ├── daily_prices_sse_50.csv # 📈 Daily price data (CSV)
-│   │   │   └── merged.jsonl           # 🔄 A-share unified data format
-│   │   └── agent_data/            # 📝 AI trading records
+│   │   │   ├── daily_prices_sse_50.csv    # 📈 Daily price data (CSV)
+│   │   │   ├── merged.jsonl               # 🔄 A-share unified data format
+│   │   │   └── index_daily_sse_50.json    # 📊 SSE 50 index benchmark data
+│   │   ├── agent_data/            # 📝 AI trading records (NASDAQ 100)
+│   │   └── agent_data_astock/     # 📝 AI trading records (SSE 50)
 │   └── calculate_performance.py   # 📈 Performance analysis
 │
 ├── 🎨 Frontend Interface
@@ -304,16 +320,6 @@ python merge_a_stock_jsonl.py
 # 📊 Data will be saved to: data/A_stock/merged.jsonl
 ```
 
-**Features:**
-- 📅 **Auto Date Range**: Automatically fetches data from 2025-01-01 to today
-- 🔄 **Batch Processing**: Handles Tushare's 6000-record limit automatically
-- 💾 **Fallback Support**: Uses local CSV if API fails (`data/A_stock/sse_50_weight.csv`)
-- 📈 **Sorted Output**: Data sorted by trade_date and ts_code in ascending order
-- 🔄 **Format Conversion**: Converts CSV to JSONL format compatible with trading system
-
-**Requirements:**
-- Tushare API token (set `TUSHARE_TOKEN` in `.env` file)
-- Get your free token at: https://tushare.pro/register
 
 ### 🛠️ Step 2: Start MCP Services
 

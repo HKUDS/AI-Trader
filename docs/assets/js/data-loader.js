@@ -210,9 +210,46 @@ class DataLoader {
         
         console.log(`Reduced from ${positions.length} to ${uniquePositions.length} unique daily positions for ${agentName}`);
         
+        // Fill missing dates with previous day's positions
+        const filledPositions = [];
+        if (uniquePositions.length > 0) {
+            const startDate = new Date(uniquePositions[0].date);
+            const endDate = new Date(uniquePositions[uniquePositions.length - 1].date);
+            
+            let currentPosition = uniquePositions[0];
+            let positionIndex = 0;
+            
+            // Iterate through all dates from start to end
+            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+                const dateStr = d.toISOString().split('T')[0];
+                
+                // Check if we have a position for this date
+                if (positionIndex < uniquePositions.length && uniquePositions[positionIndex].date === dateStr) {
+                    currentPosition = uniquePositions[positionIndex];
+                    filledPositions.push(currentPosition);
+                    positionIndex++;
+                } else {
+                    // Skip weekends (Saturday = 6, Sunday = 0)
+                    const dayOfWeek = d.getDay();
+                    if (dayOfWeek === 0 || dayOfWeek === 6) {
+                        continue;
+                    }
+                    
+                    // Fill with previous position but update the date
+                    filledPositions.push({
+                        ...currentPosition,
+                        date: dateStr,
+                        this_action: null  // No action on this day
+                    });
+                }
+            }
+        }
+        
+        console.log(`Filled positions from ${uniquePositions.length} to ${filledPositions.length} days for ${agentName}`);
+        
         const assetHistory = [];
 
-        for (const position of uniquePositions) {
+        for (const position of filledPositions) {
             const date = position.date;
             const assetValue = await this.calculateAssetValue(position, date);
             
