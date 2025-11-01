@@ -7,9 +7,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+def _resolve_runtime_env_path() -> str:
+    """Resolve runtime env path. If RUNTIME_ENV_PATH is unset, fall back to
+    per-signature default at data/agent_data/{SIGNATURE}/.runtime_env.json.
+    """
+    path = os.environ.get("RUNTIME_ENV_PATH")
+    if not path:
+        signature = os.environ.get("SIGNATURE")
+        if signature:
+            base_dir = Path(__file__).resolve().parents[1]
+            default_path = base_dir / "data" / "agent_data" / signature / ".runtime_env.json"
+            # Ensure parent exists but do not create file here
+            default_path.parent.mkdir(parents=True, exist_ok=True)
+            path = str(default_path)
+            os.environ["RUNTIME_ENV_PATH"] = path
+    return path or ""
+
 
 def _load_runtime_env() -> dict:
-    path = os.environ.get("RUNTIME_ENV_PATH")
+    path = _resolve_runtime_env_path()
     if path is None:
         return {}
     try:
@@ -32,7 +48,7 @@ def get_config_value(key: str, default=None):
 
 
 def write_config_value(key: str, value: Any):
-    path = os.environ.get("RUNTIME_ENV_PATH")
+    path = _resolve_runtime_env_path()
     if path is None:
         print(f"⚠️  WARNING: RUNTIME_ENV_PATH not set, config value '{key}' not persisted")
         return

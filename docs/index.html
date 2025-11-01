@@ -6,6 +6,7 @@
     <title>AI-Trader - AI Trading Agent Benchmark</title>
     <link rel="stylesheet" href="assets/css/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
 </head>
 <body>
     <nav class="navbar">
@@ -71,6 +72,35 @@
             </div>
         </section>
 
+        <!-- Leaderboard and Action Flow Section -->
+        <section class="insights-section">
+            <!-- Leaderboard (Left Half) -->
+            <div class="leaderboard-section">
+                <div class="section-header">
+                    <h3>
+                        <span class="section-icon">🏆</span>
+                        Performance Leaderboard
+                    </h3>
+                </div>
+                <div class="leaderboard-list" id="leaderboardList">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Action Flow (Right Half) -->
+            <div class="action-flow-section">
+                <div class="section-header">
+                    <h3>
+                        <span class="section-icon">💹</span>
+                        Recent Trading Actions
+                    </h3>
+                </div>
+                <div class="action-list" id="actionList">
+                    <!-- Populated by JavaScript -->
+                </div>
+            </div>
+        </section>
+
         <section class="legend-section">
             <h3>Agent Legend</h3>
             <div class="agent-legend" id="agentLegend"></div>
@@ -90,7 +120,9 @@
         <p>AI-Trader &copy; 2025 | AI-Powered Trading Agent Benchmark</p>
     </footer>
 
+    <script src="assets/js/config-loader.js"></script>
     <script src="assets/js/data-loader.js"></script>
+    <script src="assets/js/transaction-loader.js"></script>
     <script src="assets/js/asset-chart.js"></script>
 </body>
 </html>

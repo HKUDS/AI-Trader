@@ -287,11 +287,24 @@ function updateTradeHistory(agentName) {
         const iconClass = trade.action === 'buy' ? 'buy' : 'sell';
         const actionText = trade.action === 'buy' ? 'Bought' : 'Sold';
 
+        // Format the timestamp for hourly data
+        let formattedDate = trade.date;
+        if (trade.date.includes(':')) {
+            const date = new Date(trade.date);
+            formattedDate = date.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
         tradeItem.innerHTML = `
             <div class="trade-icon ${iconClass}">${icon}</div>
             <div class="trade-details">
                 <div class="trade-action">${actionText} ${trade.amount} shares of ${trade.symbol}</div>
-                <div class="trade-meta">${trade.date}</div>
+                <div class="trade-meta">${formattedDate}</div>
             </div>
         `;
 

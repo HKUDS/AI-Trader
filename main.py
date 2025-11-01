@@ -14,8 +14,14 @@ from tools.general_tools import get_config_value, write_config_value
 
 # Agent class mapping table - for dynamic import and instantiation
 AGENT_REGISTRY = {
-    "BaseAgent": {"module": "agent.base_agent.base_agent", "class": "BaseAgent"},
-    "BaseAgentAStock": {"module": "agent.base_agent_astock.base_agent_astock", "class": "BaseAgentAStock"},
+    "BaseAgent": {
+        "module": "agent.base_agent.base_agent",
+        "class": "BaseAgent"
+    },
+    "BaseAgent_Hour": {
+        "module": "agent.base_agent.base_agent_hour",
+        "class": "BaseAgent_Hour"
+    },
 }
 
 
@@ -125,8 +131,17 @@ async def main(config_path=None):
         print(f"⚠️  Using environment variable to override END_DATE: {END_DATE}")
 
     # Validate date range
-    INIT_DATE_obj = datetime.strptime(INIT_DATE, "%Y-%m-%d").date()
-    END_DATE_obj = datetime.strptime(END_DATE, "%Y-%m-%d").date()
+    # Support both YYYY-MM-DD and YYYY-MM-DD HH:MM:SS formats
+    if ' ' in INIT_DATE:
+        INIT_DATE_obj = datetime.strptime(INIT_DATE, "%Y-%m-%d %H:%M:%S")
+    else:
+        INIT_DATE_obj = datetime.strptime(INIT_DATE, "%Y-%m-%d")
+    
+    if ' ' in END_DATE:
+        END_DATE_obj = datetime.strptime(END_DATE, "%Y-%m-%d %H:%M:%S")
+    else:
+        END_DATE_obj = datetime.strptime(END_DATE, "%Y-%m-%d")
+    
     if INIT_DATE_obj > END_DATE_obj:
         print("❌ INIT_DATE is greater than END_DATE")
         exit(1)
@@ -158,9 +173,9 @@ async def main(config_path=None):
         model_name = model_config.get("name", "unknown")
         basemodel = model_config.get("basemodel")
         signature = model_config.get("signature")
-        openai_base_url = model_config.get("openai_base_url", None)
-        openai_api_key = model_config.get("openai_api_key", None)
-
+        openai_base_url = model_config.get("openai_base_url",None)
+        openai_api_key = model_config.get("openai_api_key",None)
+        
         # Validate required fields
         if not basemodel:
             print(f"❌ Model {model_name} missing basemodel field")
@@ -173,9 +188,17 @@ async def main(config_path=None):
         print(f"🤖 Processing model: {model_name}")
         print(f"📝 Signature: {signature}")
         print(f"🔧 BaseModel: {basemodel}")
-
-        # Initialize runtime configuration
-        write_config_value("SIGNATURE", signature)
+        
+        # Initialize per-signature runtime configuration
+        # Use a per-signature runtime env file that stores only TODAY_DATE and IF_TRADE
+        # Also export SIGNATURE via process env for tools that read it (but do not persist it)
+        from pathlib import Path as _Path
+        project_root = _Path(__file__).resolve().parent
+        runtime_env_dir = project_root / "data" / "agent_data" / signature
+        runtime_env_dir.mkdir(parents=True, exist_ok=True)
+        runtime_env_path = runtime_env_dir / ".runtime_env.json"
+        os.environ["RUNTIME_ENV_PATH"] = str(runtime_env_path)
+        os.environ["SIGNATURE"] = signature
         write_config_value("TODAY_DATE", END_DATE)
         write_config_value("IF_TRADE", False)
         write_config_value("MARKET", market)  # Store market type for other tools
@@ -202,14 +225,13 @@ async def main(config_path=None):
                 basemodel=basemodel,
                 stock_symbols=stock_symbols,
                 log_path=log_path,
-                openai_base_url=openai_base_url,
-                openai_api_key=openai_api_key,
                 max_steps=max_steps,
                 max_retries=max_retries,
                 base_delay=base_delay,
                 initial_cash=initial_cash,
                 init_date=INIT_DATE,
-                market=market,
+                openai_base_url=openai_base_url,
+                openai_api_key=openai_api_key
             )
 
             print(f"✅ {agent_type} instance created successfully: {agent}")

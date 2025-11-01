@@ -52,13 +52,13 @@ def calculate_portfolio_value(
     return total_value
 
 
-def get_available_date_range(modelname: str) -> Tuple[str, str]:
+def get_available_date_range(signature: str) -> Tuple[str, str]:
     """
     Get available data date range
 
     Args:
-        modelname: Model name
-
+        signature: Model name
+    
     Returns:
         Tuple of (earliest date, latest date) in YYYY-MM-DD format
     """
@@ -71,7 +71,7 @@ def get_available_date_range(modelname: str) -> Tuple[str, str]:
     if log_path.startswith("./data/"):
         log_path = log_path[7:]  # Remove "./data/" prefix
 
-    position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
+    position_file = base_dir / "data" / log_path / signature / "position" / "position.jsonl"
 
     if not position_file.exists():
         return "", ""
@@ -104,7 +104,7 @@ def get_daily_portfolio_values(
     Get daily portfolio values
 
     Args:
-        modelname: Model name
+        signature: Model name
         start_date: Start date in YYYY-MM-DD format, uses earliest date if None
         end_date: End date in YYYY-MM-DD format, uses latest date if None
         market: Market type, "us" for US stocks or "cn" for A-shares
@@ -123,7 +123,7 @@ def get_daily_portfolio_values(
     if log_path.startswith("./data/"):
         log_path = log_path[7:]  # Remove "./data/" prefix
 
-    position_file = base_dir / "data" / log_path / modelname / "position" / "position.jsonl"
+    position_file = base_dir / "data" / log_path / signature / "position" / "position.jsonl"
     merged_file = get_merged_file_path(market)
 
     if not position_file.exists() or not merged_file.exists():
@@ -131,7 +131,7 @@ def get_daily_portfolio_values(
 
     # Get available date range if not specified
     if start_date is None or end_date is None:
-        earliest_date, latest_date = get_available_date_range(modelname)
+        earliest_date, latest_date = get_available_date_range(signature)
         if not earliest_date or not latest_date:
             return {}
 
@@ -163,7 +163,13 @@ def get_daily_portfolio_values(
                 meta = doc.get("Meta Data", {})
                 symbol = meta.get("2. Symbol")
                 if symbol:
-                    price_data[symbol] = doc.get("Time Series (Daily)", {})
+                    # 查找所有以 "Time Series" 开头的键
+                    series = None
+                    for key, value in doc.items():
+                        if key.startswith("Time Series"):
+                            series = value
+                            break
+                    price_data[symbol] = series if series else {}
             except Exception:
                 continue
 
@@ -452,7 +458,7 @@ def calculate_all_metrics(
     Calculate all performance metrics
 
     Args:
-        modelname: Model name
+        signature: Model name
         start_date: Start date in YYYY-MM-DD format, uses earliest date if None
         end_date: End date in YYYY-MM-DD format, uses latest date if None
         market: Market type, "us" for US stocks or "cn" for A-shares
@@ -462,7 +468,7 @@ def calculate_all_metrics(
     """
     # Get available date range if not specified
     if start_date is None or end_date is None:
-        earliest_date, latest_date = get_available_date_range(modelname)
+        earliest_date, latest_date = get_available_date_range(signature)
         if not earliest_date or not latest_date:
             return {
                 "error": "Unable to get available data date range",
@@ -626,15 +632,15 @@ def get_next_id(filepath: Path) -> int:
     return max_id + 1
 
 
-def save_metrics_to_jsonl(metrics: Dict[str, any], modelname: str, output_dir: Optional[str] = None) -> str:
+def save_metrics_to_jsonl(metrics: Dict[str, any], signature: str, output_dir: Optional[str] = None) -> str:
     """
     Incrementally save metrics to JSONL format
 
     Args:
         metrics: Dictionary containing all metrics
-        modelname: Model name
-        output_dir: Output directory, defaults to data/agent_data/{modelname}/metrics/
-
+        signature: Model name
+        output_dir: Output directory, defaults to data/agent_data/{signature}/metrics/
+    
     Returns:
         Path to saved file
     """
@@ -647,7 +653,7 @@ def save_metrics_to_jsonl(metrics: Dict[str, any], modelname: str, output_dir: O
         log_path = get_config_value("LOG_PATH", "./data/agent_data")
         if log_path.startswith("./data/"):
             log_path = log_path[7:]  # Remove "./data/" prefix
-        output_dir = base_dir / "data" / log_path / modelname / "metrics"
+        output_dir = base_dir / "data" / log_path / signature / "metrics"
     else:
         output_dir = Path(output_dir)
 
@@ -664,7 +670,8 @@ def save_metrics_to_jsonl(metrics: Dict[str, any], modelname: str, output_dir: O
     # Prepare data to save
     save_data = {
         "id": next_id,
-        "model_name": modelname,
+        "timestamp": datetime.now().isoformat(),
+        "model_name": signature,
         "analysis_period": {
             "start_date": metrics.get("start_date", ""),
             "end_date": metrics.get("end_date", ""),
@@ -707,14 +714,14 @@ def save_metrics_to_jsonl(metrics: Dict[str, any], modelname: str, output_dir: O
     return str(filepath)
 
 
-def get_latest_metrics(modelname: str, output_dir: Optional[str] = None) -> Optional[Dict[str, any]]:
+def get_latest_metrics(signature: str, output_dir: Optional[str] = None) -> Optional[Dict[str, any]]:
     """
     Get latest performance metrics record
 
     Args:
-        modelname: Model name
-        output_dir: Output directory, defaults to data/agent_data/{modelname}/metrics/
-
+        signature: Model name
+        output_dir: Output directory, defaults to data/agent_data/{signature}/metrics/
+    
     Returns:
         Latest metrics record, or None if no records exist
     """
@@ -727,7 +734,7 @@ def get_latest_metrics(modelname: str, output_dir: Optional[str] = None) -> Opti
         log_path = get_config_value("LOG_PATH", "./data/agent_data")
         if log_path.startswith("./data/"):
             log_path = log_path[7:]  # Remove "./data/" prefix
-        output_dir = base_dir / "data" / log_path / modelname / "metrics"
+        output_dir = base_dir / "data" / log_path / signature / "metrics"
     else:
         output_dir = Path(output_dir)
 
@@ -762,8 +769,8 @@ def get_metrics_history(
     Get performance metrics history
 
     Args:
-        modelname: Model name
-        output_dir: Output directory, defaults to data/agent_data/{modelname}/metrics/
+        signature: Model name
+        output_dir: Output directory, defaults to data/agent_data/{signature}/metrics/
         limit: Limit number of records returned, None returns all records
 
     Returns:
@@ -778,7 +785,7 @@ def get_metrics_history(
         log_path = get_config_value("LOG_PATH", "./data/agent_data")
         if log_path.startswith("./data/"):
             log_path = log_path[7:]  # Remove "./data/" prefix
-        output_dir = base_dir / "data" / log_path / modelname / "metrics"
+        output_dir = base_dir / "data" / log_path / signature / "metrics"
     else:
         output_dir = Path(output_dir)
 
@@ -809,20 +816,20 @@ def get_metrics_history(
     return records
 
 
-def print_metrics_summary(modelname: str, output_dir: Optional[str] = None) -> None:
+def print_metrics_summary(signature: str, output_dir: Optional[str] = None) -> None:
     """
     Print performance metrics summary
 
     Args:
-        modelname: Model name
+        signature: Model name
         output_dir: Output directory
     """
-    print(f"📊 Model '{modelname}' Performance Metrics Summary")
+    print(f"📊 Model '{signature}' Performance Metrics Summary")
     print("=" * 60)
 
     # Get history records
-    history = get_metrics_history(modelname, output_dir)
-
+    history = get_metrics_history(signature, output_dir)
+    
     if not history:
         print("❌ No history records found")
         return
@@ -832,6 +839,7 @@ def print_metrics_summary(modelname: str, output_dir: Optional[str] = None) -> N
     # Show latest record
     latest = history[-1]
     print(f"🕒 Latest Record (ID: {latest['id']}):")
+    print(f"   Time: {latest['timestamp']}")
     print(f"   Analysis Period: {latest['analysis_period']['start_date']} to {latest['analysis_period']['end_date']}")
     print(f"   Trading Days: {latest['analysis_period']['total_trading_days']}")
 
@@ -869,21 +877,21 @@ def calculate_and_save_metrics(
     Entry function to calculate all metrics and save in JSONL format
 
     Args:
-        modelname: Model name (SIGNATURE)
+        signature: Model name (SIGNATURE)
         start_date: Start date in YYYY-MM-DD format, uses earliest date if None
         end_date: End date in YYYY-MM-DD format, uses latest date if None
-        output_dir: Output directory, defaults to data/agent_data/{modelname}/metrics/
+        output_dir: Output directory, defaults to data/agent_data/{signature}/metrics/
         print_report: Whether to print report
         market: Market type ("us" or "cn")
 
     Returns:
         Dictionary containing all metrics and saved file path
     """
-    print(f"Analyzing model: {modelname}")
-
+    print(f"Analyzing model: {signature}")
+    
     # Show date range to be used if not specified
     if start_date is None or end_date is None:
-        earliest_date, latest_date = get_available_date_range(modelname)
+        earliest_date, latest_date = get_available_date_range(signature)
         if earliest_date and latest_date:
             if start_date is None:
                 start_date = earliest_date
@@ -895,7 +903,7 @@ def calculate_and_save_metrics(
             print("❌ Unable to get available data date range")
 
     # Calculate all metrics
-    metrics = calculate_all_metrics(modelname, start_date, end_date, market)
+    metrics = calculate_all_metrics(signature, start_date, end_date, market)
 
     if "error" in metrics:
         print(f"Error: {metrics['error']}")
@@ -903,12 +911,12 @@ def calculate_and_save_metrics(
 
     # Save in JSONL format
     try:
-        saved_file = save_metrics_to_jsonl(metrics, modelname, output_dir)
+        saved_file = save_metrics_to_jsonl(metrics, signature, output_dir)
         print(f"Metrics saved to: {saved_file}")
         metrics["saved_file"] = saved_file
 
         # Get ID of just saved record
-        latest_record = get_latest_metrics(modelname, output_dir)
+        latest_record = get_latest_metrics(signature, output_dir)
         if latest_record:
             metrics["record_id"] = latest_record["id"]
             print(f"Record ID: {latest_record['id']}")
@@ -926,8 +934,8 @@ def calculate_and_save_metrics(
 if __name__ == "__main__":
     # Test code
     # 测试代码
-    modelname = get_config_value("SIGNATURE")
-    if modelname is None:
+    signature = get_config_value("SIGNATURE")
+    if signature is None:
         print("错误: 未设置 SIGNATURE 环境变量")
         print("请设置环境变量 SIGNATURE，例如: export SIGNATURE=claude-3.7-sonnet")
         sys.exit(1)
@@ -936,4 +944,5 @@ if __name__ == "__main__":
     market = get_config_value("MARKET", "us")
 
     # 使用入口函数计算和保存指标
-    result = calculate_and_save_metrics(modelname, market=market)
+    result = calculate_and_save_metrics(signature, market=market)
+#     result = calculate_and_save_metrics(signature)

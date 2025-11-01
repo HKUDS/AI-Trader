@@ -377,7 +377,11 @@ class BaseAgent:
 
     def _log_message(self, log_file: str, new_messages: List[Dict[str, str]]) -> None:
         """Log messages to log file"""
-        log_entry = {"timestamp": datetime.now().isoformat(), "signature": self.signature, "new_messages": new_messages}
+        log_entry = {
+            # "timestamp": datetime.now().isoformat(),
+            "signature": self.signature,
+            "new_messages": new_messages
+        }
         with open(log_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
 
@@ -404,7 +408,7 @@ class BaseAgent:
 
         # Set up logging
         log_file = self._setup_logging(today_date)
-
+        write_config_value("LOG_FILE", log_file)
         # Update system prompt
         self.agent = create_agent(
             self.model,
