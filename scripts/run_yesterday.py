@@ -41,20 +41,36 @@ def is_trading_day(date_str: str, trading_days: set) -> bool:
     return date_str in trading_days
 
 
-def wait_for_service_ready(port: int, max_attempts: int = 30, delay: float = 1.0) -> bool:
-    """Wait for a service to be ready by checking if port is open"""
+def wait_for_service_ready(port: int, max_attempts: int = 60, delay: float = 2.0) -> bool:
+    """Wait for a service to be ready by checking if port is open and responding"""
     import socket
+    import urllib.request
+    
     for attempt in range(max_attempts):
         try:
+            # First check if port is open
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2)
+            sock.settimeout(1)
             result = sock.connect_ex(('localhost', port))
             sock.close()
+            
             if result == 0:
-                return True
+                # Port is open, try to check if HTTP endpoint responds
+                try:
+                    # Try to connect to /mcp endpoint
+                    req = urllib.request.Request(f'http://localhost:{port}/mcp')
+                    req.add_header('Content-Type', 'application/json')
+                    urllib.request.urlopen(req, timeout=2)
+                    return True
+                except:
+                    # Port is open but endpoint might not be ready yet, keep waiting
+                    pass
         except Exception:
             pass
-        time.sleep(delay)
+        
+        if attempt < max_attempts - 1:
+            time.sleep(delay)
+    
     return False
 
 
@@ -87,22 +103,41 @@ def start_mcp_services(agent_tools_path: Path) -> object:
             if not success:
                 print(f"⚠️  Warning: Failed to start {config['name']} service")
         
+        # Initial wait for services to start
+        print("\n⏳ Waiting for services to initialize (5 seconds)...")
+        time.sleep(5)
+        
         # Wait and verify services are ready
-        print("\n⏳ Waiting for services to be ready...")
+        print("\n⏳ Verifying services are ready...")
         all_ready = True
+        service_status = {}
         for service_id, service in mcp_manager.services.items():
             service_name = service['name']
             port = service['port']
             print(f"  Checking {service_name} on port {port}...", end=" ", flush=True)
-            if wait_for_service_ready(port, max_attempts=30, delay=1.0):
+            if wait_for_service_ready(port, max_attempts=30, delay=2.0):
                 print("✅ Ready")
+                service_status[service_id] = True
             else:
-                print("❌ Not ready")
+                print("❌ Not ready after 60 seconds")
+                service_status[service_id] = False
                 all_ready = False
         
         if not all_ready:
-            print("\n⚠️  Warning: Some services may not be fully ready")
-            print("   Continuing anyway, but initialization may fail...")
+            print("\n⚠️  Warning: Some services are not ready:")
+            for service_id, service in mcp_manager.services.items():
+                if not service_status.get(service_id, False):
+                    print(f"   - {service['name']} (port {service['port']}) not responding")
+            print("\n   Checking process status...")
+            for service_id, service in mcp_manager.services.items():
+                if not service_status.get(service_id, False):
+                    process = service['process']
+                    if process.poll() is not None:
+                        print(f"   - {service['name']} process has exited (exit code: {process.returncode})")
+                        print(f"     Check log: {service['log_file']}")
+                    else:
+                        print(f"   - {service['name']} process is running (PID: {process.pid}) but not responding")
+            print("\n   Continuing anyway, but initialization may fail...")
         
         # Check service status
         print("\n🔍 Final service status check...")
