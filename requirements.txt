@@ -2,6 +2,5 @@ langchain==1.0.2
 langchain-openai==1.0.1
 langchain-mcp-adapters>=0.1.0
 fastmcp==2.12.5
-anthropic>=0.39.0
 claude-agent-sdk>=0.1.0
 anyio>=4.0.0

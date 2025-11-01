@@ -9,7 +9,6 @@ This guide covers the **official Claude Agent SDK** implementation (`ClaudeSDKAg
 | Agent Type | Description | When to Use |
 |------------|-------------|-------------|
 | **ClaudeSDKAgent** ✅ | Official Claude Agent SDK with full agentic capabilities | **Recommended for Claude models** - True autonomous agents |
-| AnthropicAgent | Manual Anthropic SDK + custom loop | Fallback if SDK unavailable |
 | BaseAgent | LangChain + MCP | For non-Claude models (GPT, etc.) |
 
 ---
@@ -190,17 +189,17 @@ response = await client.receive_response()
 
 ---
 
-## Comparison: SDK vs Manual Implementation
+## Comparison: ClaudeSDKAgent vs BaseAgent
 
-| Feature | ClaudeSDKAgent (SDK) ✅ | AnthropicAgent (Manual) |
-|---------|------------------------|------------------------|
-| **Agentic Capabilities** | Full autonomous behavior | Manual loop implementation |
-| **Tool Integration** | In-process MCP servers | Custom function calls |
-| **Setup Complexity** | Simple (`pip install`) | Manual implementation |
-| **Official Support** | Yes (Anthropic) | No (custom code) |
-| **Performance** | Optimized by Anthropic | Depends on implementation |
-| **Future Updates** | Automatic with SDK | Manual updates needed |
-| **Recommended** | ✅ **Yes** | Only if SDK unavailable |
+| Feature | ClaudeSDKAgent ✅ | BaseAgent |
+|---------|-------------------|-----------|
+| **Agentic Capabilities** | Full autonomous behavior via Claude SDK | LangChain tool calling |
+| **Tool Integration** | In-process MCP servers | HTTP-based MCP servers |
+| **Setup Complexity** | Simple (`pip install claude-agent-sdk`) | Requires MCP server setup |
+| **Official Support** | Yes (Anthropic) | Community (LangChain) |
+| **Performance** | Optimized by Anthropic | Depends on MCP server latency |
+| **Best For** | Claude models | OpenAI/other models |
+| **Recommended** | ✅ **Yes** for Claude | For non-Claude models |
 
 ---
 
@@ -479,13 +478,13 @@ def get_cached_price(symbol, date):
 + "anthropic_api_key": "..."
 ```
 
-### From AnthropicAgent (Manual)
+### From BaseAgent
 
 ```diff
-- "agent_type": "AnthropicAgent"
+- "agent_type": "BaseAgent"
 + "agent_type": "ClaudeSDKAgent"
 
-  # Everything else stays the same!
+  # Switch from LangChain to Claude SDK
 ```
 
 ---
