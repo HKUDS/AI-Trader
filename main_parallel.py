@@ -23,25 +23,57 @@ AGENT_REGISTRY = {
 
 
 def get_agent_class(agent_type):
+    print(f"📍 [DEBUG] get_agent_class called with: {agent_type}")
+    sys.stdout.flush()
+    
     if agent_type not in AGENT_REGISTRY:
         supported_types = ", ".join(AGENT_REGISTRY.keys())
         raise ValueError(
             f"❌ Unsupported agent type: {agent_type}\n"
             f"   Supported types: {supported_types}"
         )
+    
     agent_info = AGENT_REGISTRY[agent_type]
     module_path = agent_info["module"]
     class_name = agent_info["class"]
+    
+    print(f"📍 [DEBUG] About to import module: {module_path}")
+    sys.stdout.flush()
+    
     try:
         import importlib
+        print(f"📍 [DEBUG] importlib imported, starting module import...")
+        sys.stdout.flush()
+        
         module = importlib.import_module(module_path)
+        print(f"📍 [DEBUG] Module imported successfully: {module_path}")
+        sys.stdout.flush()
+        
+        print(f"📍 [DEBUG] Getting class {class_name} from module...")
+        sys.stdout.flush()
         agent_class = getattr(module, class_name)
+        
         print(f"✅ Successfully loaded Agent class: {agent_type} (from {module_path})")
+        sys.stdout.flush()
         return agent_class
     except ImportError as e:
+        import traceback
+        print(f"❌ ImportError: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
+        sys.stdout.flush()
         raise ImportError(f"❌ Unable to import agent module {module_path}: {e}")
     except AttributeError as e:
+        import traceback
+        print(f"❌ AttributeError: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
+        sys.stdout.flush()
         raise AttributeError(f"❌ Class {class_name} not found in module {module_path}: {e}")
+    except Exception as e:
+        import traceback
+        print(f"❌ Unexpected error in get_agent_class: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
+        sys.stdout.flush()
+        raise
 
 
 def load_config(config_path=None):
