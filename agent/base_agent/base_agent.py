@@ -11,51 +11,21 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
-# Debug: Track import progress - always enabled to diagnose blocking imports
-def debug_print(msg):
-    print(f"[IMPORT DEBUG] {msg}", flush=True)
-
-debug_print("Starting base_agent imports...")
-
 from dotenv import load_dotenv
-debug_print("dotenv imported")
-
-debug_print("Importing langchain_mcp_adapters...")
 from langchain_mcp_adapters.client import MultiServerMCPClient
-debug_print("langchain_mcp_adapters imported")
-
-debug_print("Importing langchain_openai...")
 from langchain_openai import ChatOpenAI
-debug_print("langchain_openai imported")
-
-debug_print("Importing langchain.agents...")
 from langchain.agents import create_agent
-debug_print("langchain.agents imported")
 
 # Import project tools
-debug_print("Setting up project root path...")
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
-debug_print(f"Project root: {project_root}")
 
-debug_print("Importing tools.general_tools...")
 from tools.general_tools import extract_conversation, extract_tool_messages, get_config_value, write_config_value
-debug_print("tools.general_tools imported")
-
-debug_print("Importing tools.price_tools...")
 from tools.price_tools import add_no_trade_record
-debug_print("tools.price_tools imported")
-
-debug_print("Importing prompts.agent_prompt...")
 from prompts.agent_prompt import get_agent_system_prompt, STOP_SIGNAL
-debug_print("prompts.agent_prompt imported")
 
 # Load environment variables
-debug_print("Loading environment variables...")
 load_dotenv()
-debug_print("Environment variables loaded")
-
-debug_print("All imports completed successfully")
 
 
 class BaseAgent:
@@ -176,39 +146,24 @@ class BaseAgent:
     async def initialize(self) -> None:
         """Initialize MCP client and AI model"""
         print(f"🚀 Initializing agent: {self.signature}")
-        import sys
-        sys.stdout.flush()
         
         # Validate OpenAI configuration
         if not self.openai_api_key:
             raise ValueError("❌ OpenAI API key not set. Please configure OPENAI_API_KEY in environment or config file.")
         if not self.openai_base_url:
             print("⚠️  OpenAI base URL not set, using default")
-            sys.stdout.flush()
         
         try:
             # Create MCP client
-            print(f"🔌 Creating MCP client...")
-            print(f"   MCP config: {list(self.mcp_config.keys())}")
-            sys.stdout.flush()
             self.client = MultiServerMCPClient(self.mcp_config)
             
             # Get tools
-            print(f"📡 Connecting to MCP services and loading tools...")
-            sys.stdout.flush()
             self.tools = await self.client.get_tools()
             if not self.tools:
                 print("⚠️  Warning: No MCP tools loaded. MCP services may not be running.")
-                print(f"   MCP configuration: {self.mcp_config}")
-                sys.stdout.flush()
             else:
                 print(f"✅ Loaded {len(self.tools)} MCP tools")
-                sys.stdout.flush()
         except Exception as e:
-            import traceback
-            print(f"❌ Failed to initialize MCP client: {e}")
-            print(f"   Traceback: {traceback.format_exc()}")
-            sys.stdout.flush()
             raise RuntimeError(
                 f"❌ Failed to initialize MCP client: {e}\n"
                 f"   Please ensure MCP services are running at the configured ports.\n"

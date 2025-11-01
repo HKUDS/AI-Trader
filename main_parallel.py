@@ -23,9 +23,6 @@ AGENT_REGISTRY = {
 
 
 def get_agent_class(agent_type):
-    print(f"📍 [DEBUG] get_agent_class called with: {agent_type}")
-    sys.stdout.flush()
-    
     if agent_type not in AGENT_REGISTRY:
         supported_types = ", ".join(AGENT_REGISTRY.keys())
         raise ValueError(
@@ -37,13 +34,8 @@ def get_agent_class(agent_type):
     module_path = agent_info["module"]
     class_name = agent_info["class"]
     
-    print(f"📍 [DEBUG] About to import module: {module_path}")
-    sys.stdout.flush()
-    
     try:
         import importlib
-        print(f"📍 [DEBUG] importlib imported, starting module import...")
-        sys.stdout.flush()
         
         # Import with timeout to detect blocking imports
         try:
@@ -63,39 +55,18 @@ def get_agent_class(agent_type):
             
         except TimeoutError as e:
             print(f"❌ {e}")
-            sys.stdout.flush()
             raise
         except:
             # If signal not available (Windows), just import normally
             module = importlib.import_module(module_path)
-        print(f"📍 [DEBUG] Module imported successfully: {module_path}")
-        sys.stdout.flush()
         
-        print(f"📍 [DEBUG] Getting class {class_name} from module...")
-        sys.stdout.flush()
         agent_class = getattr(module, class_name)
-        
         print(f"✅ Successfully loaded Agent class: {agent_type} (from {module_path})")
-        sys.stdout.flush()
         return agent_class
     except ImportError as e:
-        import traceback
-        print(f"❌ ImportError: {e}")
-        print(f"Traceback: {traceback.format_exc()}")
-        sys.stdout.flush()
         raise ImportError(f"❌ Unable to import agent module {module_path}: {e}")
     except AttributeError as e:
-        import traceback
-        print(f"❌ AttributeError: {e}")
-        print(f"Traceback: {traceback.format_exc()}")
-        sys.stdout.flush()
         raise AttributeError(f"❌ Class {class_name} not found in module {module_path}: {e}")
-    except Exception as e:
-        import traceback
-        print(f"❌ Unexpected error in get_agent_class: {e}")
-        print(f"Traceback: {traceback.format_exc()}")
-        sys.stdout.flush()
-        raise
 
 
 def load_config(config_path=None):
@@ -155,9 +126,6 @@ async def _run_model_in_current_process(AgentClass, model_config, INIT_DATE, END
     log_path = log_config.get("log_path", "./data/agent_data")
 
     try:
-        print(f"🔧 Creating {AgentClass.__name__} instance...")
-        sys.stdout.flush()
-        
         agent = AgentClass(
             signature=signature,
             basemodel=basemodel,
@@ -173,10 +141,6 @@ async def _run_model_in_current_process(AgentClass, model_config, INIT_DATE, END
         )
 
         print(f"✅ {AgentClass.__name__} instance created successfully")
-        sys.stdout.flush()
-        
-        print(f"🔌 Starting initialization (this may take a moment to connect to MCP services)...")
-        sys.stdout.flush()
         
         # Add timeout to initialization
         try:
@@ -187,7 +151,6 @@ async def _run_model_in_current_process(AgentClass, model_config, INIT_DATE, END
             raise RuntimeError("Agent initialization timed out - MCP services may not be accessible")
         
         print("✅ Initialization successful")
-        sys.stdout.flush()
         await agent.run_date_range(INIT_DATE, END_DATE)
 
         summary = agent.get_position_summary()
@@ -269,60 +232,35 @@ async def _spawn_model_subprocesses(config_path, enabled_models):
 
 
 async def main(config_path=None, only_signature: str | None = None):
-    print("📍 [DEBUG] Entered main() function")
-    sys.stdout.flush()
-    
     config = load_config(config_path)
-    print("📍 [DEBUG] Config loaded")
-    sys.stdout.flush()
-    
     agent_type = config.get("agent_type", "BaseAgent")
-    print(f"📍 [DEBUG] Agent type: {agent_type}")
-    sys.stdout.flush()
     
     try:
         AgentClass = get_agent_class(agent_type)
-        print("📍 [DEBUG] AgentClass obtained")
-        sys.stdout.flush()
     except (ValueError, ImportError, AttributeError) as e:
         print(str(e))
         exit(1)
 
     INIT_DATE = config["date_range"]["init_date"]
     END_DATE = config["date_range"]["end_date"]
-    print(f"📍 [DEBUG] Initial dates from config: {INIT_DATE} to {END_DATE}")
-    sys.stdout.flush()
 
     if os.getenv("INIT_DATE"):
         INIT_DATE = os.getenv("INIT_DATE")
         print(f"⚠️  Using environment variable to override INIT_DATE: {INIT_DATE}")
-        sys.stdout.flush()
     if os.getenv("END_DATE"):
         END_DATE = os.getenv("END_DATE")
         print(f"⚠️  Using environment variable to override END_DATE: {END_DATE}")
-        sys.stdout.flush()
 
-    print(f"📍 [DEBUG] Parsing dates...")
-    sys.stdout.flush()
     INIT_DATE_obj = datetime.strptime(INIT_DATE, "%Y-%m-%d").date()
     END_DATE_obj = datetime.strptime(END_DATE, "%Y-%m-%d").date()
     if INIT_DATE_obj > END_DATE_obj:
         print("❌ INIT_DATE is greater than END_DATE")
-        sys.stdout.flush()
         exit(1)
 
-    print(f"📍 [DEBUG] Getting enabled models...")
-    sys.stdout.flush()
     enabled_models = [m for m in config["models"] if m.get("enabled", True)]
-    print(f"📍 [DEBUG] Found {len(enabled_models)} enabled models")
-    sys.stdout.flush()
     
     if only_signature:
-        print(f"📍 [DEBUG] Filtering by signature: {only_signature}")
-        sys.stdout.flush()
         enabled_models = [m for m in enabled_models if m.get("signature") == only_signature]
-        print(f"📍 [DEBUG] After filtering: {len(enabled_models)} model(s)")
-        sys.stdout.flush()
 
     agent_config = config.get("agent_config", {})
     log_config = config.get("log_config", {})
@@ -332,48 +270,32 @@ async def main(config_path=None, only_signature: str | None = None):
     print(f"🤖 Agent type: {agent_type}")
     print(f"📅 Date range: {INIT_DATE} to {END_DATE}")
     print(f"🤖 Model list: {model_names}")
-    sys.stdout.flush()
 
     # When --signature is specified, always run in current process (single model mode)
     if only_signature:
-        print(f"✅ Running single model {only_signature} in current process")
-        sys.stdout.flush()
         if len(enabled_models) == 0:
             print(f"❌ Model with signature {only_signature} not found or not enabled")
-            sys.stdout.flush()
             return
         model_config = enabled_models[0]
         await _run_model_in_current_process(AgentClass, model_config, INIT_DATE, END_DATE, agent_config, log_config)
         print("🎉 Model processing completed!")
-        sys.stdout.flush()
     elif len(enabled_models) <= 1:
         # Single model without --signature flag
-        print(f"📊 Running {len(enabled_models)} model(s) in current process...")
-        sys.stdout.flush()
         for model_config in enabled_models:
             await _run_model_in_current_process(AgentClass, model_config, INIT_DATE, END_DATE, agent_config, log_config)
         print("🎉 All models processing completed!")
-        sys.stdout.flush()
     else:
         # Multiple models - spawn subprocesses
-        print(f"⚡ Multiple models enabled ({len(enabled_models)} models); running them in parallel using subprocesses...")
-        sys.stdout.flush()
+        print("⚡ Multiple models enabled; running them in parallel using subprocesses...")
         await _spawn_model_subprocesses(config_path, enabled_models)
         print("🎉 All model subprocesses completed!")
-        sys.stdout.flush()
 
 
 if __name__ == "__main__":
-    print("📍 [DEBUG] Script started, parsing arguments...")
-    sys.stdout.flush()
-    
     parser = argparse.ArgumentParser(description="AI-Trader parallel runner")
     parser.add_argument("config_path", nargs="?", default=None, help="Path to config JSON")
     parser.add_argument("--signature", dest="signature", default=None, help="Run only this model signature")
     args = parser.parse_args()
-
-    print("📍 [DEBUG] Arguments parsed")
-    sys.stdout.flush()
 
     if args.config_path:
         print(f"📄 Using specified configuration file: {args.config_path}")
@@ -381,19 +303,7 @@ if __name__ == "__main__":
         print(f"📄 Using default configuration file: configs/default_config.json")
     if args.signature:
         print(f"🎯 Filtering to single signature: {args.signature}")
-    
-    print("📍 [DEBUG] About to call asyncio.run(main(...))")
-    sys.stdout.flush()
-    
-    try:
-        asyncio.run(main(args.config_path, args.signature))
-        print("📍 [DEBUG] asyncio.run completed")
-        sys.stdout.flush()
-    except Exception as e:
-        print(f"📍 [DEBUG] Exception in asyncio.run: {e}")
-        import traceback
-        print(traceback.format_exc())
-        sys.stdout.flush()
-        raise
+
+    asyncio.run(main(args.config_path, args.signature))
 
 
