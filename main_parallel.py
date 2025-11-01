@@ -140,17 +140,50 @@ async def _spawn_model_subprocesses(config_path, enabled_models):
     tasks = []
     python_exec = sys.executable
     this_file = str(Path(__file__).resolve())
+    
+    # Ensure unbuffered output for subprocesses
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    
     for model in enabled_models:
         signature = model.get("signature")
         if not signature:
             continue
-        cmd = [python_exec, this_file]
+        cmd = [python_exec, "-u", this_file]  # -u flag for unbuffered output
         if config_path:
             cmd.append(str(config_path))
         cmd.extend(["--signature", signature])
         print(f"🧩 Spawning subprocess for signature='{signature}': {' '.join(cmd)}")
-        proc = await asyncio.create_subprocess_exec(*cmd)
-        tasks.append(proc.wait())
+        sys.stdout.flush()
+        
+        # Create subprocess with explicit stdout/stderr handling
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env
+        )
+        
+        # Create tasks to read output
+        async def read_output(proc, signature):
+            """Read and print subprocess output in real-time"""
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    break
+                print(f"[{signature}] {line.decode().rstrip()}")
+                sys.stdout.flush()
+            
+            # Read stderr
+            stderr_data = await proc.stderr.read()
+            if stderr_data:
+                print(f"[{signature}] STDERR: {stderr_data.decode()}")
+                sys.stdout.flush()
+            
+            return await proc.wait()
+        
+        tasks.append(read_output(proc, signature))
+    
     if not tasks:
         return
     await asyncio.gather(*tasks)

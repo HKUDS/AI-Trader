@@ -41,6 +41,23 @@ def is_trading_day(date_str: str, trading_days: set) -> bool:
     return date_str in trading_days
 
 
+def wait_for_service_ready(port: int, max_attempts: int = 30, delay: float = 1.0) -> bool:
+    """Wait for a service to be ready by checking if port is open"""
+    import socket
+    for attempt in range(max_attempts):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            result = sock.connect_ex(('localhost', port))
+            sock.close()
+            if result == 0:
+                return True
+        except Exception:
+            pass
+        time.sleep(delay)
+    return False
+
+
 def start_mcp_services(agent_tools_path: Path) -> object:
     """
     Start all MCP services using MCPServiceManager
@@ -66,17 +83,32 @@ def start_mcp_services(agent_tools_path: Path) -> object:
         
         print("\n🔄 Starting services...")
         for service_id, config in mcp_manager.service_configs.items():
-            mcp_manager.start_service(service_id, config)
+            success = mcp_manager.start_service(service_id, config)
+            if not success:
+                print(f"⚠️  Warning: Failed to start {config['name']} service")
         
-        # Wait for services to start
-        print("\n⏳ Waiting for services to start...")
-        time.sleep(3)
+        # Wait and verify services are ready
+        print("\n⏳ Waiting for services to be ready...")
+        all_ready = True
+        for service_id, service in mcp_manager.services.items():
+            service_name = service['name']
+            port = service['port']
+            print(f"  Checking {service_name} on port {port}...", end=" ", flush=True)
+            if wait_for_service_ready(port, max_attempts=30, delay=1.0):
+                print("✅ Ready")
+            else:
+                print("❌ Not ready")
+                all_ready = False
+        
+        if not all_ready:
+            print("\n⚠️  Warning: Some services may not be fully ready")
+            print("   Continuing anyway, but initialization may fail...")
         
         # Check service status
-        print("\n🔍 Checking service status...")
+        print("\n🔍 Final service status check...")
         mcp_manager.check_all_services()
         
-        print("\n✅ All MCP services started!")
+        print("\n✅ MCP services startup completed!")
         mcp_manager.print_service_info()
         
         return mcp_manager
@@ -109,10 +141,18 @@ def run_trading_update(project_root: Path, config_path: Path, run_date: str):
     os.environ["INIT_DATE"] = run_date
     os.environ["END_DATE"] = run_date
     
+    # Ensure Python output is unbuffered
+    os.environ["PYTHONUNBUFFERED"] = "1"
+    
     # Import and run main_parallel
     sys.path.insert(0, str(project_root))
     import asyncio
     import main_parallel
+    
+    # Run with explicit flushing
+    import sys as sys_module
+    sys_module.stdout.flush()
+    sys_module.stderr.flush()
     
     asyncio.run(main_parallel.main(str(config_path)))
 
