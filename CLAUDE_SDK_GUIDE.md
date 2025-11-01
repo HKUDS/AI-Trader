@@ -1,15 +1,17 @@
 # Claude Agent SDK Guide - PROPER Implementation ✅
 
-## ⚠️ Important: This is the CORRECT Implementation
+## ⚠️ Important: This is the CURRENT Implementation
 
 This guide covers the **official Claude Agent SDK** implementation (`ClaudeSDKAgent`). This is a **proper agentic system**, not just tool calling.
 
+**🚀 CURRENTLY IN USE:** This project uses the **enhanced Claude Agent SDK version**. The LangChain implementation (BaseAgent) is **NOT currently being used**.
+
 ### Available Agent Types
 
-| Agent Type | Description | When to Use |
-|------------|-------------|-------------|
-| **ClaudeSDKAgent** ✅ | Official Claude Agent SDK with full agentic capabilities | **Recommended for Claude models** - True autonomous agents |
-| BaseAgent | LangChain + MCP | For non-Claude models (GPT, etc.) |
+| Agent Type | Description | Status |
+|------------|-------------|--------|
+| **ClaudeSDKAgent** ✅ | Official Claude Agent SDK with full agentic capabilities | **CURRENT IMPLEMENTATION** - Enhanced version in active use |
+| BaseAgent | LangChain + MCP | Available but NOT CURRENTLY USED - Legacy implementation |
 
 ---
 
@@ -191,15 +193,17 @@ response = await client.receive_response()
 
 ## Comparison: ClaudeSDKAgent vs BaseAgent
 
-| Feature | ClaudeSDKAgent ✅ | BaseAgent |
-|---------|-------------------|-----------|
-| **Agentic Capabilities** | Full autonomous behavior via Claude SDK | LangChain tool calling |
+| Feature | ClaudeSDKAgent ✅ (CURRENT) | BaseAgent (NOT USED) |
+|---------|---------------------------|----------------------|
+| **Status** | **✅ CURRENTLY IN USE** | ⚠️ NOT CURRENTLY USED |
+| **Framework** | Official Claude Agent SDK | LangChain (legacy) |
+| **Agentic Capabilities** | Full autonomous behavior via Claude SDK | Basic LangChain tool calling |
 | **Tool Integration** | In-process MCP servers | HTTP-based MCP servers |
 | **Setup Complexity** | Simple (`pip install claude-agent-sdk`) | Requires MCP server setup |
 | **Official Support** | Yes (Anthropic) | Community (LangChain) |
 | **Performance** | Optimized by Anthropic | Depends on MCP server latency |
 | **Best For** | Claude models | OpenAI/other models |
-| **Recommended** | ✅ **Yes** for Claude | For non-Claude models |
+| **Recommended** | ✅ **Yes** - Current implementation | For non-Claude models only |
 
 ---
 
@@ -465,10 +469,16 @@ def get_cached_price(symbol, date):
 
 ## Migration from Other Agents
 
-### From BaseAgent (LangChain)
+### ⚠️ Note: BaseAgent (LangChain) is NOT Currently Used
+
+If you have old configurations using `BaseAgent`, note that this project has migrated to the official Claude Agent SDK. The BaseAgent implementation using LangChain is available in the codebase but is **not currently in use**.
+
+### Migrating Old BaseAgent Configs to ClaudeSDKAgent
+
+If you have legacy BaseAgent configurations, here's how to update them:
 
 ```diff
-- agent_type": "BaseAgent"
+- "agent_type": "BaseAgent"
 + "agent_type": "ClaudeSDKAgent"
 
 - "basemodel": "anthropic/claude-3.7-sonnet"
@@ -476,16 +486,16 @@ def get_cached_price(symbol, date):
 
 - "openai_api_key": "..."
 + "anthropic_api_key": "..."
+
+- "openai_base_url": "..."
++ # Remove - not needed for Claude SDK
 ```
 
-### From BaseAgent
-
-```diff
-- "agent_type": "BaseAgent"
-+ "agent_type": "ClaudeSDKAgent"
-
-  # Switch from LangChain to Claude SDK
-```
+**Benefits of migration:**
+- ✅ True agentic behavior (not just tool calling)
+- ✅ Official Anthropic support
+- ✅ Better performance
+- ✅ Simpler setup (no external MCP servers needed)
 
 ---
 
@@ -500,15 +510,21 @@ def get_cached_price(symbol, date):
 
 ## Summary
 
-**Use `ClaudeSDKAgent` for Claude models** - it's the official, supported, and recommended approach.
+**This project uses `ClaudeSDKAgent` with the official Claude Agent SDK** - the enhanced, properly implemented agentic system.
 
-Key advantages:
+### Current Implementation: Claude Agent SDK ✅
+
+**Key advantages:**
 - ✅ True agentic behavior (not just tool calling)
 - ✅ Official Anthropic support
 - ✅ In-process tools (faster, simpler)
 - ✅ Optimized performance
 - ✅ Future-proof with SDK updates
 
+### NOT Using: LangChain (BaseAgent) ⚠️
+
+The BaseAgent implementation using LangChain is available in the codebase for compatibility with non-Claude models, but is **NOT the current implementation**. This project has migrated to the official Claude Agent SDK for superior agentic capabilities.
+
 ---
 
-**🎉 You're now using the official Claude Agent SDK properly!**
+**🎉 This project is using the official Claude Agent SDK properly - the enhanced agentic version!**
