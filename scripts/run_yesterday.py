@@ -42,29 +42,20 @@ def is_trading_day(date_str: str, trading_days: set) -> bool:
 
 
 def wait_for_service_ready(port: int, max_attempts: int = 60, delay: float = 2.0) -> bool:
-    """Wait for a service to be ready by checking if port is open and responding"""
+    """Wait for a service to be ready by checking if port is open"""
     import socket
-    import urllib.request
     
     for attempt in range(max_attempts):
         try:
-            # First check if port is open
+            # Check if port is open
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(1)
             result = sock.connect_ex(('localhost', port))
             sock.close()
             
             if result == 0:
-                # Port is open, try to check if HTTP endpoint responds
-                try:
-                    # Try to connect to /mcp endpoint
-                    req = urllib.request.Request(f'http://localhost:{port}/mcp')
-                    req.add_header('Content-Type', 'application/json')
-                    urllib.request.urlopen(req, timeout=2)
-                    return True
-                except:
-                    # Port is open but endpoint might not be ready yet, keep waiting
-                    pass
+                # Port is open, service is ready
+                return True
         except Exception:
             pass
         
@@ -104,8 +95,8 @@ def start_mcp_services(agent_tools_path: Path) -> object:
                 print(f"⚠️  Warning: Failed to start {config['name']} service")
         
         # Initial wait for services to start
-        print("\n⏳ Waiting for services to initialize (5 seconds)...")
-        time.sleep(5)
+        print("\n⏳ Waiting for services to initialize (10 seconds)...")
+        time.sleep(10)
         
         # Wait and verify services are ready
         print("\n⏳ Verifying services are ready...")
@@ -114,12 +105,33 @@ def start_mcp_services(agent_tools_path: Path) -> object:
         for service_id, service in mcp_manager.services.items():
             service_name = service['name']
             port = service['port']
+            process = service['process']
+            
+            # First check if process is still running
+            if process.poll() is not None:
+                print(f"  ❌ {service_name} process has exited (exit code: {process.returncode})")
+                print(f"     Check log: {service['log_file']}")
+                # Try to read last few lines of log
+                try:
+                    if Path(service['log_file']).exists():
+                        with open(service['log_file'], 'r') as f:
+                            lines = f.readlines()
+                            if lines:
+                                print(f"     Last log lines:")
+                                for line in lines[-5:]:
+                                    print(f"       {line.rstrip()}")
+                except:
+                    pass
+                service_status[service_id] = False
+                all_ready = False
+                continue
+            
             print(f"  Checking {service_name} on port {port}...", end=" ", flush=True)
-            if wait_for_service_ready(port, max_attempts=30, delay=2.0):
+            if wait_for_service_ready(port, max_attempts=25, delay=2.0):
                 print("✅ Ready")
                 service_status[service_id] = True
             else:
-                print("❌ Not ready after 60 seconds")
+                print("❌ Not ready after 50 seconds")
                 service_status[service_id] = False
                 all_ready = False
         
