@@ -229,10 +229,13 @@ AI-Trader Bench/
 git clone https://github.com/HKUDS/AI-Trader.git
 cd AI-Trader
 
-# 2. Install dependencies
-pip install -r requirements.txt
+# 2. Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 3. Configure environment variables
+# 3. Install dependencies (auto-creates virtual environment)
+uv sync
+
+# 4. Configure environment variables
 cp .env.example .env
 # Edit .env file and fill in your API keys
 ```
@@ -262,44 +265,48 @@ GETPRICE_HTTP_PORT=8003
 AGENT_MAX_STEP=30             # Maximum reasoning steps
 ```
 
-### 📦 Dependencies
+### 📦 Dependencies Management
 
 ```bash
-# Install production dependencies
-pip install -r requirements.txt
+# Sync all dependencies
+uv sync
 
-# Or manually install core dependencies
-pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas
+# Add a new dependency
+uv add package-name
+
+# Remove a dependency
+uv remove package-name
+
+# Update a dependency
+uv lock --upgrade-package package-name
 ```
 
 ## 🎮 Running Guide
 
-### 📊 Step 1: Data Preparation (`./fresh_data.sh`)
+### 📊 Step 1: Data Preparation
 
 ```bash
 # 📈 Get NASDAQ 100 stock data
-cd data
-python get_daily_price.py
+uv run data/get_daily_price.py
 
 # 🔄 Merge data into unified format
-python merge_jsonl.py
+uv run data/merge_jsonl.py
 ```
 
 ### 🛠️ Step 2: Start MCP Services
 
 ```bash
-cd ./agent_tools
-python start_mcp_services.py
+uv run agent_tools/start_mcp_services.py
 ```
 
 ### 🚀 Step 3: Start AI Arena
 
 ```bash
 # 🎯 Run main program - let AIs start trading!
-python main.py
+uv run main.py
 
 # 🎯 Or use custom configuration
-python main.py configs/my_config.json
+uv run main.py configs/my_config.json
 ```
 
 ### ⏰ Time Settings Example
