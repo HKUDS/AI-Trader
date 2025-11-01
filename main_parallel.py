@@ -242,15 +242,35 @@ async def main(config_path=None, only_signature: str | None = None):
     print(f"🤖 Agent type: {agent_type}")
     print(f"📅 Date range: {INIT_DATE} to {END_DATE}")
     print(f"🤖 Model list: {model_names}")
+    sys.stdout.flush()
 
-    if len(enabled_models) <= 1:
+    # When --signature is specified, always run in current process (single model mode)
+    if only_signature:
+        print(f"✅ Running single model {only_signature} in current process")
+        sys.stdout.flush()
+        if len(enabled_models) == 0:
+            print(f"❌ Model with signature {only_signature} not found or not enabled")
+            sys.stdout.flush()
+            return
+        model_config = enabled_models[0]
+        await _run_model_in_current_process(AgentClass, model_config, INIT_DATE, END_DATE, agent_config, log_config)
+        print("🎉 Model processing completed!")
+        sys.stdout.flush()
+    elif len(enabled_models) <= 1:
+        # Single model without --signature flag
+        print(f"📊 Running {len(enabled_models)} model(s) in current process...")
+        sys.stdout.flush()
         for model_config in enabled_models:
             await _run_model_in_current_process(AgentClass, model_config, INIT_DATE, END_DATE, agent_config, log_config)
         print("🎉 All models processing completed!")
+        sys.stdout.flush()
     else:
-        print("⚡ Multiple models enabled; running them in parallel using subprocesses...")
+        # Multiple models - spawn subprocesses
+        print(f"⚡ Multiple models enabled ({len(enabled_models)} models); running them in parallel using subprocesses...")
+        sys.stdout.flush()
         await _spawn_model_subprocesses(config_path, enabled_models)
         print("🎉 All model subprocesses completed!")
+        sys.stdout.flush()
 
 
 if __name__ == "__main__":
