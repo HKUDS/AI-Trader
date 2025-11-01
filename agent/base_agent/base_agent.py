@@ -4,28 +4,58 @@ Encapsulates core functionality including MCP tool management, AI agent creation
 """
 
 import os
+import sys
 import json
 import asyncio
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai import ChatOpenAI
-from langchain.agents import create_agent
+# Debug: Track import progress - always enabled to diagnose blocking imports
+def debug_print(msg):
+    print(f"[IMPORT DEBUG] {msg}", flush=True)
+
+debug_print("Starting base_agent imports...")
+
 from dotenv import load_dotenv
+debug_print("dotenv imported")
+
+debug_print("Importing langchain_mcp_adapters...")
+from langchain_mcp_adapters.client import MultiServerMCPClient
+debug_print("langchain_mcp_adapters imported")
+
+debug_print("Importing langchain_openai...")
+from langchain_openai import ChatOpenAI
+debug_print("langchain_openai imported")
+
+debug_print("Importing langchain.agents...")
+from langchain.agents import create_agent
+debug_print("langchain.agents imported")
 
 # Import project tools
-import sys
+debug_print("Setting up project root path...")
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
+debug_print(f"Project root: {project_root}")
 
+debug_print("Importing tools.general_tools...")
 from tools.general_tools import extract_conversation, extract_tool_messages, get_config_value, write_config_value
+debug_print("tools.general_tools imported")
+
+debug_print("Importing tools.price_tools...")
 from tools.price_tools import add_no_trade_record
+debug_print("tools.price_tools imported")
+
+debug_print("Importing prompts.agent_prompt...")
 from prompts.agent_prompt import get_agent_system_prompt, STOP_SIGNAL
+debug_print("prompts.agent_prompt imported")
 
 # Load environment variables
+debug_print("Loading environment variables...")
 load_dotenv()
+debug_print("Environment variables loaded")
+
+debug_print("All imports completed successfully")
 
 
 class BaseAgent:

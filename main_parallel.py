@@ -45,7 +45,29 @@ def get_agent_class(agent_type):
         print(f"📍 [DEBUG] importlib imported, starting module import...")
         sys.stdout.flush()
         
-        module = importlib.import_module(module_path)
+        # Import with timeout to detect blocking imports
+        try:
+            import signal
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError(f"Module import timed out after 30 seconds: {module_path}")
+            
+            # Set timeout for import (30 seconds)
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(30)
+            
+            try:
+                module = importlib.import_module(module_path)
+            finally:
+                signal.alarm(0)  # Cancel alarm
+            
+        except TimeoutError as e:
+            print(f"❌ {e}")
+            sys.stdout.flush()
+            raise
+        except:
+            # If signal not available (Windows), just import normally
+            module = importlib.import_module(module_path)
         print(f"📍 [DEBUG] Module imported successfully: {module_path}")
         sys.stdout.flush()
         
