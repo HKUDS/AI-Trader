@@ -6,8 +6,8 @@ let allAgentsData = {};
 let currentAgent = null;
 let allocationChart = null;
 
-// Initialize the page
-async function init() {
+// Load data and refresh UI
+async function loadDataAndRefresh() {
     showLoading();
 
     try {
@@ -26,15 +26,21 @@ async function init() {
             await loadAgentPortfolio(firstAgent);
         }
 
-        // Set up event listeners
-        setupEventListeners();
-
     } catch (error) {
-        console.error('Error initializing page:', error);
+        console.error('Error loading data:', error);
         alert('Failed to load portfolio data. Please check console for details.');
     } finally {
         hideLoading();
     }
+}
+
+// Initialize the page
+async function init() {
+    // Set up event listeners first
+    setupEventListeners();
+    
+    // Load initial data
+    await loadDataAndRefresh();
 }
 
 // Populate agent selector dropdown
@@ -310,6 +316,34 @@ function updateTradeHistory(agentName) {
 function setupEventListeners() {
     document.getElementById('agentSelect').addEventListener('change', (e) => {
         loadAgentPortfolio(e.target.value);
+    });
+
+    // Market selector buttons
+    const usMarketBtn = document.getElementById('usMarketBtn');
+    const cnMarketBtn = document.getElementById('cnMarketBtn');
+    
+    usMarketBtn.addEventListener('click', async () => {
+        if (dataLoader.getMarket() === 'us') return; // Already on US market
+        
+        // Switch to US market
+        usMarketBtn.classList.add('active');
+        cnMarketBtn.classList.remove('active');
+        dataLoader.setMarket('us');
+        
+        // Reload data
+        await loadDataAndRefresh();
+    });
+    
+    cnMarketBtn.addEventListener('click', async () => {
+        if (dataLoader.getMarket() === 'cn') return; // Already on CN market
+        
+        // Switch to CN market
+        cnMarketBtn.classList.add('active');
+        usMarketBtn.classList.remove('active');
+        dataLoader.setMarket('cn');
+        
+        // Reload data
+        await loadDataAndRefresh();
     });
 
     // Scroll to top button

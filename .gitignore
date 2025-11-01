@@ -1,3 +1,24 @@
+logs/
+data/*.json
+data/*.jsonl
+data/agent_data/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.env
+
+runtime_env.json
+
+*.log
+mcp_services*.log
+test_run*.log
 # Environment variables
 .env
 .env.local
@@ -61,6 +82,7 @@ configs/day_config.json
 configs/hour_config.json
 configs/test_config.json
 configs/test_day_config.json
+configs/astock.json
 
 # Data directories (optional - uncomment if needed)
 data/agent_data/test*/

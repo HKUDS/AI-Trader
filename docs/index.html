@@ -18,6 +18,10 @@
             <ul class="nav-menu">
                 <li><a href="index.html" class="nav-link active">Asset Evolution</a></li>
                 <li><a href="portfolio.html" class="nav-link">Portfolio Analysis</a></li>
+                <li class="market-selector">
+                    <button id="usMarketBtn" class="market-btn active" data-market="us">🇺🇸 US Market</button>
+                    <button id="cnMarketBtn" class="market-btn" data-market="cn">🇨🇳 A-Shares</button>
+                </li>
             </ul>
             <a href="https://github.com/HKUDS/AI-Trader" target="_blank" rel="noopener noreferrer" class="github-link" aria-label="View source on GitHub">
                 <svg class="github-icon" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -31,7 +35,7 @@
     <main class="container">
         <header class="page-header">
             <h2>AI Agent Performance Comparison</h2>
-            <p class="subtitle">Track how different AI models perform in Nasdaq-100 stock trading</p>
+            <p class="subtitle" id="marketSubtitle">Track how different AI models perform in Nasdaq-100 stock trading</p>
         </header>
 
         <section class="stats-grid">
