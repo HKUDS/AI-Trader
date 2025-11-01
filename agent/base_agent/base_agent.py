@@ -14,6 +14,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 from dotenv import load_dotenv
+from utils.date_utils import parse_date
 
 # Import project tools
 import sys
@@ -361,15 +362,15 @@ class BaseAgent:
                     if max_date is None:
                         max_date = current_date
                     else:
-                        current_date_obj = datetime.strptime(current_date, "%Y-%m-%d")
-                        max_date_obj = datetime.strptime(max_date, "%Y-%m-%d")
+                        current_date_obj = parse_date(current_date)
+                        max_date_obj = parse_date(max_date)
                         if current_date_obj > max_date_obj:
                             max_date = current_date
         
         # Check if new dates need to be processed
-        max_date_obj = datetime.strptime(max_date, "%Y-%m-%d")
-        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
-        
+        max_date_obj = parse_date(max_date)
+        end_date_obj = parse_date(end_date)
+
         if end_date_obj <= max_date_obj:
             return []
         
