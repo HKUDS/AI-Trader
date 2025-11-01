@@ -101,6 +101,9 @@ async def _run_model_in_current_process(AgentClass, model_config, INIT_DATE, END
     log_path = log_config.get("log_path", "./data/agent_data")
 
     try:
+        print(f"🔧 Creating {AgentClass.__name__} instance...")
+        sys.stdout.flush()
+        
         agent = AgentClass(
             signature=signature,
             basemodel=basemodel,
@@ -115,9 +118,22 @@ async def _run_model_in_current_process(AgentClass, model_config, INIT_DATE, END
             init_date=INIT_DATE
         )
 
-        print(f"✅ {AgentClass.__name__} instance created successfully: {agent}")
-        await agent.initialize()
+        print(f"✅ {AgentClass.__name__} instance created successfully")
+        sys.stdout.flush()
+        
+        print(f"🔌 Starting initialization (this may take a moment to connect to MCP services)...")
+        sys.stdout.flush()
+        
+        # Add timeout to initialization
+        try:
+            await asyncio.wait_for(agent.initialize(), timeout=120.0)  # 2 minute timeout
+        except asyncio.TimeoutError:
+            print(f"❌ Initialization timed out after 120 seconds")
+            print(f"   This usually means MCP services are not responding")
+            raise RuntimeError("Agent initialization timed out - MCP services may not be accessible")
+        
         print("✅ Initialization successful")
+        sys.stdout.flush()
         await agent.run_date_range(INIT_DATE, END_DATE)
 
         summary = agent.get_position_summary()

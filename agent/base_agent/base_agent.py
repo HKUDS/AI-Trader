@@ -146,25 +146,39 @@ class BaseAgent:
     async def initialize(self) -> None:
         """Initialize MCP client and AI model"""
         print(f"🚀 Initializing agent: {self.signature}")
+        import sys
+        sys.stdout.flush()
         
         # Validate OpenAI configuration
         if not self.openai_api_key:
             raise ValueError("❌ OpenAI API key not set. Please configure OPENAI_API_KEY in environment or config file.")
         if not self.openai_base_url:
             print("⚠️  OpenAI base URL not set, using default")
+            sys.stdout.flush()
         
         try:
             # Create MCP client
+            print(f"🔌 Creating MCP client...")
+            print(f"   MCP config: {list(self.mcp_config.keys())}")
+            sys.stdout.flush()
             self.client = MultiServerMCPClient(self.mcp_config)
             
             # Get tools
+            print(f"📡 Connecting to MCP services and loading tools...")
+            sys.stdout.flush()
             self.tools = await self.client.get_tools()
             if not self.tools:
                 print("⚠️  Warning: No MCP tools loaded. MCP services may not be running.")
                 print(f"   MCP configuration: {self.mcp_config}")
+                sys.stdout.flush()
             else:
                 print(f"✅ Loaded {len(self.tools)} MCP tools")
+                sys.stdout.flush()
         except Exception as e:
+            import traceback
+            print(f"❌ Failed to initialize MCP client: {e}")
+            print(f"   Traceback: {traceback.format_exc()}")
+            sys.stdout.flush()
             raise RuntimeError(
                 f"❌ Failed to initialize MCP client: {e}\n"
                 f"   Please ensure MCP services are running at the configured ports.\n"
