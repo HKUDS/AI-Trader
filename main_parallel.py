@@ -50,11 +50,11 @@ def get_agent_class(agent_type):
             import signal
             
             def timeout_handler(signum, frame):
-                raise TimeoutError(f"Module import timed out after 30 seconds: {module_path}")
+                raise TimeoutError(f"Module import timed out after 60 seconds: {module_path}")
             
-            # Set timeout for import (30 seconds)
+            # Set timeout for import (60 seconds - langchain imports can be slow)
             signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(30)
+            signal.alarm(60)
             
             try:
                 module = importlib.import_module(module_path)
@@ -215,7 +215,10 @@ async def _spawn_model_subprocesses(config_path, enabled_models):
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     
-    for model in enabled_models:
+    # Stagger subprocess launches to avoid import lock contention
+    # When multiple processes import the same module simultaneously, 
+    # Python's import lock can cause deadlocks
+    for idx, model in enumerate(enabled_models):
         signature = model.get("signature")
         if not signature:
             continue
@@ -225,6 +228,12 @@ async def _spawn_model_subprocesses(config_path, enabled_models):
         cmd.extend(["--signature", signature])
         print(f"🧩 Spawning subprocess for signature='{signature}': {' '.join(cmd)}")
         sys.stdout.flush()
+        
+        # Stagger launches by 3 seconds to avoid import lock contention
+        # langchain imports can be slow, so we give each process time to complete imports
+        if idx > 0:
+            print(f"⏳ Waiting 3 seconds before starting next subprocess to avoid import conflicts...")
+            await asyncio.sleep(3)
         
         # Create subprocess with explicit stdout/stderr handling
         proc = await asyncio.create_subprocess_exec(
