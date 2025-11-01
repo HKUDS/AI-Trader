@@ -185,7 +185,7 @@ def run_trading_update(project_root: Path, config_path: Path, run_date: str):
     print("=" * 60 + "\n")
     
     # Set date environment variables
-    os.environ["INIT_DATE"] = run_date
+    os.environ["INIT_DATE"] = run_date - timedelta(days=1)
     os.environ["END_DATE"] = run_date
     
     # Ensure Python output is unbuffered
