@@ -2,6 +2,7 @@
 // Main page visualization
 
 const dataLoader = new DataLoader();
+window.dataLoader = dataLoader; // Make dataLoader globally accessible
 let chartInstance = null;
 let allAgentsData = {};
 let isLogScale = false;
@@ -172,9 +173,12 @@ function createChart() {
     // Collect all unique dates and sort them
     const allDates = new Set();
     Object.keys(allAgentsData).forEach(agentName => {
-        allAgentsData[agentName].assetHistory.forEach(h => allDates.add(h.date));
+        const history = allAgentsData[agentName].assetHistory;
+        console.log(`Agent ${agentName}: ${history.length} data points`);
+        history.forEach(h => allDates.add(h.date));
     });
     const sortedDates = Array.from(allDates).sort();
+    console.log(`Total unique dates: ${sortedDates.length}`, sortedDates.slice(0, 10));
 
     const datasets = Object.keys(allAgentsData).map((agentName, index) => {
         const data = allAgentsData[agentName];
@@ -215,6 +219,7 @@ function createChart() {
             pointHoverBorderColor: '#fff',
             pointHoverBorderWidth: 3,
             fill: agentName !== 'QQQ', // No fill for QQQ benchmark
+            spanGaps: true, // Connect points across gaps (null values)
             agentName: agentName,
             agentIcon: dataLoader.getAgentIcon(agentName),
             cubicInterpolationMode: 'monotone' // Smooth, monotonic interpolation
@@ -299,8 +304,13 @@ function createChart() {
                 line: {
                     borderJoinStyle: 'round',
                     borderCapStyle: 'round'
+                },
+                point: {
+                    radius: 0,
+                    hoverRadius: 7
                 }
             },
+            spanGaps: true, // Global setting to connect lines across gaps
             plugins: {
                 legend: {
                     display: false

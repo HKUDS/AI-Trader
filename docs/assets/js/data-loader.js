@@ -32,16 +32,18 @@ class DataLoader {
 
     // Load all agent names from configuration
     async loadAgentList() {
-        // Ensure config is loaded
-        await this.initialize();
+        try {
+            // Ensure config is loaded
+            await this.initialize();
 
             const agentDataDir = this.currentMarket === 'us' ? 'agent_data' : 'agent_data_astock';
             const agents = [];
+            const enabledAgents = window.configLoader.getEnabledAgents();
 
             for (const agentConfig of enabledAgents) {
                 try {
-                    console.log(`Checking agent: ${agent} in ${agentDataDir}`);
-                    const response = await fetch(`${this.baseDataPath}/${agentDataDir}/${agent}/position/position.jsonl`);
+                    console.log(`Checking agent: ${agentConfig.folder} in ${agentDataDir}`);
+                    const response = await fetch(`${this.baseDataPath}/${agentDataDir}/${agentConfig.folder}/position/position.jsonl`);
                     if (response.ok) {
                         agents.push(agentConfig.folder);
                         console.log(`Added agent: ${agentConfig.folder}`);
@@ -142,15 +144,38 @@ class DataLoader {
         }
     }
 
-    // Get closing price for a symbol on a specific date
-    async getClosingPrice(symbol, date) {
+    // Get closing price for a symbol on a specific date/time
+    async getClosingPrice(symbol, dateOrTimestamp) {
         const prices = await this.loadStockPrice(symbol);
-        if (!prices || !prices[date]) {
+        if (!prices) {
             return null;
         }
-        // Support both US format ('4. close') and A-share format ('4. sell price')
-        const closePrice = prices[date]['4. close'] || prices[date]['4. sell price'];
-        return closePrice ? parseFloat(closePrice) : null;
+        
+        // Try exact match first (for hourly data like "2025-10-01 10:00:00")
+        if (prices[dateOrTimestamp]) {
+            const closePrice = prices[dateOrTimestamp]['4. close'] || prices[dateOrTimestamp]['4. sell price'];
+            return closePrice ? parseFloat(closePrice) : null;
+        }
+        
+        // Extract date only for daily data matching
+        const dateOnly = dateOrTimestamp.split(' ')[0]; // "2025-10-01 10:00:00" -> "2025-10-01"
+        if (prices[dateOnly]) {
+            const closePrice = prices[dateOnly]['4. close'] || prices[dateOnly]['4. sell price'];
+            return closePrice ? parseFloat(closePrice) : null;
+        }
+        
+        // If still not found, try to find the closest timestamp on the same date (for hourly data)
+        const datePrefix = dateOnly;
+        const matchingKeys = Object.keys(prices).filter(key => key.startsWith(datePrefix));
+        
+        if (matchingKeys.length > 0) {
+            // Use the last (most recent) timestamp for that date
+            const lastKey = matchingKeys.sort().pop();
+            const closePrice = prices[lastKey]['4. close'] || prices[lastKey]['4. sell price'];
+            return closePrice ? parseFloat(closePrice) : null;
+        }
+        
+        return null;
     }
 
     // Calculate total asset value for a position on a given date
@@ -193,79 +218,96 @@ class DataLoader {
 
         console.log(`Processing ${positions.length} positions for ${agentName}...`);
 
-        // Group positions by timestamp and take only the last position for each timestamp
-        const positionsByTimestamp = {};
+        // Detect if data is hourly or daily
+        const firstDate = positions[0]?.date || '';
+        const isHourlyData = firstDate.includes(':'); // Has time component
+        
+        console.log(`Detected ${isHourlyData ? 'hourly' : 'daily'} data format for ${agentName}`);
+
+        // Group positions by DATE (for hourly data, group by date and take last entry)
+        const positionsByDate = {};
         positions.forEach(position => {
-            const timestamp = position.date;
-            if (!positionsByTimestamp[timestamp] || position.id > positionsByTimestamp[timestamp].id) {
-                positionsByTimestamp[timestamp] = position;
+            let dateKey;
+            if (isHourlyData) {
+                // Extract date only: "2025-10-01 10:00:00" -> "2025-10-01"
+                dateKey = position.date.split(' ')[0];
+            } else {
+                // Already in date format: "2025-10-01"
+                dateKey = position.date;
+            }
+            
+            // Keep the position with the highest ID for each date (most recent)
+            if (!positionsByDate[dateKey] || position.id > positionsByDate[dateKey].id) {
+                positionsByDate[dateKey] = {
+                    ...position,
+                    dateKey: dateKey,  // Store normalized date for price lookup
+                    originalDate: position.date  // Keep original for reference
+                };
             }
         });
 
-        // Convert to array and sort by timestamp
-        const uniquePositions = Object.values(positionsByTimestamp).sort((a, b) => {
-            if (a.date !== b.date) {
-                return a.date.localeCompare(b.date);
-            }
-            return a.id - b.id;
+        // Convert to array and sort by date
+        const uniquePositions = Object.values(positionsByDate).sort((a, b) => {
+            return a.dateKey.localeCompare(b.dateKey);
         });
         
         console.log(`Reduced from ${positions.length} to ${uniquePositions.length} unique daily positions for ${agentName}`);
         
-        // Fill missing dates with previous day's positions
-        const filledPositions = [];
-        if (uniquePositions.length > 0) {
-            const startDate = new Date(uniquePositions[0].date);
-            const endDate = new Date(uniquePositions[uniquePositions.length - 1].date);
-            
-            let currentPosition = uniquePositions[0];
-            let positionIndex = 0;
-            
-            // Iterate through all dates from start to end
-            for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-                const dateStr = d.toISOString().split('T')[0];
-                
-                // Check if we have a position for this date
-                if (positionIndex < uniquePositions.length && uniquePositions[positionIndex].date === dateStr) {
-                    currentPosition = uniquePositions[positionIndex];
-                    filledPositions.push(currentPosition);
-                    positionIndex++;
-                } else {
-                    // Skip weekends (Saturday = 6, Sunday = 0)
-                    const dayOfWeek = d.getDay();
-                    if (dayOfWeek === 0 || dayOfWeek === 6) {
-                        continue;
-                    }
-                    
-                    // Fill with previous position but update the date
-                    filledPositions.push({
-                        ...currentPosition,
-                        date: dateStr,
-                        this_action: null  // No action on this day
-                    });
-                }
-            }
+        // Build asset history with gap filling
+        const assetHistory = [];
+        
+        if (uniquePositions.length === 0) {
+            console.warn(`No unique positions for ${agentName}`);
+            return null;
         }
         
-        console.log(`Filled positions from ${uniquePositions.length} to ${filledPositions.length} days for ${agentName}`);
+        // Get date range
+        const startDate = new Date(uniquePositions[0].dateKey);
+        const endDate = new Date(uniquePositions[uniquePositions.length - 1].dateKey);
         
-        const assetHistory = [];
-
-        for (const position of filledPositions) {
-            const date = position.date;
-            const assetValue = await this.calculateAssetValue(position, date);
+        // Create a map of positions by date for quick lookup
+        const positionMap = {};
+        uniquePositions.forEach(pos => {
+            positionMap[pos.dateKey] = pos;
+        });
+        
+        // Fill all dates in range (skip weekends)
+        let currentPosition = null;
+        for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+            const dateStr = d.toISOString().split('T')[0];
+            const dayOfWeek = d.getDay();
             
-            // Skip if asset value is invalid (e.g., missing price data for that day)
-            if (assetValue === null || isNaN(assetValue) || assetValue <= 0) {
-                console.warn(`Skipping date ${date} for ${agentName} due to invalid asset value: ${assetValue}`);
+            // Skip weekends (Saturday = 6, Sunday = 0)
+            if (dayOfWeek === 0 || dayOfWeek === 6) {
+                continue;
+            }
+            
+            // Use position for this date if exists, otherwise use last known position
+            if (positionMap[dateStr]) {
+                currentPosition = positionMap[dateStr];
+            }
+            
+            // Skip if we don't have any position yet
+            if (!currentPosition) {
+                continue;
+            }
+            
+            // Calculate asset value using current iteration date for price lookup
+            // This ensures we get the price for the actual date we're calculating
+            const assetValue = await this.calculateAssetValue(currentPosition, dateStr);
+            
+            // Only skip if we couldn't calculate asset value due to missing prices
+            // Allow zero or negative values in case of losses
+            if (assetValue === null || isNaN(assetValue)) {
+                console.warn(`Skipping date ${dateStr} for ${agentName} due to missing price data`);
                 continue;
             }
             
             assetHistory.push({
-                date: timestamp,
+                date: dateStr,
                 value: assetValue,
-                id: position.id,
-                action: position.this_action || null
+                id: currentPosition.id,
+                action: positionMap[dateStr]?.this_action || null  // Only show action if position changed
             });
         }
 
@@ -290,7 +332,10 @@ class DataLoader {
             assetHistory: assetHistory.length,
             initialValue: result.initialValue,
             currentValue: result.currentValue,
-            return: result.return
+            return: result.return,
+            dateRange: assetHistory.length > 0 ? 
+                `${assetHistory[0].date} to ${assetHistory[assetHistory.length - 1].date}` : 'N/A',
+            sampleDates: assetHistory.slice(0, 5).map(h => h.date)
         });
 
         return result;

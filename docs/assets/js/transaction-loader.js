@@ -26,7 +26,10 @@ class TransactionLoader {
     // Load transactions for a single agent
     async loadAgentTransactions(agentFolder) {
         try {
-            const positionPath = `data/agent_data/${agentFolder}/position/position.jsonl`;
+            const dataLoader = window.dataLoader || new DataLoader();
+            const market = dataLoader.getMarket();
+            const agentDataDir = market === 'us' ? 'agent_data' : 'agent_data_astock';
+            const positionPath = `data/${agentDataDir}/${agentFolder}/position/position.jsonl`;
             const response = await fetch(positionPath);
             const text = await response.text();
 
@@ -73,7 +76,10 @@ class TransactionLoader {
     // Load agent's thinking/response for a specific transaction
     async loadAgentThinking(agentFolder, date) {
         try {
-            const logPath = `data/agent_data/${agentFolder}/log/${date}/log.jsonl`;
+            const dataLoader = window.dataLoader || new DataLoader();
+            const market = dataLoader.getMarket();
+            const agentDataDir = market === 'us' ? 'agent_data' : 'agent_data_astock';
+            const logPath = `data/${agentDataDir}/${agentFolder}/log/${date}/log.jsonl`;
             const response = await fetch(logPath);
 
             // If log file doesn't exist, return null (no reasoning available)
