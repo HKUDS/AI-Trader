@@ -21,6 +21,14 @@ AGENT_REGISTRY = {
         "module": "agent.claude_sdk_agent.claude_sdk_agent",
         "class": "ClaudeSDKAgent"
     },
+    "EnhancedAgent": {
+        "module": "agent.enhanced_agent.enhanced_agent",
+        "class": "EnhancedAgent"
+    },
+    "EnhancedClaudeSDKAgent": {
+        "module": "agent.claude_sdk_agent.enhanced_claude_sdk_agent",
+        "class": "EnhancedClaudeSDKAgent"
+    },
 }
 
 
@@ -187,9 +195,11 @@ async def main(config_path=None):
         try:
             # Dynamically create Agent instance
             # Different agent types have different parameters
-            if agent_type == "ClaudeSDKAgent":
-                # ClaudeSDKAgent uses official claude-agent-sdk
+            if agent_type in ["ClaudeSDKAgent", "EnhancedClaudeSDKAgent"]:
+                # ClaudeSDKAgent and EnhancedClaudeSDKAgent use official claude-agent-sdk
                 anthropic_api_key = model_config.get("anthropic_api_key", None)
+                memory_lookback_days = agent_config.get("memory_lookback_days", 5)
+
                 agent = AgentClass(
                     signature=signature,
                     basemodel=basemodel,
@@ -200,10 +210,11 @@ async def main(config_path=None):
                     max_retries=max_retries,
                     base_delay=base_delay,
                     initial_cash=initial_cash,
-                    init_date=INIT_DATE
+                    init_date=INIT_DATE,
+                    memory_lookback_days=memory_lookback_days  # For enhanced version
                 )
             else:
-                # BaseAgent uses openai_base_url and openai_api_key
+                # BaseAgent and EnhancedAgent use openai_base_url and openai_api_key
                 agent = AgentClass(
                     signature=signature,
                     basemodel=basemodel,

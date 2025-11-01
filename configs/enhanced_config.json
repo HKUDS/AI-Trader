@@ -1,0 +1,33 @@
+{
+  "agent_type": "EnhancedAgent",
+  "date_range": {
+    "init_date": "2025-10-01",
+    "end_date": "2025-10-21"
+  },
+  "models": [
+    {
+      "name": "claude-3.7-sonnet-enhanced",
+      "basemodel": "anthropic/claude-3.7-sonnet",
+      "signature": "claude-3.7-sonnet-enhanced",
+      "enabled": true,
+      "openai_base_url": "Optional: YOUR_OPENAI_BASE_URL, you can write them in .env file",
+      "openai_api_key": "Optional: YOUR_OPENAI_API_KEY, you can write them in .env file"
+    },
+    {
+      "name": "gpt-5-enhanced",
+      "basemodel": "openai/gpt-5",
+      "signature": "gpt-5-enhanced",
+      "enabled": false
+    }
+  ],
+  "agent_config": {
+    "max_steps": 30,
+    "max_retries": 3,
+    "base_delay": 1.0,
+    "initial_cash": 10000.0,
+    "memory_lookback_days": 5
+  },
+  "log_config": {
+    "log_path": "./data/agent_data"
+  }
+}

@@ -24,9 +24,11 @@ class MCPServiceManager:
             'math': int(os.getenv('MATH_HTTP_PORT', '8000')),
             'search': int(os.getenv('SEARCH_HTTP_PORT', '8001')),
             'trade': int(os.getenv('TRADE_HTTP_PORT', '8002')),
-            'price': int(os.getenv('GETPRICE_HTTP_PORT', '8003'))
+            'price': int(os.getenv('GETPRICE_HTTP_PORT', '8003')),
+            'portfolio': int(os.getenv('PORTFOLIO_HTTP_PORT', '8004')),
+            'technical': int(os.getenv('TECHNICAL_HTTP_PORT', '8005'))
         }
-        
+
         # Service configurations
         self.service_configs = {
             'math': {
@@ -48,6 +50,16 @@ class MCPServiceManager:
                 'script': 'tool_get_price_local.py',
                 'name': 'LocalPrices',
                 'port': self.ports['price']
+            },
+            'portfolio': {
+                'script': 'tool_portfolio_analytics.py',
+                'name': 'PortfolioAnalytics',
+                'port': self.ports['portfolio']
+            },
+            'technical': {
+                'script': 'tool_technical_analysis.py',
+                'name': 'TechnicalAnalysis',
+                'port': self.ports['technical']
             }
         }
         
