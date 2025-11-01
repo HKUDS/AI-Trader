@@ -38,15 +38,16 @@ def get_agent_class(agent_type):
         import importlib
         
         # Import with timeout to detect blocking imports
+        # Note: langchain imports can take 60+ seconds, especially with multiple processes
         try:
             import signal
             
             def timeout_handler(signum, frame):
-                raise TimeoutError(f"Module import timed out after 60 seconds: {module_path}")
+                raise TimeoutError(f"Module import timed out after 120 seconds: {module_path}")
             
-            # Set timeout for import (60 seconds - langchain imports can be slow)
+            # Set timeout for import (120 seconds - langchain imports can be very slow)
             signal.signal(signal.SIGALRM, timeout_handler)
-            signal.alarm(60)
+            signal.alarm(120)
             
             try:
                 module = importlib.import_module(module_path)
@@ -180,7 +181,8 @@ async def _spawn_model_subprocesses(config_path, enabled_models):
     
     # Stagger subprocess launches to avoid import lock contention
     # When multiple processes import the same module simultaneously, 
-    # Python's import lock can cause deadlocks
+    # Python's import lock can cause deadlocks.
+    # Use longer delays to allow each process to complete imports before starting the next
     for idx, model in enumerate(enabled_models):
         signature = model.get("signature")
         if not signature:
@@ -192,11 +194,11 @@ async def _spawn_model_subprocesses(config_path, enabled_models):
         print(f"🧩 Spawning subprocess for signature='{signature}': {' '.join(cmd)}")
         sys.stdout.flush()
         
-        # Stagger launches by 3 seconds to avoid import lock contention
-        # langchain imports can be slow, so we give each process time to complete imports
+        # Stagger launches by 5 seconds to avoid import lock contention
+        # langchain imports can be very slow, give each process more time
         if idx > 0:
-            print(f"⏳ Waiting 3 seconds before starting next subprocess to avoid import conflicts...")
-            await asyncio.sleep(3)
+            print(f"⏳ Waiting 5 seconds before starting next subprocess to avoid import conflicts...")
+            await asyncio.sleep(5)
         
         # Create subprocess with explicit stdout/stderr handling
         proc = await asyncio.create_subprocess_exec(
