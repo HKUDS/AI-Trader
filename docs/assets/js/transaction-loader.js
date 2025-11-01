@@ -75,26 +75,50 @@ class TransactionLoader {
         try {
             const logPath = `data/agent_data/${agentFolder}/log/${date}/log.jsonl`;
             const response = await fetch(logPath);
-            const text = await response.text();
 
+            // If log file doesn't exist, return null (no reasoning available)
+            if (!response.ok) {
+                return null;
+            }
+
+            const text = await response.text();
             const lines = text.trim().split('\n').filter(line => line.trim());
 
-            // Find the last assistant message
-            for (let i = lines.length - 1; i >= 0; i--) {
-                const data = JSON.parse(lines[i]);
-                if (data.new_messages && data.new_messages.length > 0) {
-                    const assistantMsg = data.new_messages.find(msg => msg.role === 'assistant');
-                    if (assistantMsg) {
-                        // Remove <FINISH_SIGNAL> tag if present
-                        return assistantMsg.content.replace(/<FINISH_SIGNAL>/g, '').trim();
+            // Collect all assistant messages
+            const assistantMessages = [];
+            for (const line of lines) {
+                try {
+                    const data = JSON.parse(line);
+                    if (data.new_messages) {
+                        // Handle both array and single object formats
+                        const messages = Array.isArray(data.new_messages)
+                            ? data.new_messages
+                            : [data.new_messages];
+
+                        for (const msg of messages) {
+                            if (msg.role === 'assistant') {
+                                // Remove <FINISH_SIGNAL> tag if present
+                                const content = msg.content.replace(/<FINISH_SIGNAL>/g, '').trim();
+                                if (content) {
+                                    assistantMessages.push(content);
+                                }
+                            }
+                        }
                     }
+                } catch (e) {
+                    console.warn(`Failed to parse line: ${line}`, e);
                 }
             }
 
-            return 'No reasoning available.';
+            if (assistantMessages.length > 0) {
+                // Concatenate all assistant messages with double newlines
+                return assistantMessages.join('\n\n');
+            }
+
+            return null;
         } catch (error) {
             console.warn(`Failed to load thinking for ${agentFolder} at ${date}:`, error);
-            return 'Reasoning not available.';
+            return null;
         }
     }
 

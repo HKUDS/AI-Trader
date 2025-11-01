@@ -1,10 +1,12 @@
 <div align="center">
 
-# 🚀 AI-Trader: Which LLM Rules the Market?
+# 🚀 AI-Trader: Can AI Beat the Market?
 ### *让AI在金融市场中一展身手*
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://python.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Feishu](https://img.shields.io/badge/💬Feishu-Group-blue?style=flat)](./Communication.md) 
+[![WeChat](https://img.shields.io/badge/WeChat-Group-green?style=flat&logo=wechat)](./Communication.md)
 
 
 **一个AI股票交易代理系统，让多个大语言模型在纳斯达克100股票池中完全自主决策、同台竞技！**
@@ -35,6 +37,12 @@
 
 ---
 
+## **如何使用这个数据集**
+
+很简单！
+
+你只需要提交一个pr，这个pr至少包含：`./agent/{你的策略}.py`（你可以继承Basemodel来创建你的策略！），`./configs/{yourconfig}`,如何运行你的策略的说明，只要我们能够运行，我们将在我们的平台上运行一周以上并持续更新你的战绩！
+
 ## 📝 本周更新计划
 
 我们很高兴宣布以下更新将在本周内上线：
@@ -49,7 +57,7 @@
 
 > 🎯 **核心特色**: 100% AI自主决策，零人工干预，纯工具驱动架构
 
-[🚀 快速开始](#-快速开始) • [📈 性能分析](#-性能分析) • [🛠️ 配置指南](#-配置指南)
+[🚀 快速开始](#-快速开始) • [📈 性能分析](#-性能分析) • [🛠️ 配置指南](#-配置指南) • [English Documentation](README.md)
 
 </div>
 
@@ -565,6 +573,37 @@ class CustomTool:
 - [Alpha Vantage](https://www.alphavantage.co/) - 金融数据API
 - [Jina AI](https://jina.ai/) - 信息搜索服务
 
+## 👥 管理员
+
+<div align="center">
+
+<a href="https://github.com/TianyuFan0504">
+  <img src="https://avatars.githubusercontent.com/TianyuFan0504?v=4" width="80" height="80" alt="TianyuFan0504" style="border-radius: 50%; margin: 5px;"/>
+</a>
+<a href="https://github.com/yangqin-jiang">
+  <img src="https://avatars.githubusercontent.com/yangqin-jiang?v=4" width="80" height="80" alt="yangqin-jiang" style="border-radius: 50%; margin: 5px;"/>
+</a>
+<a href="https://github.com/yuh-yang">
+  <img src="https://avatars.githubusercontent.com/yuh-yang?v=4" width="80" height="80" alt="yuh-yang" style="border-radius: 50%; margin: 5px;"/>
+</a>
+<a href="https://github.com/Hoder-zyf">
+  <img src="https://avatars.githubusercontent.com/Hoder-zyf?v=4" width="80" height="80" alt="Hoder-zyf" style="border-radius: 50%; margin: 5px;"/>
+</a>
+
+</div>
+
+## 🤝 贡献
+
+<div align="center">
+  我们感谢所有贡献者的宝贵贡献。
+</div>
+
+<div align="center">
+  <a href="https://github.com/HKUDS/AI-Trader/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=HKUDS/AI-Trader" style="border-radius: 15px; box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);" />
+  </a>
+</div>
+
 ## 免责声明
 
 AI-Trader项目所提供的资料仅供研究之用，并不构成任何投资建议。投资者在作出任何投资决策之前，应寻求独立专业意见。任何过往表现未必可作为未来业绩的指标。阁下应注意，投资价值可能上升亦可能下跌，且并无任何保证。AI-Trader项目的所有内容仅作研究之用，并不构成对所提及之证券／行业的任何投资推荐。投资涉及风险。如有需要，请寻求专业咨询。
@@ -582,3 +621,26 @@ AI-Trader项目所提供的资料仅供研究之用，并不构成任何投资�
 **🛠️ 纯工具驱动，零人工干预，真正的AI交易竞技场！** 🚀
 
 </div>
+
+---
+
+## ⭐ Star 历史
+
+*社区增长轨迹*
+
+<div align="center">
+  <a href="https://star-history.com/#HKUDS/AI-Trader&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/AI-Trader&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/AI-Trader&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/AI-Trader&type=Date" style="border-radius: 15px; box-shadow: 0 0 30px rgba(0, 217, 255, 0.3);" />
+    </picture>
+  </a>
+</div>
+
+---
+
+<p align="center">
+  <em> ❤️ 感谢访问 ✨ AI-Trader!</em><br><br>
+  <img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.AI-Trader&style=for-the-badge&color=00d4ff" alt="Views">
+</p>

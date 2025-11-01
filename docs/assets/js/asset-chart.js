@@ -632,20 +632,52 @@ async function createLeaderboard() {
     });
 }
 
-// Create action flow
+// Create action flow with pagination
+let actionFlowState = {
+    allTransactions: [],
+    loadedCount: 0,
+    pageSize: 20,
+    maxTransactions: 100,
+    isLoading: false,
+    container: null
+};
+
 async function createActionFlow() {
     // Load all transactions
     await window.transactionLoader.loadAllTransactions();
-    const recentTransactions = window.transactionLoader.getMostRecentTransactions(100);
+    actionFlowState.allTransactions = window.transactionLoader.getMostRecentTransactions(100);
+    actionFlowState.container = document.getElementById('actionList');
+    actionFlowState.container.innerHTML = '';
+    actionFlowState.loadedCount = 0;
 
-    const container = document.getElementById('actionList');
-    container.innerHTML = '';
+    // Load initial batch
+    await loadMoreTransactions();
 
-    // Load thinking for each transaction (limit to first 20 for performance)
-    const transactionsToShow = recentTransactions.slice(0, 20);
+    // Set up scroll listener
+    setupScrollListener();
+}
 
-    for (let i = 0; i < transactionsToShow.length; i++) {
-        const transaction = transactionsToShow[i];
+async function loadMoreTransactions() {
+    if (actionFlowState.isLoading) return;
+    if (actionFlowState.loadedCount >= actionFlowState.allTransactions.length) return;
+    if (actionFlowState.loadedCount >= actionFlowState.maxTransactions) return;
+
+    actionFlowState.isLoading = true;
+
+    // Show loading indicator
+    showLoadingIndicator();
+
+    // Calculate how many to load
+    const startIndex = actionFlowState.loadedCount;
+    const endIndex = Math.min(
+        startIndex + actionFlowState.pageSize,
+        actionFlowState.allTransactions.length,
+        actionFlowState.maxTransactions
+    );
+
+    // Load this batch
+    for (let i = startIndex; i < endIndex; i++) {
+        const transaction = actionFlowState.allTransactions[i];
         const agentName = transaction.agentFolder;
         const displayName = window.configLoader.getDisplayName(agentName);
         const icon = window.configLoader.getIcon(agentName);
@@ -656,8 +688,10 @@ async function createActionFlow() {
 
         const cardEl = document.createElement('div');
         cardEl.className = 'action-card';
-        cardEl.style.animationDelay = `${i * 0.03}s`;
-        cardEl.innerHTML = `
+        cardEl.style.animationDelay = `${(i % actionFlowState.pageSize) * 0.03}s`;
+
+        // Build card HTML - only include reasoning section if thinking is available
+        let cardHTML = `
             <div class="action-header">
                 <div class="action-agent-icon">
                     <img src="${icon}" alt="${displayName}">
@@ -672,6 +706,11 @@ async function createActionFlow() {
                 </div>
                 <div class="action-timestamp">${window.transactionLoader.formatDateTime(transaction.date)}</div>
             </div>
+        `;
+
+        // Only add reasoning section if thinking is available
+        if (thinking !== null) {
+            cardHTML += `
             <div class="action-body">
                 <div class="action-thinking-label">
                     <span class="thinking-icon">🧠</span>
@@ -679,18 +718,113 @@ async function createActionFlow() {
                 </div>
                 <div class="action-thinking">${formatThinking(thinking)}</div>
             </div>
-        `;
+            `;
+        }
 
-        container.appendChild(cardEl);
+        cardEl.innerHTML = cardHTML;
+
+        // Remove the status note and loading indicator before adding new cards
+        const existingNote = actionFlowState.container.querySelector('.transactions-status-note');
+        if (existingNote) {
+            existingNote.remove();
+        }
+        const existingLoader = actionFlowState.container.querySelector('.transactions-loading');
+        if (existingLoader) {
+            existingLoader.remove();
+        }
+
+        actionFlowState.container.appendChild(cardEl);
     }
 
-    // Add a note if there are more transactions
-    if (recentTransactions.length > 20) {
-        const noteEl = document.createElement('div');
-        noteEl.style.cssText = 'text-align: center; padding: 1rem; color: var(--text-muted); font-size: 0.9rem;';
-        noteEl.textContent = `Showing 20 of ${recentTransactions.length} recent transactions`;
-        container.appendChild(noteEl);
+    actionFlowState.loadedCount = endIndex;
+    actionFlowState.isLoading = false;
+
+    // Hide loading indicator and add status note
+    hideLoadingIndicator();
+    updateStatusNote();
+}
+
+function showLoadingIndicator() {
+    // Remove existing indicator
+    const existingLoader = actionFlowState.container.querySelector('.transactions-loading');
+    if (existingLoader) {
+        existingLoader.remove();
     }
+
+    const loaderEl = document.createElement('div');
+    loaderEl.className = 'transactions-loading';
+    loaderEl.style.cssText = 'text-align: center; padding: 1.5rem; color: var(--accent); font-size: 0.9rem; font-weight: 500;';
+    loaderEl.innerHTML = '⏳ Loading more transactions...';
+    actionFlowState.container.appendChild(loaderEl);
+}
+
+function hideLoadingIndicator() {
+    const existingLoader = actionFlowState.container.querySelector('.transactions-loading');
+    if (existingLoader) {
+        existingLoader.remove();
+    }
+}
+
+function updateStatusNote() {
+    // Remove existing note
+    const existingNote = actionFlowState.container.querySelector('.transactions-status-note');
+    if (existingNote) {
+        existingNote.remove();
+    }
+
+    // Add new note
+    const noteEl = document.createElement('div');
+    noteEl.className = 'transactions-status-note';
+    noteEl.style.cssText = 'text-align: center; padding: 1.5rem; color: var(--text-muted); font-size: 0.9rem;';
+
+    const totalAvailable = actionFlowState.allTransactions.length;
+    const loaded = actionFlowState.loadedCount;
+
+    if (loaded >= actionFlowState.maxTransactions || loaded >= totalAvailable) {
+        // We've loaded everything we can
+        if (totalAvailable > actionFlowState.maxTransactions) {
+            noteEl.textContent = `Showing the most recent ${loaded} of ${totalAvailable} total transactions`;
+        } else {
+            noteEl.textContent = `Showing all ${loaded} recent transactions`;
+        }
+    } else {
+        // More to load
+        noteEl.textContent = `Loaded ${loaded} of ${Math.min(totalAvailable, actionFlowState.maxTransactions)} transactions. Scroll down to load more...`;
+    }
+
+    actionFlowState.container.appendChild(noteEl);
+}
+
+function setupScrollListener() {
+    const container = actionFlowState.container;
+    let ticking = false;
+
+    const checkScroll = () => {
+        const scrollTop = container.scrollTop;
+        const scrollHeight = container.scrollHeight;
+        const clientHeight = container.clientHeight;
+
+        // Trigger load when user is within 300px of bottom
+        if (scrollHeight - (scrollTop + clientHeight) < 300) {
+            if (!actionFlowState.isLoading &&
+                actionFlowState.loadedCount < actionFlowState.maxTransactions &&
+                actionFlowState.loadedCount < actionFlowState.allTransactions.length) {
+                loadMoreTransactions();
+            }
+        }
+
+        ticking = false;
+    };
+
+    // Listen to the container's scroll, not window scroll
+    container.addEventListener('scroll', () => {
+        if (!ticking) {
+            window.requestAnimationFrame(() => {
+                checkScroll();
+            });
+            ticking = true;
+        }
+    });
 }
 
 // Format thinking text into paragraphs

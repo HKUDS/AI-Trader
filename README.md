@@ -35,15 +35,11 @@
 
 ---
 
-## 📝 Upcoming Updates (This Week)
+## **How to use this dataset**
 
-We're excited to announce the following updates coming this week:
+It's simple! 
 
-- ⏰ **Hourly Trading Support** - Upgrade to hour-level precision trading 
-- 🚀 **Service Deployment & Parallel Execution** - Deploy production service + parallel model execution
-- 🎨 **Enhanced Frontend Dashboard** - Add detailed trading log visualization (complete trading process display)
-
-Stay tuned for these exciting improvements! 🎉
+You just need to submit a PR that includes at least: `./agent/{your_strategy}.py` (you can inherit from Basemodel to create your strategy!), `./configs/{yourconfig}`, and instructions on how to run your strategy. As long as we can run it, we will run it on our platform for more than a week and continuously update your results!
 
 ---
 
@@ -52,6 +48,17 @@ Stay tuned for these exciting improvements! 🎉
 </div>
 
 ---
+## 🎉 Weekly Update (Oct 24-30, 2025)
+
+We're excited to announce the following major updates completed this week:
+
+### ⏰ Hourly Trading Support
+- ✅ **Hour-Level Precision Trading** - Upgraded from daily to hourly trading intervals for more granular market participation
+
+### 🎨 Comprehensive UI Optimization
+- ✅ **Live Trading Dashboard** - Real-time visualization of all agent trading activities
+- ✅ **Agent Reasoning Display** - Complete transparency into AI decision-making processes with full reasoning chains
+- ✅ **Interactive Leaderboard** - Dynamic performance rankings with live updates
 
 ## 🌟 Project Introduction
 
@@ -503,44 +510,6 @@ class CustomTool:
 - [ ] **⏰ Advanced Replay** - Support minute-level time precision and real-time replay
 - [ ] **🔍 Smart Filtering** - More precise future information detection and filtering
 
-## 🤝 Contributing Guide
-
-We welcome contributions of all kinds! Especially AI trading strategies and agent implementations.
-
-### 🧠 AI Strategy Contributions
-- **🎯 Trading Strategies**: Contribute your AI trading strategy implementations
-- **🤖 Custom Agents**: Implement new AI agent types
-- **📊 Analysis Tools**: Add new market analysis tools
-- **🔍 Data Sources**: Integrate new data sources and APIs
-
-### 🐛 Issue Reporting
-- Use GitHub Issues to report bugs
-- Provide detailed reproduction steps
-- Include system environment information
-
-### 💡 Feature Suggestions
-- Propose new feature ideas in Issues
-- Describe use cases in detail
-- Discuss implementation approaches
-
-### 🔧 Code Contributions
-1. Fork the project
-2. Create a feature branch
-3. Implement your strategy or feature
-4. Add test cases
-5. Create a Pull Request
-
-### 📚 Documentation Improvements
-- Improve README documentation
-- Add code comments
-- Write usage tutorials
-- Contribute strategy documentation
-
-### 🏆 Strategy Sharing
-- **📈 Technical Analysis Strategies**: AI strategies based on technical indicators
-- **📊 Quantitative Strategies**: Multi-factor models and quantitative analysis
-- **🔍 Fundamental Strategies**: Analysis strategies based on financial data
-- **🌐 Macro Strategies**: Strategies based on macroeconomic data
 
 ## 📞 Support & Community
 
@@ -558,6 +527,37 @@ Thanks to the following open source projects and services:
 - [MCP](https://github.com/modelcontextprotocol) - Model Context Protocol
 - [Alpha Vantage](https://www.alphavantage.co/) - Financial data API
 - [Jina AI](https://jina.ai/) - Information search service
+
+## 👥 Administrator
+
+<div align="center">
+
+<a href="https://github.com/TianyuFan0504">
+  <img src="https://avatars.githubusercontent.com/TianyuFan0504?v=4" width="80" height="80" alt="TianyuFan0504" style="border-radius: 50%; margin: 5px;"/>
+</a>
+<a href="https://github.com/yangqin-jiang">
+  <img src="https://avatars.githubusercontent.com/yangqin-jiang?v=4" width="80" height="80" alt="yangqin-jiang" style="border-radius: 50%; margin: 5px;"/>
+</a>
+<a href="https://github.com/yuh-yang">
+  <img src="https://avatars.githubusercontent.com/yuh-yang?v=4" width="80" height="80" alt="yuh-yang" style="border-radius: 50%; margin: 5px;"/>
+</a>
+<a href="https://github.com/Hoder-zyf">
+  <img src="https://avatars.githubusercontent.com/Hoder-zyf?v=4" width="80" height="80" alt="Hoder-zyf" style="border-radius: 50%; margin: 5px;"/>
+</a>
+
+</div>
+
+## 🤝 Contribution
+
+<div align="center">
+  We thank all our contributors for their valuable contributions.
+</div>
+
+<div align="center">
+  <a href="https://github.com/HKUDS/AI-Trader/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=HKUDS/AI-Trader" style="border-radius: 15px; box-shadow: 0 0 20px rgba(0, 217, 255, 0.3);" />
+  </a>
+</div>
 
 ## Disclaimer
 

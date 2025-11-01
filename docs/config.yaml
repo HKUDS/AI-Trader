@@ -90,6 +90,12 @@ agents:
     color: "#cc785c"
     enabled: true
 
+  - folder: "MiniMax-M2"
+    display_name: "MiniMax M2"
+    icon: "./figs/minimax.svg"
+    color: "#ff6b6b"
+    enabled: true
+
 # Benchmark configuration
 benchmark:
   folder: "QQQ"
