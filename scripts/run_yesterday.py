@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 import json
@@ -57,14 +58,73 @@ def main():
     os.environ["INIT_DATE"] = run_date
     os.environ["END_DATE"] = run_date
 
-    # Import and run the project main
+    # Initialize MCP Service Manager
     sys.path.insert(0, str(project_root))
-    import asyncio
-    import main_parallel as project_main
+    agent_tools_path = project_root / "agent_tools"
+    sys.path.insert(0, str(agent_tools_path))
+    
+    from start_mcp_services import MCPServiceManager
+    
+    # Create MCP service manager instance
+    mcp_manager = None
+    
+    try:
+        # Change to agent_tools directory to start services (they expect to run from there)
+        original_cwd = os.getcwd()
+        os.chdir(agent_tools_path)
+        
+        # Initialize and start MCP services
+        print("\n" + "=" * 60)
+        print("🚀 Starting MCP services...")
+        print("=" * 60)
+        mcp_manager = MCPServiceManager()
+        
+        # Start all services manually (without keep_alive)
+        print(f"📊 Port configuration:")
+        for service_id, config in mcp_manager.service_configs.items():
+            print(f"  - {config['name']}: {config['port']}")
+        
+        print("\n🔄 Starting services...")
+        for service_id, config in mcp_manager.service_configs.items():
+            mcp_manager.start_service(service_id, config)
+        
+        # Wait for services to start
+        print("\n⏳ Waiting for services to start...")
+        time.sleep(3)
+        
+        # Check service status
+        print("\n🔍 Checking service status...")
+        mcp_manager.check_all_services()
+        
+        print("\n✅ All MCP services started!")
+        mcp_manager.print_service_info()
+        
+        # Restore original working directory
+        os.chdir(original_cwd)
+        
+        # Import and run the project main
+        import asyncio
+        import main_parallel as project_main
 
-    print(f"Running for date: {run_date}")
-    print(f"Using config: {config_path}")
-    asyncio.run(project_main.main(config_path))
+        print("\n" + "=" * 60)
+        print(f"📅 Running for date: {run_date}")
+        print(f"📄 Using config: {config_path}")
+        print("=" * 60 + "\n")
+        asyncio.run(project_main.main(config_path))
+        
+    except Exception as e:
+        print(f"\n❌ Error during execution: {e}")
+        raise
+    finally:
+        # Always stop MCP services
+        if mcp_manager and mcp_manager.services:
+            print("\n" + "=" * 60)
+            print("🛑 Stopping MCP services...")
+            print("=" * 60)
+            try:
+                mcp_manager.stop_all_services()
+            except Exception as e:
+                print(f"⚠️  Error stopping MCP services: {e}")
 
 
 if __name__ == "__main__":
