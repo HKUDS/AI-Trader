@@ -9,8 +9,7 @@
       "name": "claude-3.7-sonnet",
       "basemodel": "claude-3-5-sonnet-20241022",
       "signature": "claude-3.7-sonnet-anthropic-sdk",
-      "enabled": true,
-      "anthropic_api_key": "Optional: YOUR_ANTHROPIC_API_KEY, you can write them in .env file"
+      "enabled": true
     }
   ],
   "agent_config": {
