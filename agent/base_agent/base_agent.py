@@ -365,19 +365,18 @@ class BaseAgent:
                         if current_date_obj > max_date_obj:
                             max_date = current_date
         
-        # Check if new dates need to be processed
-        max_date_obj = datetime.strptime(max_date, "%Y-%m-%d")
+        # Generate trading date list from init_date to end_date
+        init_date_obj = datetime.strptime(init_date, "%Y-%m-%d")
         end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+        max_date_obj = datetime.strptime(max_date, "%Y-%m-%d")
         
-        if end_date_obj <= max_date_obj:
-            return []
-        
-        # Generate trading date list
+        # Start from init_date (not max_date + 1) to ensure we can process the requested date range
+        # This allows reprocessing dates if needed (e.g., daily updates)
         trading_dates = []
-        current_date = max_date_obj + timedelta(days=1)
+        current_date = init_date_obj
         
         while current_date <= end_date_obj:
-            if current_date.weekday() < 5:  # Weekdays
+            if current_date.weekday() < 5:  # Weekdays only
                 trading_dates.append(current_date.strftime("%Y-%m-%d"))
             current_date += timedelta(days=1)
         
