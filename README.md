@@ -222,11 +222,22 @@ AI-Trader Bench/
 ├── 🎨 Frontend Interface
 │   └── frontend/                  # 🌐 Web dashboard
 │
-└── 📋 Configuration & Documentation
-    ├── configs/                   # ⚙️ System configuration
-    │   ├── default_config.json    # US stocks default configuration
-    │   └── astock_config.json     # A-share configuration example
-    └── calc_perf.sh              # 🚀 Performance calculation script
+├── 📋 Configuration & Documentation
+│   ├── configs/                   # ⚙️ System configuration
+│   │   ├── default_config.json    # US stocks default configuration
+│   │   └── astock_config.json     # A-share configuration example
+│   └── calc_perf.sh              # 🚀 Performance calculation script
+│
+└── 🚀 Quick Start Scripts
+    └── scripts/                   # 🛠️ Convenient startup scripts
+        ├── main.sh                # One-click complete workflow (US stocks)
+        ├── main_step1.sh          # US stocks: Data preparation
+        ├── main_step2.sh          # US stocks: Start MCP services
+        ├── main_step3.sh          # US stocks: Run trading agent
+        ├── main_a_stock_step1.sh  # A-shares: Data preparation
+        ├── main_a_stock_step2.sh  # A-shares: Start MCP services
+        ├── main_a_stock_step3.sh  # A-shares: Run trading agent
+        └── start_ui.sh            # Start web UI interface
 ```
 
 ### 🔧 Core Components Details
@@ -342,9 +353,45 @@ pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dot
 
 ## 🎮 Running Guide
 
+### 🚀 Quick Start with Scripts
+
+We provide convenient shell scripts in the `scripts/` directory for easy startup:
+
+#### 🇺🇸 US Market (NASDAQ 100)
+```bash
+# One-click startup (complete workflow)
+bash scripts/main.sh
+
+# Or run step by step:
+bash scripts/main_step1.sh  # Step 1: Prepare data
+bash scripts/main_step2.sh  # Step 2: Start MCP services
+bash scripts/main_step3.sh  # Step 3: Run trading agent
+```
+
+#### 🇨🇳 A-Share Market (SSE 50)
+```bash
+# Run step by step:
+bash scripts/main_a_stock_step1.sh  # Step 1: Prepare A-share data
+bash scripts/main_a_stock_step2.sh  # Step 2: Start MCP services
+bash scripts/main_a_stock_step3.sh  # Step 3: Run A-share trading agent
+```
+
+#### 🌐 Web UI
+```bash
+# Start web interface
+bash scripts/start_ui.sh
+# Visit: http://localhost:8888
+```
+
+---
+
+### 📋 Manual Setup Guide
+
+If you prefer to run commands manually, follow these steps:
+
 ### 📊 Step 1: Data Preparation
 
-#### 🇺🇸 NASDAQ 100 Data (`./fresh_data.sh`)
+#### 🇺🇸 NASDAQ 100 Data
 
 ```bash
 # 📈 Get NASDAQ 100 stock data
