@@ -102,10 +102,13 @@ def check_port_open(port):
         return False
 
 
-def check_mcp_services_running():
+def check_mcp_services_running(verbose=False):
     """
     检查所有 MCP 服务是否正在运行
     
+    Args:
+        verbose: 是否打印详细日志
+        
     Returns:
         bool: 如果所有服务都在运行返回 True
     """
@@ -120,7 +123,8 @@ def check_mcp_services_running():
     all_running = True
     for service_name, port in ports.items():
         if not check_port_open(port):
-            print(f"⚠️  {service_name} 服务未运行 (端口 {port})")
+            if verbose:
+                print(f"⚠️  {service_name} 服务未运行 (端口 {port})")
             all_running = False
     
     return all_running
@@ -143,42 +147,61 @@ def start_mcp_services():
     
     print("🔧 检查 MCP 服务状态...")
     
-    # 首先检查服务是否已经在运行
-    if check_mcp_services_running():
+    # 首先检查服务是否已经在运行（静默检查）
+    if check_mcp_services_running(verbose=False):
         print("✅ MCP 服务已在运行")
         return True
+    
+    print("ℹ️  MCP 服务未运行，需要启动")
     
     print("🚀 启动 MCP 服务...")
     
     try:
         # 以后台方式启动 MCP 服务
         # 注意：start_mcp_services.py 是一个阻塞脚本，我们需要在后台运行
+        # 使用 devnull 避免缓冲问题，并允许服务正常输出到日志文件
+        import subprocess as sp
+        devnull = open(os.devnull, 'w')
+        
         process = subprocess.Popen(
             [sys.executable, str(mcp_script)],
             cwd=str(project_root / "agent_tools"),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            start_new_session=True  # 创建新会话，使进程独立
+            stdout=devnull,
+            stderr=sp.STDOUT,
+            start_new_session=True,  # 创建新会话，使进程独立
+            close_fds=True  # 关闭文件描述符
         )
+        devnull.close()
         
         # 等待服务启动
         print("⏳ 等待 MCP 服务启动...")
         time.sleep(5)
         
-        # 检查服务是否成功启动
+        # 检查进程是否还在运行
+        if process.poll() is not None:
+            print(f"⚠️  MCP 服务进程已退出，返回码: {process.poll()}")
+            return False
+        
+        # 检查服务是否成功启动（通过端口检查）
         if check_mcp_services_running():
             print("✅ MCP 服务启动成功")
             # 保存进程 ID，以便后续可能需要停止
             mcp_pid_file = project_root / ".mcp_services.pid"
-            with open(mcp_pid_file, 'w') as f:
-                f.write(str(process.pid))
+            try:
+                with open(mcp_pid_file, 'w') as f:
+                    f.write(str(process.pid))
+            except Exception as e:
+                print(f"⚠️  无法保存 MCP 进程 ID: {e}")
             return True
         else:
-            print("⚠️  MCP 服务可能未完全启动，但继续执行...")
+            print("⚠️  MCP 服务可能未完全启动，但进程仍在运行")
+            print("⚠️  将在下次任务执行前再次检查")
             return False
             
     except Exception as e:
         print(f"❌ 启动 MCP 服务时发生错误: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
@@ -189,9 +212,11 @@ def ensure_mcp_services_running():
     Returns:
         bool: 如果服务运行中返回 True
     """
-    if check_mcp_services_running():
+    # 在任务执行时，使用详细模式检查服务状态
+    if check_mcp_services_running(verbose=True):
         return True
     
+    # 如果服务未运行，尝试启动
     return start_mcp_services()
 
 
@@ -338,46 +363,65 @@ def scheduled_task():
 
 def main():
     """主函数：启动调度器"""
-    print("🚀 启动美股交易定时调度器...")
-    print("📅 将在每个交易日的 9:30-15:30 的每小时:30 执行任务")
-    print("⏰ 使用美东时间 (US/Eastern)")
-    print("\n" + "=" * 60)
-    print("步骤 0: 启动 MCP 服务")
-    print("=" * 60)
-    
-    # 在调度器启动时启动 MCP 服务
-    if not start_mcp_services():
-        print("⚠️  MCP 服务启动可能失败，但调度器将继续运行")
-        print("⚠️  将在每次任务执行前再次尝试启动服务")
-    
-    print("\n" + "=" * 60)
-    print("✅ 调度器初始化完成")
-    print("=" * 60)
-    print("\n按 Ctrl+C 停止调度器\n")
-    
-    # 创建调度器，使用美东时区
-    et = timezone('US/Eastern')
-    scheduler = BlockingScheduler(timezone=et)
-    
-    # 添加定时任务：每天的 9:30-15:30 的每小时:30 执行
-    # 注意：是否执行取决于 scheduled_task 内部的交易日检查
-    # CronTrigger: 分钟=30, 小时=9-15
-    scheduler.add_job(
-        scheduled_task,
-        trigger=CronTrigger(
-            minute=30,
-            hour='9-15'  # 9:30, 10:30, ..., 15:30
-        ),
-        id='trading_task',
-        name='美股交易定时任务',
-        replace_existing=True
-    )
-    
     try:
-        scheduler.start()
-    except (KeyboardInterrupt, SystemExit):
-        print("\n\n⏹️  调度器已停止")
-        scheduler.shutdown()
+        print("🚀 启动美股交易定时调度器...")
+        print("📅 将在每个交易日的 9:30-15:30 的每小时:30 执行任务")
+        print("⏰ 使用美东时区 (US/Eastern)")
+        print("\n" + "=" * 60)
+        print("步骤 0: 启动 MCP 服务")
+        print("=" * 60)
+        
+        # 在调度器启动时启动 MCP 服务（添加异常处理）
+        try:
+            if not start_mcp_services():
+                print("⚠️  MCP 服务启动可能失败，但调度器将继续运行")
+                print("⚠️  将在每次任务执行前再次尝试启动服务")
+        except Exception as e:
+            print(f"⚠️  启动 MCP 服务时出现异常: {e}")
+            print("⚠️  调度器将继续运行，将在每次任务执行前再次尝试启动服务")
+            import traceback
+            traceback.print_exc()
+        
+        print("\n" + "=" * 60)
+        print("✅ 调度器初始化完成")
+        print("=" * 60)
+        print("\n按 Ctrl+C 停止调度器\n")
+        
+        # 创建调度器，使用美东时区
+        et = timezone('US/Eastern')
+        scheduler = BlockingScheduler(timezone=et)
+        
+        # 添加定时任务：每天的 9:30-15:30 的每小时:30 执行
+        # 注意：是否执行取决于 scheduled_task 内部的交易日检查
+        # CronTrigger: 分钟=30, 小时=9-15
+        scheduler.add_job(
+            scheduled_task,
+            trigger=CronTrigger(
+                minute=30,
+                hour='9-15'  # 9:30, 10:30, ..., 15:30
+            ),
+            id='trading_task',
+            name='美股交易定时任务',
+            replace_existing=True
+        )
+        
+        try:
+            scheduler.start()
+        except (KeyboardInterrupt, SystemExit):
+            print("\n\n⏹️  调度器已停止")
+            scheduler.shutdown()
+        except Exception as e:
+            print(f"\n❌ 调度器运行时发生错误: {e}")
+            import traceback
+            traceback.print_exc()
+            scheduler.shutdown()
+            raise
+    
+    except Exception as e:
+        print(f"\n❌ 启动调度器时发生严重错误: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
 
 
 if __name__ == "__main__":
