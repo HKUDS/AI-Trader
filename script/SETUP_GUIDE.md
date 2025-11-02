@@ -6,7 +6,7 @@
 
 - EC2 实例已运行
 - 已安装 Miniconda 或 Conda
-- Python 环境路径：`/home/ec2-user/py310/bin/python`
+- Python 环境路径：`/home/ec2-user/miniconda3/envs/py310/bin/python`
 
 ## 快速开始（3 步）
 
@@ -14,7 +14,7 @@
 
 ```bash
 cd /var/www/AI-Trader
-/home/ec2-user/py310/bin/pip install -r requirements.txt
+/home/ec2-user/miniconda3/envs/py310/bin/pip install -r requirements.txt
 ```
 
 ### 2. 配置 systemd 服务
@@ -95,7 +95,7 @@ sudo systemctl disable ai-trader-scheduler
 
 1. **检查 Python 路径是否正确**
    ```bash
-   ls -la /home/ec2-user/py310/bin/python
+   ls -la /home/ec2-user/miniconda3/envs/py310/bin/python
    ```
 
 2. **检查项目路径是否正确**
@@ -110,7 +110,7 @@ sudo systemctl disable ai-trader-scheduler
 
 ### Python 路径不同
 
-如果你的 Python 路径不是 `/home/ec2-user/py310/bin/python`，请：
+如果你的 Python 路径不是 `/home/ec2-user/miniconda3/envs/py310/bin/python`，请：
 
 1. 编辑服务文件：
    ```bash

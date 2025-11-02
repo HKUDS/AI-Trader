@@ -6,8 +6,8 @@ After=network.target
 Type=simple
 User=ec2-user
 WorkingDirectory=/var/www/AI-Trader
-Environment="PYTHON_BIN=/home/ec2-user/py310/bin/python"
-Environment="PATH=/home/ec2-user/py310/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PYTHON_BIN=/home/ec2-user/miniconda3/envs/py310/bin/python"
+Environment="PATH=/home/ec2-user/miniconda3/envs/py310/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=/var/www/AI-Trader/script/start_scheduler.sh
 Restart=always
 RestartSec=10

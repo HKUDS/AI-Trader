@@ -16,9 +16,9 @@ export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 # 否则尝试常见的路径
 if [ -n "$PYTHON_BIN" ]; then
     PYTHON="$PYTHON_BIN"
-elif [ -f "/home/ec2-user/py310/bin/python" ]; then
+elif [ -f "/home/ec2-user/miniconda3/envs/py310/bin/python" ]; then
     # Miniconda 环境
-    PYTHON="/home/ec2-user/py310/bin/python"
+    PYTHON="/home/ec2-user/miniconda3/envs/py310/bin/python"
 elif [ -d "venv" ] && [ -f "venv/bin/python" ]; then
     PYTHON="venv/bin/python"
 elif [ -d ".venv" ] && [ -f ".venv/bin/python" ]; then
