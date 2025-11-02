@@ -5,10 +5,10 @@ After=network.target
 [Service]
 Type=simple
 User=ec2-user
-WorkingDirectory=/home/ec2-user/AI-Trader
+WorkingDirectory=/var/www/AI-Trader
 Environment="PYTHON_BIN=/home/ec2-user/py310/bin/python"
 Environment="PATH=/home/ec2-user/py310/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/home/ec2-user/AI-Trader/script/start_scheduler.sh
+ExecStart=/var/www/AI-Trader/script/start_scheduler.sh
 Restart=always
 RestartSec=10
 StandardOutput=journal

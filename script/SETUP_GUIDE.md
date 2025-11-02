@@ -13,7 +13,7 @@
 ### 1. 安装依赖
 
 ```bash
-cd /home/ec2-user/AI-Trader
+cd /var/www/AI-Trader
 /home/ec2-user/py310/bin/pip install -r requirements.txt
 ```
 
@@ -21,15 +21,15 @@ cd /home/ec2-user/AI-Trader
 
 ```bash
 # 复制服务文件模板
-sudo cp /home/ec2-user/AI-Trader/script/ai-trader-scheduler.service.example /etc/systemd/system/ai-trader-scheduler.service
+sudo cp /var/www/AI-Trader/script/ai-trader-scheduler.service.example /etc/systemd/system/ai-trader-scheduler.service
 
 # 编辑服务文件（如果需要修改路径）
 sudo nano /etc/systemd/system/ai-trader-scheduler.service
 
 # 设置脚本执行权限
-chmod +x /home/ec2-user/AI-Trader/script/start_scheduler.sh
-chmod +x /home/ec2-user/AI-Trader/script/trading_scheduler.py
-chmod +x /home/ec2-user/AI-Trader/script/run_main_script_for_date.py
+chmod +x /var/www/AI-Trader/script/start_scheduler.sh
+chmod +x /var/www/AI-Trader/script/trading_scheduler.py
+chmod +x /var/www/AI-Trader/script/run_main_script_for_date.py
 ```
 
 ### 3. 启动服务
@@ -94,7 +94,7 @@ sudo systemctl disable ai-trader-scheduler
 
 2. **检查项目路径是否正确**
    ```bash
-   ls -la /home/ec2-user/AI-Trader/script/start_scheduler.sh
+   ls -la /var/www/AI-Trader/script/start_scheduler.sh
    ```
 
 3. **检查服务日志**
@@ -124,7 +124,7 @@ sudo systemctl disable ai-trader-scheduler
 
 ### 项目路径不同
 
-如果项目不在 `/home/ec2-user/AI-Trader`，请：
+如果项目不在 `/var/www/AI-Trader`，请：
 
 1. 编辑服务文件：
    ```bash
@@ -141,7 +141,7 @@ sudo systemctl disable ai-trader-scheduler
 
 ```bash
 # 测试启动脚本
-/home/ec2-user/AI-Trader/script/start_scheduler.sh
+/var/www/AI-Trader/script/start_scheduler.sh
 
 # 如果一切正常，按 Ctrl+C 停止，然后使用 systemd 服务
 ```
