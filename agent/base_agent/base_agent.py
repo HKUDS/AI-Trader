@@ -4,16 +4,6 @@ Encapsulates core functionality including MCP tool management, AI agent creation
 """
 
 import asyncio
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
-from pathlib import Path
-
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai import ChatOpenAI
-from langchain.agents import create_agent
-from dotenv import load_dotenv
-from utils.date_utils import parse_date
-
 import json
 import os
 # Import project tools
@@ -28,6 +18,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
+from utils.date_utils import parse_date
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
@@ -562,16 +553,13 @@ class BaseAgent:
         # Generate trading date list, filtered by actual trading days
         trading_dates = []
         current_date = max_date_obj + timedelta(days=1)
-
         from tools.price_tools import is_trading_day
-
         while current_date <= end_date_obj:
             date_str = current_date.strftime("%Y-%m-%d")
             # Check if this is an actual trading day in merged.jsonl
             if is_trading_day(date_str, market=self.market):
                 trading_dates.append(date_str)
             current_date += timedelta(days=1)
-
         return trading_dates
 
     async def run_with_retry(self, today_date: str) -> None:
