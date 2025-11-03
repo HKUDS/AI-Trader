@@ -162,19 +162,16 @@ function updateStats() {
     // Update DOM
     document.getElementById('agent-count').textContent = agentCount;
 
-    // Format date range for hourly data - show only dates without time
+    // Format date range - uniform format for both markets
     const formatDateRange = (dateStr) => {
         if (!dateStr) return 'N/A';
-        // If the date includes time (hourly format), format date only
-        if (dateStr.includes(':')) {
-            const date = new Date(dateStr);
-            return date.toLocaleString('en-US', {
-                month: 'short',
-                day: 'numeric',
-                year: 'numeric'
-            });
-        }
-        return dateStr;
+        // Parse date string (handles both "2025-10-01" and "2025-10-01 10:00:00" formats)
+        const date = new Date(dateStr);
+        return date.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric'
+        });
     };
 
     document.getElementById('trading-period').textContent = minDate && maxDate ?
