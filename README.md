@@ -8,29 +8,43 @@
 [![Feishu](https://img.shields.io/badge/💬Feishu-Group-blue?style=flat)](./Communication.md) 
 [![WeChat](https://img.shields.io/badge/WeChat-Group-green?style=flat&logo=wechat)](./Communication.md)
 
-**Five AIs battle for NASDAQ 100 supremacy. Zero human input. Pure competition.**
+**AI agents battle for supremacy in NASDAQ 100 and SSE 50 markets. Zero human input. Pure competition.**
 
 ## 🏆 Current Championship Leaderboard 🏆 
-[*Click Here: AI Live Trading*](https://hkuds.github.io/AI-Trader/)
+[*Click Here: AI Live Trading*](https://ai4trade.ai)
 
 <div align="center">
 
-###  **Championship Period: (Last Update 2025/10/30)**
+###  **Championship Period: (Last Update 2025/11/2)**
 
 | 🏆 Rank | 🤖 AI Model | 📈 Total Earnings | 
 |---------|-------------|----------------|
-| **🥇 1st** | **DeepSeek** | 🚀 +13.89% |
-| 🥈 2nd | MiniMax-M2 | 📊 +10.72% |
-| 🥉 3rd | Claude-3.7 | 📊 +7.12% |
-| 4th | GPT-5 | 📊 +7.11% |
-| Baseline | QQQ | 📊 +3.78% |
-| 5th | Qwen3-max | 📊 +3.44% |
-| 6th | Gemini-2.5-flash | 📊 -0.54% |
+| **🥇 1st** | **DeepSeek** | 🚀 +13.04% |
+| 🥈 2nd | MiniMax-M2 | 📊 +11.48% |
+| 🥉 3rd | Claude-3.7 | 📊 +7.03% |
+| 4th | GPT-5 | 📊 +7.63% |
+| Baseline | QQQ | 📊 +4.78% |
+| 5th | Qwen3-max | 📊 +2.87% |
+| 6th | Gemini-2.5-flash | 📊 +0.98% |
+
+### 🇨🇳 **A-Share Market (SSE 50) - Last Update: 2025/10/29**
+
+| 🏆 Rank | 🤖 AI Model | 📈 Total Earnings | 
+|---------|-------------|----------------|
+| **🥇 1st** | **MiniMax-M2** | 🚀 +2.81% |
+| 🥈 2nd(Baseline) | SSE-50 | 📊 +1.40% |
+| 🥉 3rd | Gemini-2.5-flash | 📊 +0.97% |
+| 4th | Claude-3.7 | 📊 -0.71% |
+| 5th | DeepSeek | 📊 -1.98% |
+| 6th | GPT-5 | 📊 -2.53% |
 
 ### 📊 **Live Performance Dashboard**
-![rank](assets/rank.png)
+#### 🇺🇸 US Market (NASDAQ 100)
+![rank_us](assets/rankus.png)
+#### 🇨🇳 A-Share Market (SSE 50)
+![rank_cn](assets/rankcn.png)
 
-*Daily Performance Tracking of AI Models in NASDAQ 100 Trading*
+*Daily Performance Tracking of AI Models in US (NASDAQ 100) and China (SSE 50) Markets*
 
 </div>
 
@@ -63,7 +77,7 @@ We're excited to announce the following major updates completed this week:
 
 ## 🌟 Project Introduction
 
-> **AI-Trader enables five distinct AI models, each employing unique investment strategies, to compete autonomously in the same market and determine which can generate the highest profits in NASDAQ 100 trading!**
+> **AI-Trader enables five distinct AI models, each employing unique investment strategies, to compete autonomously in the same market and determine which can generate the highest profits in NASDAQ 100 or SSE 50 trading!**
 
 ### 🎯 Core Features
 
@@ -79,10 +93,10 @@ We're excited to announce the following major updates completed this week:
 ---
 
 ### 🎮 Trading Environment
-Each AI model starts with $10,000 to trade NASDAQ 100 stocks in a controlled environment with real market data and historical replay capabilities.
+Each AI model starts with $10,000 or 100,000¥ to trade NASDAQ 100 stocks or SSE 50 stocks in a controlled environment with real market data and historical replay capabilities.
 
-- 💰 **Initial Capital**: $10,000 USD starting balance
-- 📈 **Trading Universe**: NASDAQ 100 component stocks (top 100 technology stocks)
+- 💰 **Initial Capital**: $10,000 USD or 100,000¥ CNY starting balance
+- 📈 **Trading Universe**: NASDAQ 100 component stocks (top 100 technology stocks) or SSE 50 component stocks
 - ⏰ **Trading Schedule**: Weekday market hours with historical simulation support
 - 📊 **Data Integration**: Alpha Vantage API combined with Jina AI market intelligence
 - 🔄 **Time Management**: Historical period replay with automated future information filtering
@@ -102,7 +116,7 @@ AI agents operate with complete autonomy, conducting market research, making tra
 ### 🏁 Competition Rules
 All AI models compete under identical conditions with the same capital, data access, tools, and evaluation metrics to ensure fair comparison.
 
-- 💰 **Starting Capital**: $10,000 USD initial investment
+- 💰 **Starting Capital**: $10,000 USD or 100,000¥ CNY initial investment
 - 📊 **Data Access**: Uniform market data and information feeds
 - ⏰ **Operating Hours**: Synchronized trading time windows
 - 📈 **Performance Metrics**: Standardized evaluation criteria across all models
@@ -165,62 +179,127 @@ AI can only access market data from current time and before. No future informati
 ```
 AI-Trader Bench/
 ├── 🤖 Core System
-│   ├── main.py    # 🎯 Main program entry
-│   ├── agent/base_agent/          # 🧠 AI agent core
+│   ├── main.py                    # 🎯 Main program entry
+│   ├── agent/
+│   │   ├── base_agent/            # 🧠 Generic AI trading agent (US stocks)
+│   │   │   ├── base_agent.py      # Base agent class
+│   │   │   └── __init__.py
+│   │   └── base_agent_astock/     # 🇨🇳 A-share specific trading agent
+│   │       ├── base_agent_astock.py  # A-share agent class
+│   │       └── __init__.py
 │   └── configs/                   # ⚙️ Configuration files
 │
 ├── 🛠️ MCP Toolchain
 │   ├── agent_tools/
-│   │   ├── tool_trade.py          # 💰 Trade execution
-│   │   ├── tool_get_price_local.py # 📊 Price queries
+│   │   ├── tool_trade.py          # 💰 Trade execution (auto-adapts market rules)
+│   │   ├── tool_get_price_local.py # 📊 Price queries (supports US + A-shares)
 │   │   ├── tool_jina_search.py   # 🔍 Information search
-│   │   └── tool_math.py           # 🧮 Mathematical calculations
+│   │   ├── tool_math.py           # 🧮 Mathematical calculations
+│   │   └── start_mcp_services.py  # 🚀 MCP service startup script
 │   └── tools/                     # 🔧 Auxiliary tools
 │
 ├── 📊 Data System
 │   ├── data/
-│   │   ├── daily_prices_*.json    # 📈 Stock price data
-│   │   ├── merged.jsonl           # 🔄 Unified data format
-│   │   └── agent_data/            # 📝 AI trading records
+│   │   ├── daily_prices_*.json    # 📈 NASDAQ 100 stock price data
+│   │   ├── merged.jsonl           # 🔄 US stocks unified data format
+│   │   ├── get_daily_price.py     # 📥 US stocks data fetching script
+│   │   ├── merge_jsonl.py         # 🔄 US stocks data format conversion
+│   │   ├── A_stock/               # 🇨🇳 A-share market data
+│   │   │   ├── sse_50_weight.csv          # 📋 SSE 50 constituent stocks
+│   │   │   ├── daily_prices_sse_50.csv    # 📈 Daily price data (CSV)
+│   │   │   ├── merged.jsonl               # 🔄 A-share unified data format
+│   │   │   ├── index_daily_sse_50.json    # 📊 SSE 50 index benchmark data
+│   │   │   ├── get_daily_price_a_stock.py # 📥 A-share data fetching script
+│   │   │   └── merge_a_stock_jsonl.py     # 🔄 A-share data format conversion
+│   │   ├── agent_data/            # 📝 AI trading records (NASDAQ 100)
+│   │   └── agent_data_astock/     # 📝 A-share AI trading records
 │   └── calculate_performance.py   # 📈 Performance analysis
+│
+├── 💬 Prompt System
+│   └── prompts/
+│       ├── agent_prompt.py        # 🌐 Generic trading prompts (US stocks)
+│       └── agent_prompt_astock.py # 🇨🇳 A-share specific trading prompts
 │
 ├── 🎨 Frontend Interface
 │   └── frontend/                  # 🌐 Web dashboard
 │
-└── 📋 Configuration & Documentation
-    ├── configs/                   # ⚙️ System configuration
-    ├── prompts/                   # 💬 AI prompts
-    └── calc_perf.sh              # 🚀 Performance calculation script
+├── 📋 Configuration & Documentation
+│   ├── configs/                   # ⚙️ System configuration
+│   │   ├── default_config.json    # US stocks default configuration
+│   │   └── astock_config.json     # A-share configuration example
+│   └── calc_perf.sh              # 🚀 Performance calculation script
+│
+└── 🚀 Quick Start Scripts
+    └── scripts/                   # 🛠️ Convenient startup scripts
+        ├── main.sh                # One-click complete workflow (US stocks)
+        ├── main_step1.sh          # US stocks: Data preparation
+        ├── main_step2.sh          # US stocks: Start MCP services
+        ├── main_step3.sh          # US stocks: Run trading agent
+        ├── main_a_stock_step1.sh  # A-shares: Data preparation
+        ├── main_a_stock_step2.sh  # A-shares: Start MCP services
+        ├── main_a_stock_step3.sh  # A-shares: Run trading agent
+        └── start_ui.sh            # Start web UI interface
 ```
 
 ### 🔧 Core Components Details
 
 #### 🎯 Main Program (`main.py`)
 - **Multi-Model Concurrency**: Run multiple AI models simultaneously for trading
+- **Dynamic Agent Loading**: Automatically load corresponding agent type based on configuration
 - **Configuration Management**: Support for JSON configuration files and environment variables
 - **Date Management**: Flexible trading calendar and date range settings
 - **Error Handling**: Comprehensive exception handling and retry mechanisms
 
+#### 🤖 AI Agent System
+| Agent Type | Module Path | Use Case | Features |
+|-----------|-------------|----------|----------|
+| **BaseAgent** | `agent.base_agent` | US/A-shares generic | Flexible market switching, configurable stock pool |
+| **BaseAgentAStock** | `agent.base_agent_astock` | A-share specific | Built-in A-share rules, SSE 50 default pool, Chinese prompts |
+
+**Architecture Advantages**:
+- 🔄 **Clear Separation**: US and A-share agents independently maintained without interference
+- 🎯 **Specialized Optimization**: A-share agent deeply optimized for Chinese market characteristics
+- 🔌 **Easy Extension**: Support adding more market-specific agents (e.g., Hong Kong stocks, cryptocurrencies)
+
 #### 🛠️ MCP Toolchain
-| Tool | Function | API |
-|------|----------|-----|
-| **Trading Tool** | Buy/sell stocks, position management | `buy()`, `sell()` |
-| **Price Tool** | Real-time and historical price queries | `get_price_local()` |
-| **Search Tool** | Market information search | `get_information()` |
-| **Math Tool** | Financial calculations and analysis | Basic mathematical operations |
+| Tool | Function | Market Support | API |
+|------|----------|----------------|-----|
+| **Trading Tool** | Buy/sell stocks, position management | 🇺🇸 US / 🇨🇳 A-shares | `buy()`, `sell()` |
+| **Price Tool** | Real-time and historical price queries | 🇺🇸 US / 🇨🇳 A-shares | `get_price_local()` |
+| **Search Tool** | Market information search | Global markets | `get_information()` |
+| **Math Tool** | Financial calculations and analysis | Generic | Basic mathematical operations |
+
+**Tool Features**:
+- 🔍 **Auto-Recognition**: Automatically select data source based on stock code suffix (.SH/.SZ)
+- 📏 **Rule Adaptation**: Auto-apply corresponding market trading rules (T+0/T+1, lot size limits, etc.)
+- 🌐 **Unified Interface**: Same API interface supports multi-market trading
 
 #### 📊 Data System
-- **📈 Price Data**: Complete OHLCV data for NASDAQ 100 component stocks
-- **📝 Trading Records**: Detailed trading history for each AI model
-- **📊 Performance Metrics**: Sharpe ratio, maximum drawdown, annualized returns, etc.
-- **🔄 Data Synchronization**: Automated data acquisition and update mechanisms
+- **📈 Price Data**: 
+  - 🇺🇸 Complete OHLCV data for NASDAQ 100 component stocks (Alpha Vantage)
+  - 🇨🇳 A-share market data (SSE 50 Index) via Tushare API
+  - 📁 Unified JSONL format for efficient reading
+- **📝 Trading Records**: 
+  - Detailed trading history for each AI model
+  - Stored separately by market: `agent_data/` (US), `agent_data_astock/` (A-shares)
+- **📊 Performance Metrics**: 
+  - Sharpe ratio, maximum drawdown, annualized returns, etc.
+  - Support multi-market performance comparison analysis
+- **🔄 Data Synchronization**: 
+  - Automated data acquisition and update mechanisms
+  - Independent data fetching scripts with incremental update support
 
 ## 🚀 Quick Start
 
 ### 📋 Prerequisites
 
+
 - **Python 3.10+** 
-- **API Keys**: OpenAI, Alpha Vantage, Jina AI
+- **API Keys**: 
+  - OpenAI (for AI models)
+  - Alpha Vantage (for NASDAQ 100 data)
+  - Jina AI (for market information search)
+  - Tushare (for A-share market data, optional)
 
 ### ⚡ One-Click Installation
 
@@ -247,8 +326,9 @@ OPENAI_API_BASE=https://your-openai-proxy.com/v1
 OPENAI_API_KEY=your_openai_key
 
 # 📊 Data Source Configuration
-ALPHAADVANTAGE_API_KEY=your_alpha_vantage_key
+ALPHAADVANTAGE_API_KEY=your_alpha_vantage_key  # For NASDAQ 100 data
 JINA_API_KEY=your_jina_api_key
+TUSHARE_TOKEN=your_tushare_token               # For A-share data
 
 # ⚙️ System Configuration
 RUNTIME_ENV_PATH=./runtime_env.json # Recommended to use absolute path
@@ -269,12 +349,50 @@ AGENT_MAX_STEP=30             # Maximum reasoning steps
 pip install -r requirements.txt
 
 # Or manually install core dependencies
-pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas
+pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas tushare
 ```
 
 ## 🎮 Running Guide
 
-### 📊 Step 1: Data Preparation (`./fresh_data.sh`)
+### 🚀 Quick Start with Scripts
+
+We provide convenient shell scripts in the `scripts/` directory for easy startup:
+
+#### 🇺🇸 US Market (NASDAQ 100)
+```bash
+# One-click startup (complete workflow)
+bash scripts/main.sh
+
+# Or run step by step:
+bash scripts/main_step1.sh  # Step 1: Prepare data
+bash scripts/main_step2.sh  # Step 2: Start MCP services
+bash scripts/main_step3.sh  # Step 3: Run trading agent
+```
+
+#### 🇨🇳 A-Share Market (SSE 50)
+```bash
+# Run step by step:
+bash scripts/main_a_stock_step1.sh  # Step 1: Prepare A-share data
+bash scripts/main_a_stock_step2.sh  # Step 2: Start MCP services
+bash scripts/main_a_stock_step3.sh  # Step 3: Run A-share trading agent
+```
+
+#### 🌐 Web UI
+```bash
+# Start web interface
+bash scripts/start_ui.sh
+# Visit: http://localhost:8888
+```
+
+---
+
+### 📋 Manual Setup Guide
+
+If you prefer to run commands manually, follow these steps:
+
+### 📊 Step 1: Data Preparation
+
+#### 🇺🇸 NASDAQ 100 Data
 
 ```bash
 # 📈 Get NASDAQ 100 stock data
@@ -285,6 +403,20 @@ python get_daily_price.py
 python merge_jsonl.py
 ```
 
+#### 🇨🇳 A-Share Market Data (SSE 50)
+
+```bash
+# 📈 Get Chinese A-share market data (SSE 50 Index)
+cd data/A_stock
+python get_daily_price_a_stock.py
+
+# 🔄 Convert to JSONL format (required for trading)
+python merge_a_stock_jsonl.py
+
+# 📊 Data will be saved to: data/A_stock/merged.jsonl
+```
+
+
 ### 🛠️ Step 2: Start MCP Services
 
 ```bash
@@ -294,20 +426,28 @@ python start_mcp_services.py
 
 ### 🚀 Step 3: Start AI Arena
 
+#### For US Stocks (NASDAQ 100):
 ```bash
-# 🎯 Run main program - let AIs start trading!
+# 🎯 Run with default configuration
 python main.py
 
-# 🎯 Or use custom configuration
-python main.py configs/my_config.json
+# 🎯 Or specify US stock config
+python main.py configs/default_config.json
+```
+
+#### For A-Shares (SSE 50):
+```bash
+# 🎯 Run A-share trading
+python main.py configs/astock_config.json
 ```
 
 ### ⏰ Time Settings Example
 
-#### 📅 Create Custom Time Configuration
+#### 📅 US Stock Configuration Example (Using BaseAgent)
 ```json
 {
   "agent_type": "BaseAgent",
+  "market": "us",              // Market type: "us" for US stocks
   "date_range": {
     "init_date": "2024-01-01",  // Backtest start date
     "end_date": "2024-03-31"     // Backtest end date
@@ -319,9 +459,37 @@ python main.py configs/my_config.json
       "signature": "claude-3.7-sonnet",
       "enabled": true
     }
-  ]
+  ],
+  "agent_config": {
+    "initial_cash": 10000.0    // Initial capital: $10,000
+  }
 }
 ```
+
+#### 📅 A-Share Configuration Example (Using BaseAgentAStock)
+```json
+{
+  "agent_type": "BaseAgentAStock",  // A-share specific agent
+  "market": "cn",                   // Market type: "cn" A-shares (optional, will be ignored, always uses cn)
+  "date_range": {
+    "init_date": "2025-10-09",      // Backtest start date
+    "end_date": "2025-10-31"         // Backtest end date
+  },
+  "models": [
+    {
+      "name": "claude-3.7-sonnet",
+      "basemodel": "anthropic/claude-3.7-sonnet",
+      "signature": "claude-3.7-sonnet",
+      "enabled": true
+    }
+  ],
+  "agent_config": {
+    "initial_cash": 100000.0        // Initial capital: ¥100,000
+  }
+}
+```
+
+> 💡 **Tip**: When using `BaseAgentAStock`, the `market` parameter is automatically set to `"cn"` and doesn't need to be specified manually.
 
 ### 📈 Start Web Interface
 
@@ -335,13 +503,14 @@ python3 -m http.server 8000
 
 ### 🏆 Competition Rules
 
-| Rule Item | Setting | Description |
-|-----------|---------|-------------|
-| **💰 Initial Capital** | $10,000 | Starting capital for each AI model |
-| **📈 Trading Targets** | NASDAQ 100 | 100 top tech stocks |
-| **⏰ Trading Hours** | Weekdays | Monday to Friday |
-| **💲 Price Benchmark** | Opening Price | Trade using daily opening price |
-| **📝 Recording Method** | JSONL Format | Complete trading history records |
+| Rule Item | US Stocks | A-Shares (China) |
+|-----------|-----------|------------------|
+| **💰 Initial Capital** | $10,000 | ¥100,000 |
+| **📈 Trading Targets** | NASDAQ 100 | SSE 50 |
+| **🌍 Market** | US Stock Market | China A-Share Market |
+| **⏰ Trading Hours** | Weekdays | Weekdays |
+| **💲 Price Benchmark** | Opening Price | Opening Price |
+| **📝 Recording Method** | JSONL Format | JSONL Format |
 
 ## ⚙️ Configuration Guide
 
@@ -350,6 +519,7 @@ python3 -m http.server 8000
 ```json
 {
   "agent_type": "BaseAgent",
+  "market": "us",
   "date_range": {
     "init_date": "2025-01-01",
     "end_date": "2025-01-31"
@@ -376,13 +546,21 @@ python3 -m http.server 8000
 
 ### 🔧 Configuration Parameters
 
-| Parameter | Description | Default Value |
-|-----------|-------------|---------------|
-| `agent_type` | AI agent type | "BaseAgent" |
-| `max_steps` | Maximum reasoning steps | 30 |
-| `max_retries` | Maximum retry attempts | 3 |
-| `base_delay` | Operation delay (seconds) | 1.0 |
-| `initial_cash` | Initial capital | $10,000 |
+| Parameter | Description | Options | Default Value |
+|-----------|-------------|---------|---------------|
+| `agent_type` | AI agent type | "BaseAgent" (generic)<br>"BaseAgentAStock" (A-share specific) | "BaseAgent" |
+| `market` | Market type | "us" (US stocks)<br>"cn" (A-shares)<br>Note: Auto-set to "cn" when using BaseAgentAStock | "us" |
+| `max_steps` | Maximum reasoning steps | Positive integer | 30 |
+| `max_retries` | Maximum retry attempts | Positive integer | 3 |
+| `base_delay` | Operation delay (seconds) | Float | 1.0 |
+| `initial_cash` | Initial capital | Float | $10,000 (US)<br>¥100,000 (A-shares) |
+
+#### 📋 Agent Type Details
+
+| Agent Type | Applicable Markets | Features |
+|-----------|-------------------|----------|
+| **BaseAgent** | US / A-shares | • Generic trading agent<br>• Switch markets via `market` parameter<br>• Flexible stock pool configuration |
+| **BaseAgentAStock** | A-share specific | • Optimized for A-shares<br>• Built-in A-share trading rules (100-share lots, T+1)<br>• Default SSE 50 stock pool<br>• Chinese Yuan pricing |
 
 ### 📊 Data Format
 
@@ -462,7 +640,11 @@ AGENT_REGISTRY = {
         "module": "agent.base_agent.base_agent",
         "class": "BaseAgent"
     },
-    "CustomAgent": {  # New addition
+    "BaseAgentAStock": {
+        "module": "agent.base_agent_astock.base_agent_astock",
+        "class": "BaseAgentAStock"
+    },
+    "CustomAgent": {  # New custom agent
         "module": "agent.custom.custom_agent",
         "class": "CustomAgent"
     },
@@ -502,7 +684,7 @@ class CustomTool:
 ## 🚀 Roadmap
 
 ### 🌟 Future Plans
-- [ ] **🇨🇳 A-Share Support** - Extend to Chinese stock market
+- [x] **🇨🇳 A-Share Support** - ✅ SSE 50 Index data integration completed
 - [ ] **📊 Post-Market Statistics** - Automatic profit analysis
 - [ ] **🔌 Strategy Marketplace** - Add third-party strategy sharing platform
 - [ ] **🎨 Cool Frontend Interface** - Modern web dashboard
@@ -526,7 +708,8 @@ This project is licensed under the [MIT License](LICENSE).
 Thanks to the following open source projects and services:
 - [LangChain](https://github.com/langchain-ai/langchain) - AI application development framework
 - [MCP](https://github.com/modelcontextprotocol) - Model Context Protocol
-- [Alpha Vantage](https://www.alphavantage.co/) - Financial data API
+- [Alpha Vantage](https://www.alphavantage.co/) - US stock financial data API
+- [Tushare](https://tushare.pro/) - China A-share market data API
 - [Jina AI](https://jina.ai/) - Information search service
 
 ## 👥 Administrator

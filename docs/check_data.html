@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Data</title>
+</head>
+<body>
+    <h1>Checking data loading...</h1>
+    <pre id="output"></pre>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <script src="assets/js/config-loader.js"></script>
+    <script src="assets/js/data-loader.js"></script>
+    <script>
+        async function test() {
+            const output = document.getElementById('output');
+            
+            try {
+                // Load config
+                await window.configLoader.loadConfig();
+                output.innerHTML += 'Config loaded\n';
+                
+                // Create data loader
+                const dataLoader = new DataLoader();
+                output.innerHTML += 'DataLoader created\n';
+                
+                // Load agent list
+                const agents = await dataLoader.loadAgentList();
+                output.innerHTML += `Agents found: ${JSON.stringify(agents)}\n`;
+                
+                // Try loading first agent
+                if (agents.length > 0) {
+                    output.innerHTML += `\nLoading data for ${agents[0]}...\n`;
+                    const data = await dataLoader.loadAgentData(agents[0]);
+                    output.innerHTML += `Result: ${JSON.stringify(data, null, 2)}\n`;
+                }
+            } catch (error) {
+                output.innerHTML += `\nERROR: ${error.message}\n${error.stack}\n`;
+            }
+        }
+        
+        test();
+    </script>
+</body>
+</html>
