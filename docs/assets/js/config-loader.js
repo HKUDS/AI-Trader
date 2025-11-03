@@ -30,21 +30,40 @@ class ConfigLoader {
         }
     }
 
-    // Get all enabled agents
-    getEnabledAgents() {
+    // Get all enabled agents for a specific market (or legacy global list)
+    getEnabledAgents(marketId = null) {
+        // If market ID provided, use market-specific agents
+        if (marketId) {
+            const marketConfig = this.getMarketConfig(marketId);
+            if (marketConfig && marketConfig.agents) {
+                return marketConfig.agents;
+            }
+        }
+
+        // Fallback to legacy global agents list
         if (!this.config || !this.config.agents) {
             return [];
         }
-        return this.config.agents.filter(agent => agent.enabled);
+        return this.config.agents.filter(agent => agent.enabled !== false);
     }
 
-    // Get all agent folders (enabled only)
-    getAgentFolders() {
-        return this.getEnabledAgents().map(agent => agent.folder);
+    // Get all agent folders (enabled only) for a specific market
+    getAgentFolders(marketId = null) {
+        return this.getEnabledAgents(marketId).map(agent => agent.folder);
     }
 
-    // Get agent configuration by folder name
-    getAgentConfig(folderName) {
+    // Get agent configuration by folder name from market or legacy config
+    getAgentConfig(folderName, marketId = null) {
+        // If market ID provided, search in market-specific agents
+        if (marketId) {
+            const marketConfig = this.getMarketConfig(marketId);
+            if (marketConfig && marketConfig.agents) {
+                const agent = marketConfig.agents.find(a => a.folder === folderName);
+                if (agent) return agent;
+            }
+        }
+
+        // Fallback to legacy global agents list
         if (!this.config || !this.config.agents) {
             return null;
         }
@@ -52,20 +71,20 @@ class ConfigLoader {
     }
 
     // Get display name for agent
-    getDisplayName(folderName) {
-        const agent = this.getAgentConfig(folderName);
+    getDisplayName(folderName, marketId = null) {
+        const agent = this.getAgentConfig(folderName, marketId);
         return agent ? agent.display_name : folderName;
     }
 
     // Get icon path for agent
-    getIcon(folderName) {
-        const agent = this.getAgentConfig(folderName);
+    getIcon(folderName, marketId = null) {
+        const agent = this.getAgentConfig(folderName, marketId);
         return agent ? agent.icon : './figs/stock.svg';
     }
 
     // Get color for agent
-    getColor(folderName) {
-        const agent = this.getAgentConfig(folderName);
+    getColor(folderName, marketId = null) {
+        const agent = this.getAgentConfig(folderName, marketId);
         return agent ? agent.color : null;
     }
 
@@ -143,6 +162,28 @@ class ConfigLoader {
             return [];
         }
         return this.config.agents;
+    }
+
+    // Get market configuration
+    getMarketConfig(marketId) {
+        if (!this.config || !this.config.markets) {
+            return null;
+        }
+        return this.config.markets[marketId];
+    }
+
+    // Get all enabled markets
+    getEnabledMarkets() {
+        if (!this.config || !this.config.markets) {
+            return {};
+        }
+        const enabledMarkets = {};
+        for (const [key, market] of Object.entries(this.config.markets)) {
+            if (market.enabled !== false) {
+                enabledMarkets[key] = market;
+            }
+        }
+        return enabledMarkets;
     }
 }
 

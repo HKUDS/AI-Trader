@@ -10,9 +10,13 @@ class TransactionLoader {
     // Load all transactions from all agents
     async loadAllTransactions() {
         const config = window.configLoader;
-        const agents = config.getEnabledAgents();
+        const dataLoader = window.dataLoader;
+        const currentMarket = dataLoader.getMarket();
+        const agents = config.getEnabledAgents(currentMarket);
 
-        const promises = agents.map(agent => this.loadAgentTransactions(agent.folder));
+        console.log(`[TransactionLoader] Loading transactions for ${agents.length} agents in ${currentMarket} market`);
+
+        const promises = agents.map(agent => this.loadAgentTransactions(agent.folder, currentMarket));
         const results = await Promise.all(promises);
 
         // Flatten and sort by date (most recent first)
@@ -20,14 +24,26 @@ class TransactionLoader {
             .flat()
             .sort((a, b) => new Date(b.date) - new Date(a.date));
 
+        console.log(`[TransactionLoader] Loaded ${this.allTransactions.length} total transactions`);
+
         return this.allTransactions;
     }
 
     // Load transactions for a single agent
-    async loadAgentTransactions(agentFolder) {
+    async loadAgentTransactions(agentFolder, market = 'us') {
         try {
-            const positionPath = `data/agent_data/${agentFolder}/position/position.jsonl`;
+            const marketConfig = window.configLoader.getMarketConfig(market);
+            const agentDataDir = marketConfig ? marketConfig.data_dir : 'agent_data';
+            const positionPath = `data/${agentDataDir}/${agentFolder}/position/position.jsonl`;
+
+            console.log(`[TransactionLoader] Loading transactions from: ${positionPath}`);
+
             const response = await fetch(positionPath);
+            if (!response.ok) {
+                console.warn(`[TransactionLoader] Failed to fetch ${positionPath}: ${response.status}`);
+                return [];
+            }
+
             const text = await response.text();
 
             const transactions = text
@@ -71,9 +87,11 @@ class TransactionLoader {
     }
 
     // Load agent's thinking/response for a specific transaction
-    async loadAgentThinking(agentFolder, date) {
+    async loadAgentThinking(agentFolder, date, market = 'us') {
         try {
-            const logPath = `data/agent_data/${agentFolder}/log/${date}/log.jsonl`;
+            const marketConfig = window.configLoader.getMarketConfig(market);
+            const agentDataDir = marketConfig ? marketConfig.data_dir : 'agent_data';
+            const logPath = `data/${agentDataDir}/${agentFolder}/log/${date}/log.jsonl`;
             const response = await fetch(logPath);
 
             // If log file doesn't exist, return null (no reasoning available)
@@ -132,6 +150,7 @@ class TransactionLoader {
     // Build leaderboard data
     async buildLeaderboard(allAgentsData) {
         const leaderboard = [];
+        const currentMarket = window.dataLoader ? window.dataLoader.getMarket() : 'us';
 
         for (const [agentName, data] of Object.entries(allAgentsData)) {
             const assetHistory = data.assetHistory || [];
@@ -142,9 +161,9 @@ class TransactionLoader {
 
             leaderboard.push({
                 agentName: agentName,
-                displayName: window.configLoader.getDisplayName(agentName),
-                icon: window.configLoader.getIcon(agentName),
-                color: window.configLoader.getColor(agentName),
+                displayName: window.configLoader.getDisplayName(agentName, currentMarket),
+                icon: window.configLoader.getIcon(agentName, currentMarket),
+                color: window.configLoader.getColor(agentName, currentMarket),
                 initialValue: initialValue,
                 currentValue: finalValue,
                 gain: gain,

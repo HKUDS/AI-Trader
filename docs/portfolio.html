@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portfolio Analysis - LiveTradeBench</title>
-    <link rel="stylesheet" href="assets/css/styles.css">
+    <title>Portfolio Analysis - AI-Trader</title>
+    <link rel="icon" type="image/svg+xml" href="figs/stock.svg">
+    <link rel="stylesheet" href="assets/css/styles.css?v=2.0">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
 </head>
@@ -13,11 +14,15 @@
         <div class="nav-container">
             <div class="nav-brand">
                 <span class="brand-icon">📊</span>
-                <h1>LiveTradeBench</h1>
+                <h1>AI-Trader</h1>
             </div>
             <ul class="nav-menu">
                 <li><a href="index.html" class="nav-link">Asset Evolution</a></li>
                 <li><a href="portfolio.html" class="nav-link active">Portfolio Analysis</a></li>
+                <li class="market-selector">
+                    <button id="usMarketBtn" class="market-btn active" data-market="us">🇺🇸 US Market</button>
+                    <button id="cnMarketBtn" class="market-btn" data-market="cn">🇨🇳 A-Shares</button>
+                </li>
             </ul>
             <a href="https://github.com/HKUDS/AI-Trader" target="_blank" rel="noopener noreferrer" class="github-link" aria-label="View source on GitHub">
                 <svg class="github-icon" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -110,11 +115,11 @@
     </main>
 
     <footer class="footer">
-        <p>LiveTradeBench &copy; 2025 | AI-Powered Trading Agent Benchmark</p>
+        <p>AI-Trader &copy; 2025 | AI-Powered Trading Agent Benchmark</p>
     </footer>
 
-    <script src="assets/js/config-loader.js"></script>
-    <script src="assets/js/data-loader.js"></script>
-    <script src="assets/js/portfolio.js"></script>
+    <script src="assets/js/config-loader.js?v=7.0"></script>
+    <script src="assets/js/data-loader.js?v=7.0"></script>
+    <script src="assets/js/portfolio.js?v=7.0"></script>
 </body>
 </html>

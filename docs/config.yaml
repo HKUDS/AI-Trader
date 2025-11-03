@@ -1,100 +1,102 @@
 # AI Trader Frontend Configuration
 # This file contains all agent configurations and display settings
 
-# Data paths configuration
+# Market configurations - Easy to extend for new markets (e.g., crypto)
+markets:
+  us:
+    name: "US Market (Nasdaq-100)"
+    subtitle: "Track how different AI models perform in Nasdaq-100 stock trading"
+    data_dir: "agent_data"
+    benchmark_file: "Adaily_prices_QQQ.json"
+    benchmark_name: "QQQ"
+    benchmark_display_name: "QQQ Invesco"
+    currency: "USD"
+    icon: "🇺🇸"
+    price_data_type: "individual"  # individual JSON files per stock
+    time_granularity: "hourly"  # hourly timestamps with hour component
+    enabled: true
+    agents:  # US market specific agents
+      - folder: "gemini-2.5-flash"
+        display_name: "Gemini 2.5 Flash"
+        icon: "./figs/google.svg"
+        color: "#8A2BE2"
+      - folder: "qwen3-max"
+        display_name: "Qwen3 Max"
+        icon: "./figs/qwen.svg"
+        color: "#0066ff"
+      - folder: "deepseek-chat-v3.1"
+        display_name: "DeepSeek Chat v3.1"
+        icon: "./figs/deepseek.svg"
+        color: "#4a90e2"
+      - folder: "gpt-5"
+        display_name: "GPT-5"
+        icon: "./figs/openai.svg"
+        color: "#10a37f"
+      - folder: "claude-3.7-sonnet"
+        display_name: "Claude 3.7 Sonnet"
+        icon: "./figs/claude-color.svg"
+        color: "#cc785c"
+      - folder: "MiniMax-M2"
+        display_name: "MiniMax M2"
+        icon: "./figs/minimax.svg"
+        color: "#ff6b6b"
+
+  cn:
+    name: "A-Shares (SSE 50)"
+    subtitle: "Track how different AI models perform in SSE 50 A-share stock trading"
+    data_dir: "agent_data_astock"
+    benchmark_file: "A_stock/index_daily_sse_50.json"
+    benchmark_name: "SSE 50"
+    benchmark_display_name: "SSE 50 Index"
+    currency: "CNY"
+    icon: "🇨🇳"
+    price_data_type: "merged"  # merged.jsonl file
+    price_data_file: "A_stock/merged.jsonl"
+    time_granularity: "daily"  # daily dates without hour component
+    enabled: true
+    agents:  # CN market specific agents
+      - folder: "gemini-2.5-flash"
+        display_name: "Gemini 2.5 Flash"
+        icon: "./figs/google.svg"
+        color: "#8A2BE2"
+      - folder: "qwen3-max"
+        display_name: "Qwen3 Max"
+        icon: "./figs/qwen.svg"
+        color: "#0066ff"
+      - folder: "deepseek-chat-v3.1"
+        display_name: "DeepSeek Chat v3.1"
+        icon: "./figs/deepseek.svg"
+        color: "#4a90e2"
+      - folder: "gpt-5"
+        display_name: "GPT-5"
+        icon: "./figs/openai.svg"
+        color: "#10a37f"
+      - folder: "claude-3.7-sonnet"
+        display_name: "Claude 3.7 Sonnet"
+        icon: "./figs/claude-color.svg"
+        color: "#cc785c"
+      - folder: "MiniMax-M2"
+        display_name: "MiniMax M2"
+        icon: "./figs/minimax.svg"
+        color: "#ff6b6b"
+
+  # crypto:  # Future crypto market support
+  #   name: "Crypto Market"
+  #   subtitle: "Track how different AI models perform in cryptocurrency trading"
+  #   data_dir: "agent_data_crypto"
+  #   benchmark_file: "crypto/btc.json"
+  #   benchmark_name: "BTC"
+  #   benchmark_display_name: "Bitcoin"
+  #   currency: "USD"
+  #   icon: "₿"
+  #   price_data_type: "individual"
+  #   enabled: false
+
+# Data paths configuration (legacy support - will use market-specific paths when available)
 data:
   base_path: "./data"
   price_file_prefix: "daily_prices_"
   benchmark_file: "Adaily_prices_QQQ.json"
-
-# Agent configurations
-# Each agent should have a directory under data/agent_data/{folder}/position/position.jsonl
-agents:
-  # Test agents (current batch)
-  # - folder: "test-claude-3.7-sonnet"
-  #   display_name: "Claude 3.7 Sonnet"
-  #   icon: "./figs/claude-color.svg"
-  #   color: "#cc785c"
-  #   enabled: true
-
-  # - folder: "test-deepseek-chat-v3.1"
-  #   display_name: "DeepSeek Chat v3.1"
-  #   icon: "./figs/deepseek.svg"
-  #   color: "#4a90e2"
-  #   enabled: true
-
-  # - folder: "test-deepseek-chat-v3.1-"
-  #   display_name: "DeepSeek Chat v3.1 (Alt)"
-  #   icon: "./figs/deepseek.svg"
-  #   color: "#5ba0f2"
-  #   enabled: true
-
-  # - folder: "test-gemini-2.5-pro"
-  #   display_name: "Gemini 2.5 Pro"
-  #   icon: "./figs/google.svg"
-  #   color: "#8A2BE2"
-  #   enabled: true
-
-  # - folder: "test-gpt-4.1"
-  #   display_name: "GPT-4.1"
-  #   icon: "./figs/openai.svg"
-  #   color: "#10a37f"
-  #   enabled: true
-
-  # - folder: "test-MiniMax-M2"
-  #   display_name: "MiniMax M2"
-  #   icon: "./figs/stock.svg"
-  #   color: "#ff6b6b"
-  #   enabled: true
-
-  # - folder: "test-qwen3-max"
-  #   display_name: "Qwen3 Max"
-  #   icon: "./figs/qwen.svg"
-  #   color: "#0066ff"
-  #   enabled: true
-
-  # - folder: "testmodel"
-  #   display_name: "Test Model"
-  #   icon: "./figs/stock.svg"
-  #   color: "#00d4ff"
-  #   enabled: true
-
-  # Legacy agents (if they exist)
-  - folder: "gemini-2.5-flash"
-    display_name: "Gemini 2.5 Flash"
-    icon: "./figs/google.svg"
-    color: "#8A2BE2"
-    enabled: true
-
-  - folder: "qwen3-max"
-    display_name: "Qwen3 Max"
-    icon: "./figs/qwen.svg"
-    color: "#0066ff"
-    enabled: true
-
-  - folder: "deepseek-chat-v3.1"
-    display_name: "DeepSeek Chat v3.1"
-    icon: "./figs/deepseek.svg"
-    color: "#4a90e2"
-    enabled: true
-
-  - folder: "gpt-5"
-    display_name: "GPT-5"
-    icon: "./figs/openai.svg"
-    color: "#10a37f"
-    enabled: true
-
-  - folder: "claude-3.7-sonnet"
-    display_name: "Claude 3.7 Sonnet"
-    icon: "./figs/claude-color.svg"
-    color: "#cc785c"
-    enabled: true
-
-  - folder: "MiniMax-M2"
-    display_name: "MiniMax M2"
-    icon: "./figs/minimax.svg"
-    color: "#ff6b6b"
-    enabled: true
 
 # Benchmark configuration
 benchmark:

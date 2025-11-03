@@ -1,4 +1,5 @@
 # Environment variables
+AI-Trader-Astock_daily/
 .env
 .env.local
 .env.*.local
