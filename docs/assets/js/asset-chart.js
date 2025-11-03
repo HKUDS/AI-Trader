@@ -40,11 +40,40 @@ function loadIconImage(iconPath) {
     });
 }
 
+// Update market subtitle based on current market
+function updateMarketSubtitle() {
+    console.log('[updateMarketSubtitle] Starting...');
+    console.log('[updateMarketSubtitle] Current market:', dataLoader.getMarket());
+
+    const marketConfig = dataLoader.getMarketConfig();
+    console.log('[updateMarketSubtitle] Market config:', marketConfig);
+
+    const subtitleElement = document.getElementById('marketSubtitle');
+    console.log('[updateMarketSubtitle] Subtitle element:', subtitleElement);
+
+    if (marketConfig && marketConfig.subtitle && subtitleElement) {
+        subtitleElement.textContent = marketConfig.subtitle;
+        console.log('Updated subtitle to:', marketConfig.subtitle);
+    } else {
+        console.warn('[updateMarketSubtitle] Missing required data:', {
+            hasMarketConfig: !!marketConfig,
+            hasSubtitle: marketConfig?.subtitle,
+            hasElement: !!subtitleElement
+        });
+    }
+}
+
 // Load data and refresh UI
 async function loadDataAndRefresh() {
     showLoading();
 
     try {
+        // Ensure config is loaded first
+        await dataLoader.initialize();
+
+        // Update subtitle for the current market
+        updateMarketSubtitle();
+
         // Load all agents data
         console.log('Loading all agents data...');
         allAgentsData = await dataLoader.loadAllAgentsData();

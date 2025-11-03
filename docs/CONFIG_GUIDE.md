@@ -2,7 +2,7 @@
 
 ## Overview
 
-The AI-Trader frontend uses a unified YAML configuration file (`config.yaml`) to manage all agent configurations, display settings, and data paths. This makes maintenance much easier - you only need to edit one file to add new agents, change colors, or update settings.
+The AI-Trader frontend uses a unified YAML configuration file (`config.yaml`) to manage all agent configurations, display settings, and data paths. The system now supports **multiple markets** (US, China A-Shares, and more) with market-specific agents, data paths, and time granularities.
 
 ## Configuration File Location
 
@@ -10,83 +10,147 @@ The AI-Trader frontend uses a unified YAML configuration file (`config.yaml`) to
 docs/config.yaml
 ```
 
-## Adding a New Agent
+## Multi-Market Architecture
 
-To add a new agent, simply add a new entry to the `agents` section in `config.yaml`:
-
-```yaml
-agents:
-  - folder: "your-agent-folder-name"      # The directory name under data/agent_data/
-    display_name: "Your Agent Display Name"  # How it appears in the UI
-    icon: "./figs/your-icon.svg"          # Path to the icon file
-    color: "#ff6b6b"                      # Hex color code for charts
-    enabled: true                          # Set to false to temporarily disable
-```
-
-### Example: Adding a New GPT-5 Agent
+The configuration uses a `markets` section to support different trading markets:
 
 ```yaml
-agents:
-  - folder: "test-gpt-5-turbo"
-    display_name: "GPT-5 Turbo"
-    icon: "./figs/openai.svg"
-    color: "#10a37f"
-    enabled: true
+markets:
+  us:    # Market ID
+    name: "US Market (Nasdaq-100)"
+    time_granularity: "hourly"   # or "daily"
+    agents: [...]                 # Market-specific agents
+  cn:    # Another market
+    name: "A-Shares (SSE 50)"
+    time_granularity: "daily"
+    agents: [...]
 ```
 
-That's it! The frontend will automatically:
-- Look for position data at `data/agent_data/test-gpt-5-turbo/position/position.jsonl`
-- Display it as "GPT-5 Turbo" in the UI
-- Use the OpenAI icon and green color
-- Include it in all charts and analytics
+Each market can have:
+- Different time granularities (hourly vs daily)
+- Different data storage formats (individual files vs merged)
+- Different agents with different configurations
+- Different benchmarks and currencies
+
+## Adding a New Agent to a Market
+
+To add a new agent to a specific market, add it to that market's `agents` section:
+
+```yaml
+markets:
+  us:
+    agents:
+      - folder: "your-agent-folder-name"      # Directory under data/agent_data/
+        display_name: "Your Agent Display Name"
+        icon: "./figs/your-icon.svg"
+        color: "#ff6b6b"                      # Hex color for charts
+```
+
+### Example: Adding GPT-5 Turbo to US Market
+
+```yaml
+markets:
+  us:
+    agents:
+      - folder: "gpt-5-turbo"
+        display_name: "GPT-5 Turbo"
+        icon: "./figs/openai.svg"
+        color: "#ffbe0b"
+```
+
+The frontend will automatically:
+- Look for position data at `data/agent_data/gpt-5-turbo/position/position.jsonl`
+- Display it as "GPT-5 Turbo" in the US market view
+- Use hourly timestamps (if market is configured for hourly)
+- Apply the yellow color (#ffbe0b) in charts
 
 ## Disabling an Agent
 
-To temporarily disable an agent without deleting its configuration:
+Set `enabled: false` in the market-level configuration to disable a market entirely. To disable individual agents, simply remove them from the agents list or comment them out:
 
 ```yaml
-agents:
-  - folder: "old-agent"
-    display_name: "Old Agent"
-    icon: "./figs/stock.svg"
-    color: "#00d4ff"
-    enabled: false  # Agent will be skipped
+markets:
+  us:
+    enabled: false  # Disables entire US market
+  cn:
+    agents:
+      # - folder: "old-agent"  # Commented out to disable
+      #   display_name: "Old Agent"
 ```
 
 ## Configuration Sections
 
-### 1. Data Paths (`data`)
+### 1. Markets (`markets`)
+
+Each market has its own complete configuration:
 
 ```yaml
-data:
-  base_path: "./data"                    # Base directory for all data
-  price_file_prefix: "daily_prices_"     # Prefix for stock price files
-  benchmark_file: "Adaily_prices_QQQ.json"  # Benchmark data file
+markets:
+  us:
+    name: "US Market (Nasdaq-100)"
+    subtitle: "Track how different AI models perform in Nasdaq-100 stock trading"
+    data_dir: "agent_data"                              # Directory for agent data
+    benchmark_file: "Adaily_prices_QQQ.json"           # Benchmark price file
+    benchmark_name: "QQQ"
+    benchmark_display_name: "QQQ Invesco"
+    currency: "USD"
+    icon: "🇺🇸"
+    price_data_type: "individual"                       # or "merged"
+    time_granularity: "hourly"                          # or "daily"
+    enabled: true
+    agents: [...]                                       # Market-specific agents
 ```
 
-### 2. Agents (`agents`)
+**Key Fields:**
 
-List of all trading agents with their display configurations:
+- `name`: Market display name
+- `data_dir`: Directory under `data/` for agent position files
+- `price_data_type`:
+  - `"individual"`: Each stock has its own JSON file (e.g., `daily_prices_AAPL.json`)
+  - `"merged"`: All prices in one `merged.jsonl` file
+- `price_data_file`: Required if `price_data_type: "merged"` (e.g., `"A_stock/merged.jsonl"`)
+- `time_granularity`:
+  - `"hourly"`: Timestamps include hour component (e.g., "2024-10-01 10:00")
+  - `"daily"`: Timestamps are dates only (e.g., "2024-10-01")
+- `benchmark_file`: Path to benchmark price data
+- `currency`: Display currency (USD, CNY, etc.)
+
+### 2. Market Agents (`markets.<market_id>.agents`)
+
+Each market has its own list of agents:
 
 ```yaml
-agents:
-  - folder: "agent-directory-name"
-    display_name: "Display Name"
-    icon: "./figs/icon.svg"
-    color: "#hexcolor"
-    enabled: true
+markets:
+  us:
+    agents:
+      - folder: "agent-directory-name"
+        display_name: "Display Name"
+        icon: "./figs/icon.svg"
+        color: "#hexcolor"
 ```
 
 **Fields:**
-- `folder`: Directory name under `data/agent_data/` (must match exactly)
+- `folder`: Directory name under `data/<data_dir>/` (must match exactly)
 - `display_name`: Human-readable name shown in UI
 - `icon`: Path to SVG icon (relative to docs/)
 - `color`: Hex color code for chart lines and UI elements
-- `enabled`: Boolean to enable/disable the agent
 
-### 3. Benchmark (`benchmark`)
+### 3. Data Paths (`data`)
 
-Configuration for the benchmark comparison (e.g., QQQ):
+Legacy configuration for backward compatibility:
+
+```yaml
+data:
+  base_path: "./data"
+  price_file_prefix: "daily_prices_"
+  benchmark_file: "Adaily_prices_QQQ.json"
+```
+
+**Note**: Market-specific paths in the `markets` section take precedence.
+
+### 4. Benchmark (`benchmark`)
+
+Legacy benchmark configuration (still supported for backward compatibility):
 
 ```yaml
 benchmark:
@@ -97,7 +161,9 @@ benchmark:
   enabled: true
 ```
 
-### 4. Chart Settings (`chart`)
+**Note**: Market-specific benchmarks (defined in `markets.<market_id>.benchmark_file`) are preferred.
+
+### 5. Chart Settings (`chart`)
 
 Visual settings for the asset evolution chart:
 
@@ -137,34 +203,62 @@ The following icons are available in `docs/figs/`:
 
 ## Color Recommendations
 
-Use distinct colors for different agents to make them easy to distinguish:
+Use distinct colors for different agents to make them easy to distinguish. **Current palette** (based on agent index order):
 
-- **Claude**: `#cc785c` (orange)
-- **DeepSeek**: `#4a90e2` (blue)
-- **Gemini**: `#8A2BE2` (purple)
-- **GPT**: `#10a37f` (green)
-- **Qwen**: `#0066ff` (bright blue)
-- **MiniMax**: `#ff6b6b` (red)
-- **QQQ Benchmark**: `#ff6b00` (orange)
+1. **Gemini 2.5 Flash**: `#00d4ff` (Cyan Blue)
+2. **Qwen3 Max**: `#00ffcc` (Cyan)
+3. **DeepSeek Chat v3.1**: `#ff006e` (Hot Pink)
+4. **GPT-5**: `#ffbe0b` (Yellow)
+5. **Claude 3.7 Sonnet**: `#8338ec` (Purple)
+6. **MiniMax M2**: `#3a86ff` (Blue)
+7. **Additional colors**: `#fb5607` (Orange), `#06ffa5` (Mint)
+
+**QQQ Benchmark**: `#ff6b00` (Orange)
 
 ## Directory Structure
 
-The configuration expects the following directory structure:
+The configuration supports multiple market structures:
+
+### For US Market (Individual Price Files)
 
 ```
 data/
-├── agent_data/
-│   ├── agent-folder-1/
+├── agent_data/                    # US market agents (data_dir: "agent_data")
+│   ├── gemini-2.5-flash/
 │   │   └── position/
 │   │       └── position.jsonl
-│   ├── agent-folder-2/
+│   ├── qwen3-max/
 │   │   └── position/
 │   │       └── position.jsonl
 │   └── ...
-├── daily_prices_AAPL.json
+├── daily_prices_AAPL.json        # Individual stock price files
 ├── daily_prices_MSFT.json
-└── Adaily_prices_QQQ.json
+└── Adaily_prices_QQQ.json        # Benchmark
+
 ```
+
+### For CN Market (Merged Price File)
+
+```
+data/
+├── agent_data_astock/            # CN market agents (data_dir: "agent_data_astock")
+│   ├── gemini-2.5-flash/
+│   │   └── position/
+│   │       └── position.jsonl
+│   ├── qwen3-max/
+│   │   └── position/
+│   │       └── position.jsonl
+│   └── ...
+└── A_stock/
+    ├── merged.jsonl              # All stock prices in one file
+    └── index_daily_sse_50.json   # Benchmark
+```
+
+**Key Points:**
+- Each market can have its own `data_dir` under `data/`
+- US market uses `price_data_type: "individual"` with separate files per stock
+- CN market uses `price_data_type: "merged"` with all prices in `merged.jsonl`
+- Agent folder names must match the `folder` field in config
 
 ## Validation
 
@@ -175,76 +269,138 @@ The frontend will automatically:
 
 ## Common Use Cases
 
-### 1. Adding a Batch of New Agents
+### 1. Adding a New Market
+
+To add a new market (e.g., cryptocurrency):
 
 ```yaml
-agents:
-  # Existing agents...
-
-  # New batch
-  - folder: "new-agent-1"
-    display_name: "New Agent 1"
-    icon: "./figs/stock.svg"
-    color: "#ff6b6b"
+markets:
+  crypto:
+    name: "Crypto Market"
+    subtitle: "Track how different AI models perform in cryptocurrency trading"
+    data_dir: "agent_data_crypto"
+    benchmark_file: "crypto/btc.json"
+    benchmark_name: "BTC"
+    benchmark_display_name: "Bitcoin"
+    currency: "USD"
+    icon: "₿"
+    price_data_type: "merged"
+    price_data_file: "crypto/merged.jsonl"
+    time_granularity: "hourly"
     enabled: true
-
-  - folder: "new-agent-2"
-    display_name: "New Agent 2"
-    icon: "./figs/stock.svg"
-    color: "#00d4ff"
-    enabled: true
+    agents:
+      - folder: "gemini-2.5-flash"
+        display_name: "Gemini 2.5 Flash"
+        icon: "./figs/google.svg"
+        color: "#00d4ff"
 ```
 
-### 2. Changing Display Names
+### 2. Adding Agents to Multiple Markets
 
-Just edit the `display_name` field - no code changes needed:
+To add the same agent to both US and CN markets:
 
 ```yaml
-- folder: "test-gpt-4.1"
-  display_name: "GPT-4.1 (Updated)"  # Changed from "GPT-4.1"
-  icon: "./figs/openai.svg"
-  color: "#10a37f"
-  enabled: true
+markets:
+  us:
+    agents:
+      - folder: "new-agent"
+        display_name: "New Agent"
+        icon: "./figs/stock.svg"
+        color: "#ff6b6b"
+  cn:
+    agents:
+      - folder: "new-agent"
+        display_name: "New Agent"
+        icon: "./figs/stock.svg"
+        color: "#ff6b6b"
 ```
 
-### 3. Disabling Old Agents
+Ensure the agent has position data in both market directories:
+- `data/agent_data/new-agent/position/position.jsonl` (US)
+- `data/agent_data_astock/new-agent/position/position.jsonl` (CN)
 
-Set `enabled: false` for agents you want to hide:
+### 3. Switching Time Granularity
+
+Change from daily to hourly timestamps for a market:
 
 ```yaml
-- folder: "old-experiment"
-  display_name: "Old Experiment"
-  icon: "./figs/stock.svg"
-  color: "#cccccc"
-  enabled: false  # Will not appear in UI
+markets:
+  cn:
+    time_granularity: "hourly"  # Changed from "daily"
+    # ... rest of config
 ```
 
-### 4. Changing Chart Colors
+**Important**: Ensure your data timestamps match the granularity:
+- Hourly: `"2024-10-01 10:00"`
+- Daily: `"2024-10-01"`
 
-Update the `color` field with a new hex code:
+### 4. Changing Data Storage Format
+
+Switch from individual files to merged format:
 
 ```yaml
-- folder: "test-claude-3.7-sonnet"
-  display_name: "Claude 3.7 Sonnet"
-  icon: "./figs/claude-color.svg"
-  color: "#ff0000"  # Changed to red
-  enabled: true
+markets:
+  us:
+    price_data_type: "merged"                    # Changed from "individual"
+    price_data_file: "US_market/merged.jsonl"   # Add this field
+    # ... rest of config
+```
+
+Then consolidate all `daily_prices_*.json` files into `data/US_market/merged.jsonl`.
+
+### 5. Changing Display Names and Colors
+
+Just edit the agent configuration in the market:
+
+```yaml
+markets:
+  us:
+    agents:
+      - folder: "gpt-5"
+        display_name: "GPT-5 (Latest)"  # Changed display name
+        icon: "./figs/openai.svg"
+        color: "#00ff00"                # Changed color to green
 ```
 
 ## Troubleshooting
 
 ### Agent Not Appearing
 
-1. Check that `enabled: true` in config.yaml
-2. Verify the folder name matches exactly
-3. Ensure `position.jsonl` exists at `data/agent_data/{folder}/position/position.jsonl`
-4. Check browser console for error messages
+1. Check that the market is `enabled: true` in config.yaml
+2. Verify the agent exists in that market's `agents` list
+3. Ensure the folder name matches exactly (case-sensitive)
+4. Verify `position.jsonl` exists at `data/<data_dir>/{folder}/position/position.jsonl`
+5. Check browser console for error messages
 
-### Wrong Colors or Icons
+**Example for US market:**
+- Config: `folder: "gemini-2.5-flash"`
+- Expected path: `data/agent_data/gemini-2.5-flash/position/position.jsonl`
 
-1. Verify the hex color code is valid (6 characters after #)
-2. Check that the icon file exists at the specified path
-3. Clear browser cache and reload
+### Wrong Timestamps or Date Format
+
+1. Check the market's `time_granularity` setting
+2. Ensure position data timestamps match:
+   - Hourly: `"2024-10-01 10:00"` (with hour)
+   - Daily: `"2024-10-01"` (date only)
+3. Check `ui.date_formats` in config.yaml matches your granularity
+
+### Market Not Showing
+
+1. Ensure `enabled: true` for that market
+2. Verify `data_dir` exists under `data/`
+3. Check that at least one agent has valid data
+4. Verify benchmark file exists at the specified path
+
+### Price Data Not Loading
+
+For **individual** price data type:
+1. Check files exist: `data/daily_prices_<SYMBOL>.json`
+2. Verify file naming matches `price_file_prefix` setting
+
+For **merged** price data type:
+1. Check `price_data_file` is specified in market config
+2. Verify file exists: `data/<price_data_file>`
+3. Ensure JSONL format: one JSON object per line
 
 ### Configuration Not Loading
 
@@ -254,36 +410,98 @@ Update the `color` field with a new hex code:
 
 ## Best Practices
 
-1. **Keep enabled agents at the top** of the agents list for easier management
-2. **Use consistent naming** for similar agents (e.g., "test-" prefix for test runs)
-3. **Choose distinct colors** to make agents easy to distinguish in charts
-4. **Add comments** in YAML to document temporary changes:
+1. **Organize agents by market** - Keep market-specific agents in their respective `agents` lists
+2. **Use consistent naming** across markets for the same agent (e.g., "gemini-2.5-flash" in both US and CN)
+3. **Match time granularity to data** - Ensure timestamps in position files match the market's `time_granularity`
+4. **Choose distinct colors** per agent (not per market) for consistency
+5. **Add comments** for temporary changes:
    ```yaml
-   # Temporarily disabled for performance testing
-   - folder: "heavy-agent"
-     enabled: false
+   markets:
+     us:
+       # enabled: false  # Temporarily disabled for testing CN market
    ```
-5. **Test after changes** by reloading the page and checking the browser console
+6. **Test after changes** by reloading the page and checking:
+   - Market selector shows all enabled markets
+   - Agents appear with correct colors
+   - Browser console shows no errors
+7. **Document custom markets** if adding new ones:
+   ```yaml
+   # crypto:  # TODO: Enable when crypto data is ready
+   #   name: "Crypto Market"
+   #   enabled: false
+   ```
 
-## Migration from Hardcoded Config
+## Migration from Legacy Config
 
-The old system required editing JavaScript files to add agents. Now you can:
+### Old Structure (Single Market)
 
-**Old way** (editing data-loader.js):
-```javascript
-const names = {
-    'test-gpt-4.1': 'GPT-4.1',
-    // ... add more here
-};
-```
-
-**New way** (editing config.yaml):
 ```yaml
-- folder: "test-gpt-4.1"
-  display_name: "GPT-4.1"
-  icon: "./figs/openai.svg"
-  color: "#10a37f"
-  enabled: true
+agents:
+  - folder: "gemini-2.5-flash"
+    display_name: "Gemini 2.5 Flash"
+    enabled: true
 ```
 
-No code changes needed! Just edit the YAML file and reload the page.
+### New Structure (Multi-Market)
+
+```yaml
+markets:
+  us:
+    agents:
+      - folder: "gemini-2.5-flash"
+        display_name: "Gemini 2.5 Flash"
+  cn:
+    agents:
+      - folder: "gemini-2.5-flash"
+        display_name: "Gemini 2.5 Flash"
+```
+
+**Benefits:**
+- Same agent can have different configurations per market
+- Independent data directories and benchmarks per market
+- Easy to add new markets without affecting existing ones
+- Supports different time granularities (hourly vs daily)
+
+## Advanced Configuration
+
+### Market-Specific Agent Names
+
+You can use different display names for the same agent in different markets:
+
+```yaml
+markets:
+  us:
+    agents:
+      - folder: "gemini-2.5-flash"
+        display_name: "Gemini 2.5 Flash (US)"
+  cn:
+    agents:
+      - folder: "gemini-2.5-flash"
+        display_name: "Gemini 2.5 Flash (CN)"
+```
+
+### Mixed Time Granularities
+
+Different markets can use different time granularities:
+
+```yaml
+markets:
+  us:
+    time_granularity: "hourly"   # Intraday trading
+  cn:
+    time_granularity: "daily"    # End-of-day positions
+```
+
+### Conditional Market Enabling
+
+Enable markets based on data availability:
+
+```yaml
+markets:
+  us:
+    enabled: true               # Production ready
+  cn:
+    enabled: true               # Production ready
+  crypto:
+    enabled: false              # Not yet ready
+```
