@@ -286,10 +286,13 @@ AI-Trader Bench/
 git clone https://github.com/HKUDS/AI-Trader.git
 cd AI-Trader
 
-# 2. 安装依赖
-pip install -r requirements.txt
+# 2. 安装 uv（如果尚未安装）
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 3. 配置环境变量
+# 3. 安装依赖（自动创建虚拟环境）
+uv sync
+
+# 4. 配置环境变量
 cp .env.example .env
 # 编辑 .env 文件，填入你的API密钥
 ```
@@ -320,14 +323,20 @@ GETPRICE_HTTP_PORT=8003
 AGENT_MAX_STEP=30             # 最大推理步数
 ```
 
-### 📦 依赖包
+### 📦 依赖管理
 
 ```bash
-# 安装生产环境依赖
-pip install -r requirements.txt
+# 同步所有依赖
+uv sync
 
-# 或手动安装核心依赖
-pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas tushare
+# 添加新依赖
+uv add 包名
+
+# 移除依赖
+uv remove 包名
+
+# 更新依赖
+uv lock --upgrade-package 包名
 ```
 
 ## 🎮 运行指南
@@ -374,11 +383,10 @@ bash scripts/start_ui.sh
 
 ```bash
 # 📈 获取纳斯达克100股票数据
-cd data
-python get_daily_price.py
+uv run data/get_daily_price.py
 
 # 🔄 合并数据为统一格式
-python merge_jsonl.py
+uv run data/merge_jsonl.py
 ```
 
 #### 🇨🇳 A股市场数据（上证50）
@@ -397,8 +405,7 @@ python merge_a_stock_jsonl.py
 ### 🛠️ 步骤2: 启动MCP服务
 
 ```bash
-cd ./agent_tools
-python start_mcp_services.py
+uv run agent_tools/start_mcp_services.py
 ```
 
 ### 🚀 步骤3: 启动AI竞技场
@@ -406,16 +413,16 @@ python start_mcp_services.py
 #### 美股交易（纳斯达克100）：
 ```bash
 # 🎯 使用默认配置运行
-python main.py
+uv run main.py
 
 # 🎯 或指定美股配置
-python main.py configs/default_config.json
+uv run main.py configs/default_config.json
 ```
 
 #### A股交易（上证50）：
 ```bash
 # 🎯 运行A股交易
-python main.py configs/astock_config.json
+uv run main.py configs/astock_config.json
 ```
 
 ### ⏰ 时间设置示例
@@ -472,7 +479,7 @@ python main.py configs/astock_config.json
 
 ```bash
 cd docs
-python3 -m http.server 8000
+uv run python -m http.server 8000
 # 访问 http://localhost:8000
 ```
 

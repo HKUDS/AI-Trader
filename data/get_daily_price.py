@@ -124,10 +124,10 @@ def get_daily_price(SYMBOL: str):
     if data.get("Note") is not None or data.get("Information") is not None:
         print(f"Error")
         return
-    with open(f"./daily_prices_{SYMBOL}.json", "w", encoding="utf-8") as f:
+    with open(f"./data/daily_prices_{SYMBOL}.json", "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
     if SYMBOL == "QQQ":
-        with open(f"./Adaily_prices_{SYMBOL}.json", "w", encoding="utf-8") as f:
+        with open(f"./data/Adaily_prices_{SYMBOL}.json", "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
 
 
