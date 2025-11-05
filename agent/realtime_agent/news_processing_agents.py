@@ -19,8 +19,8 @@ from enum import Enum
 import logging
 
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
-from event_detector import MarketEvent, EventType
-from news_memory import NewsMemoryManager, CompressedNewsEvent
+from agent.realtime_agent.event_detector import MarketEvent, EventType
+from agent.realtime_agent.news_memory import NewsMemoryManager, CompressedNewsEvent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

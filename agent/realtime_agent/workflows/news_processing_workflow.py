@@ -111,11 +111,40 @@ class NewsProcessingWorkflow:
         self.total_recommendations = 0
 
     def _build_workflow(self):
-        """Build the workflow stages"""
+        """
+        Build the 5-stage news processing workflow with conditional routing.
 
-        # Stage 1: Screen with Haiku
+        Stages:
+        1. Screen (Haiku)  - Fast duplicate/spam detection ($0.001)
+        2. Filter (Sonnet) - Deep relevance check ($0.015) [conditional]
+        3. Sentiment       - Extract sentiment + facts [conditional]
+        4. Impact          - Stock-specific impact [conditional]
+        5. Decision        - Generate trade recommendations [conditional]
+
+        Routing Logic:
+        - Screen fails → Skip all remaining stages
+        - Filter fails → Skip sentiment/impact/decision
+        - No impacts → Skip decision
+
+        Total cost: $0.001 (screened out) to $0.061 (full pipeline)
+        """
+
+        # Stage 1: Screen with Haiku (always runs)
         async def screen_stage(state: WorkflowState, input_data: Dict) -> Dict:
-            """Screen news with Haiku (fast, cheap)"""
+            """
+            Screen news with Haiku to detect duplicates, updates, and spam.
+
+            Uses Claude Haiku ($0.001 per check) to:
+            - Identify duplicate stories (skip processing)
+            - Detect story updates (process - contains new info)
+            - Filter spam/promotional content
+            - Classify new stories
+
+            Only reads title + first 200 chars for speed and cost efficiency.
+
+            Returns:
+                Dict with 'screening_decision' containing should_process flag
+            """
             event: MarketEvent = input_data['event']
 
             logger.info(f"\n📋 STAGE 1: SCREENING")
@@ -142,9 +171,21 @@ class NewsProcessingWorkflow:
                 'screening_decision': decision
             }
 
-        # Stage 2: Filter (only if screened in)
+        # Stage 2: Filter (conditional - only if passed screening)
         async def filter_stage(state: WorkflowState, input_data: Dict) -> Dict:
-            """Filter for relevance (if passed screening)"""
+            """
+            Deep relevance analysis using Claude Sonnet.
+
+            Determines if news is relevant for trading decisions by analyzing:
+            - Market impact potential
+            - Actionability for trading
+            - Information quality
+
+            Only runs if screening stage passed (should_process=True).
+
+            Returns:
+                Dict with 'filtered' containing is_relevant flag and score
+            """
             event: MarketEvent = input_data['event']
 
             logger.info(f"\n🔍 STAGE 2: FILTERING")
@@ -162,9 +203,22 @@ class NewsProcessingWorkflow:
                 'filtered': filtered
             }
 
-        # Stage 3: Sentiment analysis
+        # Stage 3: Sentiment analysis (conditional - only if relevant)
         async def sentiment_stage(state: WorkflowState, input_data: Dict) -> Dict:
-            """Analyze sentiment and extract facts"""
+            """
+            Analyze sentiment and extract key facts.
+
+            Performs:
+            - Sentiment classification (bullish/bearish/neutral)
+            - Confidence scoring
+            - Key fact extraction
+            - Reasoning generation
+
+            Only runs if news passed relevance filter (is_relevant=True).
+
+            Returns:
+                Dict with 'sentiment' containing analysis and facts
+            """
             filtered: FilteredNews = input_data['filtered']
 
             logger.info(f"\n📊 STAGE 3: SENTIMENT ANALYSIS")
@@ -183,9 +237,22 @@ class NewsProcessingWorkflow:
                 'sentiment': sentiment
             }
 
-        # Stage 4: Impact assessment
+        # Stage 4: Impact assessment (conditional - only if has sentiment)
         async def impact_stage(state: WorkflowState, input_data: Dict) -> Dict:
-            """Assess impact on specific stocks"""
+            """
+            Assess impact on specific stocks.
+
+            Maps general sentiment to stock-specific impact by:
+            - Evaluating direct/indirect effects
+            - Assessing magnitude (high/medium/low)
+            - Determining confidence level
+            - Providing reasoning per stock
+
+            Only runs if sentiment analysis completed.
+
+            Returns:
+                Dict with 'impacts' list of stock-specific assessments
+            """
             sentiment: SentimentAnalysis = input_data['sentiment']
             candidate_symbols: List[str] = input_data['candidate_symbols']
 
@@ -207,9 +274,23 @@ class NewsProcessingWorkflow:
                 'impacts': impacts
             }
 
-        # Stage 5: Trading decision
+        # Stage 5: Trading decision (conditional - only if has impacts)
         async def decision_stage(state: WorkflowState, input_data: Dict) -> List[TradingRecommendation]:
-            """Generate trading recommendations"""
+            """
+            Generate trading recommendations based on impact assessments.
+
+            Considers:
+            - Stock-specific impacts and confidence
+            - Current portfolio positions
+            - Available cash
+            - Position sizing rules
+            - Risk management
+
+            Only runs if impact stage found stocks to trade (impacts > 0).
+
+            Returns:
+                List of TradingRecommendation with action/quantity/reasoning
+            """
             impacts: List[StockImpactAssessment] = input_data['impacts']
             current_positions: Dict[str, int] = input_data['current_positions']
             available_cash: float = input_data['available_cash']
@@ -232,33 +313,43 @@ class NewsProcessingWorkflow:
 
             return recommendations
 
-        # Add stages to executor with conditions
+        # Register stages with conditional routing logic
+        # Each condition function receives WorkflowState and determines if stage should run
 
-        # Stage 1: Always screen
+        # Stage 1: Screen - ALWAYS runs (no condition)
+        # Cost: $0.001 | Filters ~30% of events
         self.executor.add_stage("screen", screen_stage)
 
-        # Stage 2: Only filter if screened in
+        # Stage 2: Filter - Only if screening passed
+        # Condition: should_process=True from screen stage
+        # Skipped if: duplicate, spam, or screened out
         self.executor.add_stage(
             "filter",
             filter_stage,
             condition=lambda state: state.get_stage_output("screen")['screening_decision'].should_process
         )
 
-        # Stage 3: Only analyze sentiment if filtered in
+        # Stage 3: Sentiment - Only if news is relevant
+        # Condition: is_relevant=True from filter stage
+        # Skipped if: not relevant for trading
         self.executor.add_stage(
             "sentiment",
             sentiment_stage,
             condition=lambda state: state.get_stage_output("filter")['filtered'].is_relevant
         )
 
-        # Stage 4: Only assess impact if has sentiment
+        # Stage 4: Impact - Only if sentiment analysis completed
+        # Condition: sentiment stage produced output
+        # Skipped if: earlier stages failed or skipped
         self.executor.add_stage(
             "impact",
             impact_stage,
             condition=lambda state: state.get_stage_output("sentiment") is not None
         )
 
-        # Stage 5: Only make decisions if has impacts
+        # Stage 5: Decision - Only if stocks have measurable impact
+        # Condition: impact list has entries (len > 0)
+        # Skipped if: no stocks affected by news
         self.executor.add_stage(
             "decision",
             decision_stage,

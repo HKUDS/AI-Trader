@@ -162,9 +162,9 @@ class WorkflowExecutor:
                 # Execute stage
                 output = await handler(state, stage_input)
 
-                # Success!
-                logger.info(f"✅ Completed stage: {stage_name} ({state.stage_results[stage_name].duration_seconds:.2f}s)")
+                # Success! Complete stage first to calculate duration
                 state.complete_stage(stage_name, output)
+                logger.info(f"✅ Completed stage: {stage_name} ({state.stage_results[stage_name].duration_seconds:.2f}s)")
 
                 # Run post-hooks
                 if stage_name in self.post_stage_hooks:

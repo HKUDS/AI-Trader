@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from collections import defaultdict
 import logging
 
-from event_detector import MarketEvent, EventType
+from agent.realtime_agent.event_detector import MarketEvent, EventType
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

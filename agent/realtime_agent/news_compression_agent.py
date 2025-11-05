@@ -19,7 +19,7 @@ from dataclasses import dataclass
 import logging
 
 from claude_agent_sdk import ClaudeSDKClient, ClaudeAgentOptions
-from event_detector import MarketEvent, EventType
+from agent.realtime_agent.event_detector import MarketEvent, EventType
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
