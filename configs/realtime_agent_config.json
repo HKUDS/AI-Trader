@@ -1,0 +1,59 @@
+{
+  "agent_type": "RealtimeTradingAgent",
+  "signature": "realtime-claude-agent",
+  "description": "Real-time event-driven trading agent with news processing",
+
+  "api_keys": {
+    "anthropic_api_key": "env:ANTHROPIC_API_KEY",
+    "jina_api_key": "env:JINA_API_KEY"
+  },
+
+  "stock_universe": {
+    "symbols": [
+      "NVDA", "MSFT", "AAPL", "GOOG", "GOOGL", "AMZN", "META", "AVGO", "TSLA",
+      "NFLX", "PLTR", "COST", "ASML", "AMD", "CSCO", "INTC", "QCOM"
+    ],
+    "description": "Top NASDAQ 100 tech stocks for focused monitoring"
+  },
+
+  "event_detection": {
+    "news_check_interval_seconds": 60,
+    "momentum_check_interval_seconds": 30,
+    "price_threshold_percent": 3.0,
+    "volume_threshold_multiplier": 2.0,
+    "description": "Check news every 60s, momentum every 30s, alert on 3%+ moves"
+  },
+
+  "processing": {
+    "model": "sonnet",
+    "max_concurrent_events": 5,
+    "description": "Use Claude Sonnet, process up to 5 events concurrently"
+  },
+
+  "memory": {
+    "max_tokens": 2000,
+    "retention_hours": 48,
+    "max_events_per_symbol": 20,
+    "description": "Keep 48 hours of compressed news (max 2000 tokens)"
+  },
+
+  "trading_rules": {
+    "min_confidence_to_trade": 0.7,
+    "max_position_size_percent": 25.0,
+    "max_positions": 5,
+    "initial_cash": 10000.0,
+    "description": "70%+ confidence required, max 25% per position, 5 positions max"
+  },
+
+  "logging": {
+    "log_path": "./data/realtime_agent",
+    "save_memory_interval_minutes": 30,
+    "status_report_interval_minutes": 5
+  },
+
+  "mode": {
+    "live_trading": false,
+    "paper_trading": true,
+    "description": "Set live_trading to true for real trades (use with caution!)"
+  }
+}
