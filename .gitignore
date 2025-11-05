@@ -68,6 +68,11 @@ data/agent_data/*test*/
 data/merged_daily.jsonl
 data/merged_hour.jsonl
 
+# Real-time agent data and workflow logs
+data/workflows/
+data/realtime_agent/
+data/news_memory/
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
