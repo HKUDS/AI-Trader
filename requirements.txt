@@ -7,3 +7,5 @@ anyio>=4.0.0
 llm-guard>=0.3.0
 optimum>=2.0.0
 onnxruntime>=1.23.0
+aiohttp>=3.9.0
+python-dotenv>=1.0.0
