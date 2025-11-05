@@ -1,0 +1,33 @@
+{
+    "agent_type": "SimpleAgent",
+    "market": "us",
+    "date_range": {
+        "init_date": "2025-01-01",
+        "end_date": "2025-06-20"
+    },
+    "models": [
+        {
+            "model": "deepseek-ai/DeepSeek-R1",
+            "name": "DeepSeek-R1",
+            "basemodel": "deepseek-ai/DeepSeek-R1",
+            "signature": "DeepSeek-R1-simple",
+            "enabled": false
+        },
+        {
+            "model": "zai-org/GLM-4.5",
+            "name": "GLM-4.5",
+            "basemodel": "zai-org/GLM-4.5",
+            "signature": "GLM-4.5-simple",
+            "enabled": true
+        }
+    ],
+    "agent_config": {
+        "max_steps": 1,
+        "max_retries": 2,
+        "base_delay": 1.0,
+        "initial_cash": 10000.0
+    },
+    "log_config": {
+        "log_path": "./data/agent_data"
+    }
+}

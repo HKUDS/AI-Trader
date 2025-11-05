@@ -336,6 +336,9 @@ def get_yesterday_date(today_date: str) -> str:
     Returns:
         yesterday_date: 上一个交易日或时间点的字符串，格式与输入一致。
     """
+    # Fix: Initialize merged_path to None (as described in docstring)
+    merged_path = None
+    
     # 解析输入日期/时间
     if ' ' in today_date:
         input_dt = datetime.strptime(today_date, "%Y-%m-%d %H:%M:%S")
@@ -662,6 +665,7 @@ def get_today_init_position(today_date: str, signature: str) -> Dict[str, float]
     
     max_id = -1
     latest_positions = {}
+    all_records = []  # Initialize all_records list
   
     with position_file.open("r", encoding="utf-8") as f:
         for line in f:

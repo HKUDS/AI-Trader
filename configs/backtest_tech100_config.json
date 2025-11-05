@@ -1,0 +1,25 @@
+{
+    "agent_type": "BaseAgent",
+    "market": "us",
+    "date_range": {
+        "init_date": "2025-01-01",
+        "end_date": "2025-06-30"
+    },
+    "models": [
+        {
+            "name": "deepseek-ai/DeepSeek-V3",
+            "basemodel": "deepseek-ai/DeepSeek-V3",
+            "signature": "qwen-tech100-backtest",
+            "enabled": true
+        }
+    ],
+    "agent_config": {
+        "max_steps": 30,
+        "max_retries": 3,
+        "base_delay": 1.0,
+        "initial_cash": 10000.0
+    },
+    "log_config": {
+        "log_path": "./data/agent_data"
+    }
+}
