@@ -151,7 +151,17 @@ def place_limit_buy_order(symbol: str, amount: int, limit_price: float) -> Dict[
             "date": today_date,
         }
 
-    # Step 5: Return order confirmation without market data leakage
+    # Step 5: Check if pending orders exist and set IF_TRADE flag accordingly
+    try:
+        if pending_file_path.exists() and pending_file_path.stat().st_size > 0:
+            from tools.general_tools import write_config_value
+            write_config_value("IF_TRADE", True)
+            print("IF_TRADE", get_config_value("IF_TRADE"))
+    except Exception as e:
+        # Don't fail the order if IF_TRADE setting fails
+        print(f"Warning: Could not set IF_TRADE flag: {e}")
+
+    # Step 6: Return order confirmation without market data leakage
     return {
         "status": "OrderPlaced",
         "message": f"Limit order for {amount} {symbol} @ {limit_price} has been placed and is pending settlement.",
@@ -296,7 +306,17 @@ def place_limit_sell_order(symbol: str, amount: int, limit_price: float) -> Dict
             "date": today_date,
         }
 
-    # Step 5: Return order confirmation without market data leakage
+    # Step 5: Check if pending orders exist and set IF_TRADE flag accordingly
+    try:
+        if pending_file_path.exists() and pending_file_path.stat().st_size > 0:
+            from tools.general_tools import write_config_value
+            write_config_value("IF_TRADE", True)
+            print("IF_TRADE", get_config_value("IF_TRADE"))
+    except Exception as e:
+        # Don't fail the order if IF_TRADE setting fails
+        print(f"Warning: Could not set IF_TRADE flag: {e}")
+
+    # Step 6: Return order confirmation without market data leakage
     return {
         "status": "OrderPlaced",
         "message": f"Limit order for {amount} {symbol} @ {limit_price} has been placed and is pending settlement.",

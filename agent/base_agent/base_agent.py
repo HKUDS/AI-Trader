@@ -537,8 +537,27 @@ class BaseAgent:
         """Register new agent, create initial positions"""
         # Check if position.jsonl file already exists
         if os.path.exists(self.position_file):
-            print(f"⚠️ Position file {self.position_file} already exists, skipping registration")
-            return
+            # Additional check: if file exists but has existing trading data, don't overwrite
+            try:
+                with open(self.position_file, "r") as f:
+                    lines = f.readlines()
+                    if len(lines) > 1:  # More than just initial record
+                        print(f"⚠️ Position file {self.position_file} has existing trading data, skipping registration")
+                        return
+                    elif len(lines) == 1:
+                        # Check if the single record is from a previous date
+                        record = json.loads(lines[0].strip())
+                        record_date = record.get("date", "")
+                        record_id = record.get("id", 0)
+                        if record_id > 0 or record_date != self.init_date:
+                            print(f"⚠️ Position file {self.position_file} has existing position data, skipping registration")
+                            return
+            except Exception as e:
+                print(f"⚠️ Error reading existing position file, proceeding with registration: {e}")
+
+            print(f"⚠️ Position file {self.position_file} exists but appears to be empty/initial, recreating...")
+        else:
+            print(f"📝 Position file {self.position_file} does not exist, creating new one...")
 
         # Ensure directory structure exists
         position_dir = os.path.join(self.data_path, "position")

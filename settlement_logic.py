@@ -39,10 +39,32 @@ def run_daily_settlement(today_date: str, signature: str) -> None:
         start_position, last_action_id = get_latest_position(yesterday_date, signature)
         settled_position = start_position.copy()
 
-        # Step 3: Load T day pending orders
+        # Step 2.5: Check if settlement has already been run for today's date
         log_path = get_config_value("LOG_PATH", "./data/agent_data")
         if log_path.startswith("./data/"):
             log_path = log_path[7:]  # Remove "./data/" prefix
+
+        try:
+            today_position, today_last_id = get_latest_position(today_date, signature)
+            # Look for any settlement record for today
+            position_file = Path(project_root) / "data" / log_path / signature / "position" / "position.jsonl"
+
+            with position_file.open("r", encoding="utf-8") as f:
+                for line in f:
+                    if not line.strip():
+                        continue
+                    try:
+                        record = json.loads(line)
+                        if record.get("date") == today_date and record.get("this_action", {}).get("action") == "daily_settlement":
+                            print(f"⚠️ Settlement already completed for {today_date}, skipping")
+                            return
+                    except Exception:
+                        continue
+        except Exception as e:
+            # No position for today yet or file doesn't exist, continue with settlement
+            pass
+
+        # Step 3: Load T day pending orders
 
         pending_dir = Path(project_root) / "data" / log_path / signature / "pending_orders"
         pending_file_path = pending_dir / f"{today_date}.jsonl"
@@ -224,11 +246,11 @@ def run_daily_settlement(today_date: str, signature: str) -> None:
     # Step 9: (Atomic operation end)
 
     # Step 10: Clean up pending orders for the day
-    try:
-        if pending_file_path.exists():
-            os.remove(pending_file_path)
-    except Exception as e:
-        print(f"Error removing pending orders file: {e}")
+    # try:
+    #     if pending_file_path.exists():
+    #         os.remove(pending_file_path)
+    # except Exception as e:
+    #     print(f"Error removing pending orders file: {e}")
 
 
 def _save_position_record(today_date: str, signature: str, action_id: int,
