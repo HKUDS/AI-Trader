@@ -12,47 +12,24 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 import json
 
-from tools.general_tools import get_config_value, write_config_value
-from tools.price_tools import (get_latest_position, get_open_prices,
-                               get_yesterday_date,
-                               get_yesterday_open_and_close_price,
-                               get_yesterday_profit, get_high_low_prices)
+from tools.general_tools import get_config_value
 
 mcp = FastMCP("TradeLimitTools")
 
-def _position_lock(signature: str):
-    """Context manager for file-based lock to serialize position updates per signature."""
-    class _Lock:
-        def __init__(self, name: str):
-            base_dir = Path(project_root) / "data" / "agent_data" / name
-            base_dir.mkdir(parents=True, exist_ok=True)
-            self.lock_path = base_dir / ".position.lock"
-            # Ensure lock file exists
-            self._fh = open(self.lock_path, "a+")
-        def __enter__(self):
-            fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX)
-            return self
-        def __exit__(self, exc_type, exc, tb):
-            try:
-                fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
-            finally:
-                self._fh.close()
-    return _Lock(signature)
 
 
 
 @mcp.tool()
-def buy(symbol: str, amount: int, limit_price: float) -> Dict[str, Any]:
+def place_limit_buy_order(symbol: str, amount: int, limit_price: float) -> Dict[str, Any]:
     """
-    Buy stock function with limit order
+    Place limit buy order function
 
-    This function simulates limit order stock buying operations, including the following steps:
-    1. Get current position and operation ID
-    2. Get stock high and low prices for the day
-    3. Validate limit order condition (limit_price >= day_low_price)
-    4. Validate buy conditions (sufficient cash, lot size for CN market)
-    5. Update position (increase stock quantity, decrease cash using limit_price)
-    6. Record transaction to position.jsonl file
+    This function records a limit buy order for later settlement, including the following steps:
+    1. Get signature and today's date
+    2. Validate order parameters (amount, limit_price, lot size for CN market)
+    3. Generate unique timestamp for order
+    4. Record order to pending orders file for later settlement
+    5. Return order confirmation without market data leakage
 
     Args:
         symbol: Stock symbol, such as "AAPL", "MSFT", etc.
@@ -62,18 +39,17 @@ def buy(symbol: str, amount: int, limit_price: float) -> Dict[str, Any]:
 
     Returns:
         Dict[str, Any]:
-          - Success: Returns new position dictionary (containing stock quantity and cash balance)
-          - Order Not Filled: Returns {"status": "OrderNotFilled", "message": "..."} dictionary
+          - Success: Returns {"status": "OrderPlaced", "message": "..."} dictionary
           - Failure: Returns {"error": error message, ...} dictionary
 
     Raises:
         ValueError: Raised when SIGNATURE environment variable is not set
 
     Example:
-        >>> result = buy("AAPL", 10, 150.0)
-        >>> print(result)  # {"AAPL": 110, "MSFT": 5, "CASH": 5000.0, ...}
-        >>> result = buy("600519.SH", 100, 1500.0)  # Chinese A-shares must be multiples of 100
-        >>> print(result)  # {"600519.SH": 100, "CASH": 85000.0, ...}
+        >>> result = place_limit_buy_order("AAPL", 10, 150.0)
+        >>> print(result)  # {"status": "OrderPlaced", "message": "Limit order for 10 AAPL @ 150.0 has been placed and is pending settlement."}
+        >>> result = place_limit_buy_order("600519.SH", 100, 1500.0)  # Chinese A-shares must be multiples of 100
+        >>> print(result)  # {"status": "OrderPlaced", "message": "Limit order for 100 600519.SH @ 1500.0 has been placed and is pending settlement."}
     """
     # Step 1: Get environment variables and basic information
     # Get signature (model name) from environment variable, used to determine data storage path
@@ -136,184 +112,89 @@ def buy(symbol: str, amount: int, limit_price: float) -> Dict[str, Any]:
             "suggestion": f"Please use {(amount // 100) * 100} or {((amount // 100) + 1) * 100} shares instead.",
         }
 
-    # Step 2: Get current latest position and operation ID
-    # get_latest_position returns two values: position dictionary and current maximum operation ID
-    # This ID is used to ensure each operation has a unique identifier
-    # Acquire lock for atomic read-modify-write on positions
-    with _position_lock(signature):
-        try:
-            current_position, current_action_id = get_latest_position(today_date, signature)
-        except Exception as e:
-            print(e)
-            print(today_date, signature)
-            return {"error": f"Failed to load latest position: {e}", "symbol": symbol, "date": today_date}
+    # Step 2: Generate unique timestamp for order
+    import time
+    order_timestamp = time.time()
 
-    # Step 3: Get stock high and low prices for the day
-    # Use get_high_low_prices function to get the high and low prices of specified stock for the day
-    # If stock symbol does not exist or price data is missing, return error message
-    try:
-        prices = get_high_low_prices(today_date, [symbol], market=market)
-        if symbol not in prices or prices[symbol] is None:
-            raise KeyError(f"No price data found for {symbol}")
+    # Step 3: Define pending orders file path and create directory if needed
+    log_path = get_config_value("LOG_PATH", "./data/agent_data")
 
-        day_low_price = prices[symbol]['low']
-        if day_low_price is None:
-            return {
-                "error": f"No low price data available for {symbol} on {today_date}. This action will not be allowed.",
-                "symbol": symbol,
-                "date": today_date,
-            }
-    except KeyError:
-        # Stock symbol does not exist or price data is missing, return error message
-        return {
-            "error": f"Symbol {symbol} not found! This action will not be allowed.",
-            "symbol": symbol,
-            "date": today_date,
-        }
-
-    # Step 4: Validate limit order condition
-    # Buy limit order executes only if limit_price >= day_low_price
-    if limit_price < day_low_price:
-        # Limit price not reached, order not filled
-        return {
-            "status": "OrderNotFilled",
-            "message": f"Buy limit order for {symbol} not filled. Limit price {limit_price} was below the period's low {day_low_price}.",
-            "symbol": symbol,
-            "limit_price": limit_price,
-            "day_low_price": day_low_price,
-            "date": today_date,
-        }
-
-    # Step 5: Validate buy conditions
-    # Calculate cash required for purchase: limit_price × buy quantity
-    try:
-        cash_left = current_position["CASH"] - limit_price * amount
-    except Exception as e:
-        print(current_position, "CASH", limit_price, amount)
-
-    # Check if cash balance is sufficient for purchase
-    if cash_left < 0:
-        # Insufficient cash, return error message
-        return {
-            "error": "Insufficient cash! This action will not be allowed.",
-            "required_cash": limit_price * amount,
-            "cash_available": current_position.get("CASH", 0),
-            "symbol": symbol,
-            "limit_price": limit_price,
-            "date": today_date,
-        }
+    # Handle different path formats (same as other files)
+    if os.path.isabs(log_path):
+        # Absolute path (like temp directory) - use directly
+        pending_dir = Path(log_path) / signature / "pending_orders"
     else:
-        # Step 6: Execute buy operation, update position
-        # Create a copy of current position to avoid directly modifying original data
-        new_position = current_position.copy()
-
-        # Decrease cash balance
-        new_position["CASH"] = cash_left
-
-        # Increase stock position quantity
-        new_position[symbol] = new_position.get(symbol, 0) + amount
-
-        # Step 7: Record transaction to position.jsonl file
-        # Build file path: {project_root}/data/{log_path}/{signature}/position/position.jsonl
-        # Use append mode ("a") to write new transaction record
-        # Each operation ID increments by 1, ensuring uniqueness of operation sequence
-        log_path = get_config_value("LOG_PATH", "./data/agent_data")
         if log_path.startswith("./data/"):
             log_path = log_path[7:]  # Remove "./data/" prefix
-        position_file_path = os.path.join(project_root, "data", log_path, signature, "position", "position.jsonl")
-        with open(position_file_path, "a") as f:
-            # Write JSON format transaction record, containing date, operation ID, transaction details and updated position
-            print(
-                f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'buy','symbol':symbol,'amount':amount,'filled_price':limit_price},'positions': new_position})}"
-            )
-            f.write(
-                json.dumps(
-                    {
-                        "date": today_date,
-                        "id": current_action_id + 1,
-                        "this_action": {"action": "buy", "symbol": symbol, "amount": amount, "filled_price": limit_price},
-                        "positions": new_position,
-                    }
-                )
-                + "\n"
-            )
-        # Step 8: Return updated position
-        write_config_value("IF_TRADE", True)
-        print("IF_TRADE", get_config_value("IF_TRADE"))
-        return new_position
+        pending_dir = Path(project_root) / "data" / log_path / signature / "pending_orders"
+
+    os.makedirs(pending_dir, exist_ok=True)
+    pending_file_path = pending_dir / f"{today_date}.jsonl"
+
+    # Step 4: Record order to pending file
+    order_data = {
+        "timestamp": order_timestamp,
+        "action": "buy",
+        "symbol": symbol,
+        "amount": amount,
+        "limit_price": limit_price,
+        "market": market,
+    }
+
+    try:
+        with open(pending_file_path, "a") as f:
+            f.write(json.dumps(order_data) + "\n")
+    except Exception as e:
+        return {
+            "error": f"Failed to record order: {e}",
+            "symbol": symbol,
+            "date": today_date,
+        }
+
+    # Step 5: Return order confirmation without market data leakage
+    return {
+        "status": "OrderPlaced",
+        "message": f"Limit order for {amount} {symbol} @ {limit_price} has been placed and is pending settlement.",
+        "symbol": symbol,
+        "amount": amount,
+        "limit_price": limit_price,
+        "date": today_date,
+    }
 
 
-def _get_today_buy_amount(symbol: str, today_date: str, signature: str) -> int:
-    """
-    Helper function to get the total amount bought today for T+1 restriction check
-
-    Args:
-        symbol: Stock symbol
-        today_date: Trading date
-        signature: Model signature
-
-    Returns:
-        Total shares bought today
-    """
-    log_path = get_config_value("LOG_PATH", "./data/agent_data")
-    if log_path.startswith("./data/"):
-        log_path = log_path[7:]  # Remove "./data/" prefix
-    position_file_path = os.path.join(project_root, "data", log_path, signature, "position", "position.jsonl")
-
-    if not os.path.exists(position_file_path):
-        return 0
-
-    total_bought_today = 0
-    with open(position_file_path, "r") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                record = json.loads(line)
-                if record.get("date") == today_date:
-                    this_action = record.get("this_action", {})
-                    if this_action.get("action") == "buy" and this_action.get("symbol") == symbol:
-                        total_bought_today += this_action.get("amount", 0)
-            except Exception:
-                continue
-
-    return total_bought_today
 
 
 @mcp.tool()
-def sell(symbol: str, amount: int, limit_price: float) -> Dict[str, Any]:
+def place_limit_sell_order(symbol: str, amount: int, limit_price: float) -> Dict[str, Any]:
     """
-    Sell stock function with limit order
+    Place limit sell order function
 
-    This function simulates limit order stock selling operations, including the following steps:
-    1. Get current position and operation ID
-    2. Get stock high and low prices for the day
-    3. Validate limit order condition (limit_price <= day_high_price)
-    4. Validate sell conditions (position exists, sufficient quantity, lot size, T+1 for CN market)
-    5. Update position (decrease stock quantity, increase cash using limit_price)
-    6. Record transaction to position.jsonl file
+    This function records a limit sell order for later settlement, including the following steps:
+    1. Get signature and today's date
+    2. Validate order parameters (amount, limit_price, lot size for CN market)
+    3. Generate unique timestamp for order
+    4. Record order to pending orders file for later settlement
+    5. Return order confirmation without market data leakage
 
     Args:
         symbol: Stock symbol, such as "AAPL", "MSFT", etc.
         amount: Sell quantity, must be a positive integer, indicating how many shares to sell
                 For Chinese A-shares (symbols ending with .SH or .SZ), must be multiples of 100
-                and cannot sell shares bought on the same day (T+1 rule)
         limit_price: Minimum price you're willing to accept per share
 
     Returns:
         Dict[str, Any]:
-          - Success: Returns new position dictionary (containing stock quantity and cash balance)
-          - Order Not Filled: Returns {"status": "OrderNotFilled", "message": "..."} dictionary
+          - Success: Returns {"status": "OrderPlaced", "message": "..."} dictionary
           - Failure: Returns {"error": error message, ...} dictionary
 
     Raises:
         ValueError: Raised when SIGNATURE environment variable is not set
 
     Example:
-        >>> result = sell("AAPL", 10, 150.0)
-        >>> print(result)  # {"AAPL": 90, "MSFT": 5, "CASH": 15000.0, ...}
-        >>> result = sell("600519.SH", 100, 1500.0)  # Chinese A-shares must be multiples of 100
-        >>> print(result)  # {"600519.SH": 0, "CASH": 115000.0, ...}
+        >>> result = place_limit_sell_order("AAPL", 10, 150.0)
+        >>> print(result)  # {"status": "OrderPlaced", "message": "Limit order for 10 AAPL @ 150.0 has been placed and is pending settlement."}
+        >>> result = place_limit_sell_order("600519.SH", 100, 1500.0)  # Chinese A-shares must be multiples of 100
+        >>> print(result)  # {"status": "OrderPlaced", "message": "Limit order for 100 600519.SH @ 1500.0 has been placed and is pending settlement."}
     """
     # Step 1: Get environment variables and basic information
     # Get signature (model name) from environment variable, used to determine data storage path
@@ -376,122 +257,54 @@ def sell(symbol: str, amount: int, limit_price: float) -> Dict[str, Any]:
             "suggestion": f"Please use {(amount // 100) * 100} or {((amount // 100) + 1) * 100} shares instead.",
         }
 
-    # Step 2: Get current latest position and operation ID
-    # get_latest_position returns two values: position dictionary and current maximum operation ID
-    # This ID is used to ensure each operation has a unique identifier
-    current_position, current_action_id = get_latest_position(today_date, signature)
+    # Step 2: Generate unique timestamp for order
+    import time
+    order_timestamp = time.time()
 
-    # Step 3: Get stock high and low prices for the day
-    # Use get_high_low_prices function to get the high and low prices of specified stock for the day
-    # If stock symbol does not exist or price data is missing, return error message
-    try:
-        prices = get_high_low_prices(today_date, [symbol], market=market)
-        if symbol not in prices or prices[symbol] is None:
-            raise KeyError(f"No price data found for {symbol}")
-
-        day_high_price = prices[symbol]['high']
-        if day_high_price is None:
-            return {
-                "error": f"No high price data available for {symbol} on {today_date}. This action will not be allowed.",
-                "symbol": symbol,
-                "date": today_date,
-            }
-    except KeyError:
-        # Stock symbol does not exist or price data is missing, return error message
-        return {
-            "error": f"Symbol {symbol} not found! This action will not be allowed.",
-            "symbol": symbol,
-            "date": today_date,
-        }
-
-    # Step 4: Validate limit order condition
-    # Sell limit order executes only if limit_price <= day_high_price
-    if limit_price > day_high_price:
-        # Limit price not reached, order not filled
-        return {
-            "status": "OrderNotFilled",
-            "message": f"Sell limit order for {symbol} not filled. Limit price {limit_price} was above the period's high {day_high_price}.",
-            "symbol": symbol,
-            "limit_price": limit_price,
-            "day_high_price": day_high_price,
-            "date": today_date,
-        }
-
-    # Step 5: Validate sell conditions
-    # Check if holding this stock
-    if symbol not in current_position:
-        return {
-            "error": f"No position for {symbol}! This action will not be allowed.",
-            "symbol": symbol,
-            "date": today_date,
-        }
-
-    # Check if position quantity is sufficient for selling
-    if current_position[symbol] < amount:
-        return {
-            "error": "Insufficient shares! This action will not be allowed.",
-            "have": current_position.get(symbol, 0),
-            "want_to_sell": amount,
-            "symbol": symbol,
-            "date": today_date,
-        }
-
-    # 🇨🇳 Chinese A-shares T+1 trading rule: Cannot sell shares bought on the same day
-    if market == "cn":
-        bought_today = _get_today_buy_amount(symbol, today_date, signature)
-        if bought_today > 0:
-            # Calculate sellable quantity (total position - bought today)
-            sellable_amount = current_position[symbol] - bought_today
-            if amount > sellable_amount:
-                return {
-                    "error": f"T+1 restriction violated! You bought {bought_today} shares of {symbol} today and cannot sell them until tomorrow.",
-                    "symbol": symbol,
-                    "total_position": current_position[symbol],
-                    "bought_today": bought_today,
-                    "sellable_today": max(0, sellable_amount),
-                    "want_to_sell": amount,
-                    "date": today_date,
-                }
-
-    # Step 6: Execute sell operation, update position
-    # Create a copy of current position to avoid directly modifying original data
-    new_position = current_position.copy()
-
-    # Decrease stock position quantity
-    new_position[symbol] -= amount
-
-    # Increase cash balance: limit_price × sell quantity
-    # Use get method to ensure CASH field exists, default to 0 if not present
-    new_position["CASH"] = new_position.get("CASH", 0) + limit_price * amount
-
-    # Step 7: Record transaction to position.jsonl file
-    # Build file path: {project_root}/data/{log_path}/{signature}/position/position.jsonl
-    # Use append mode ("a") to write new transaction record
-    # Each operation ID increments by 1, ensuring uniqueness of operation sequence
+    # Step 3: Define pending orders file path and create directory if needed
     log_path = get_config_value("LOG_PATH", "./data/agent_data")
-    if log_path.startswith("./data/"):
-        log_path = log_path[7:]  # Remove "./data/" prefix
-    position_file_path = os.path.join(project_root, "data", log_path, signature, "position", "position.jsonl")
-    with open(position_file_path, "a") as f:
-        # Write JSON format transaction record, containing date, operation ID and updated position
-        print(
-            f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'sell','symbol':symbol,'amount':amount,'filled_price':limit_price},'positions': new_position})}"
-        )
-        f.write(
-            json.dumps(
-                {
-                    "date": today_date,
-                    "id": current_action_id + 1,
-                    "this_action": {"action": "sell", "symbol": symbol, "amount": amount, "filled_price": limit_price},
-                    "positions": new_position,
-                }
-            )
-            + "\n"
-        )
 
-    # Step 8: Return updated position
-    write_config_value("IF_TRADE", True)
-    return new_position
+    # Handle different path formats (same as other files)
+    if os.path.isabs(log_path):
+        # Absolute path (like temp directory) - use directly
+        pending_dir = Path(log_path) / signature / "pending_orders"
+    else:
+        if log_path.startswith("./data/"):
+            log_path = log_path[7:]  # Remove "./data/" prefix
+        pending_dir = Path(project_root) / "data" / log_path / signature / "pending_orders"
+
+    os.makedirs(pending_dir, exist_ok=True)
+    pending_file_path = pending_dir / f"{today_date}.jsonl"
+
+    # Step 4: Record order to pending file
+    order_data = {
+        "timestamp": order_timestamp,
+        "action": "sell",
+        "symbol": symbol,
+        "amount": amount,
+        "limit_price": limit_price,
+        "market": market,
+    }
+
+    try:
+        with open(pending_file_path, "a") as f:
+            f.write(json.dumps(order_data) + "\n")
+    except Exception as e:
+        return {
+            "error": f"Failed to record order: {e}",
+            "symbol": symbol,
+            "date": today_date,
+        }
+
+    # Step 5: Return order confirmation without market data leakage
+    return {
+        "status": "OrderPlaced",
+        "message": f"Limit order for {amount} {symbol} @ {limit_price} has been placed and is pending settlement.",
+        "symbol": symbol,
+        "amount": amount,
+        "limit_price": limit_price,
+        "date": today_date,
+    }
 
 
 if __name__ == "__main__":

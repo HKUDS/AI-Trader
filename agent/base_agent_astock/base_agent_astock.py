@@ -87,6 +87,7 @@ from prompts.agent_prompt_astock import (STOP_SIGNAL,
 from tools.general_tools import (extract_conversation, extract_tool_messages,
                                  get_config_value, write_config_value)
 from tools.price_tools import add_no_trade_record
+from settlement_logic import run_daily_settlement
 
 # Load environment variables
 load_dotenv()
@@ -253,6 +254,10 @@ class BaseAgentAStock:
             "trade": {
                 "transport": "streamable_http",
                 "url": f"http://localhost:{os.getenv('TRADE_HTTP_PORT', '8002')}/mcp",
+            },
+            "trade": {
+                "transport": "streamable_http",
+                "url": f"http://localhost:{os.getenv('TRADE_LIMIT_HTTP_PORT', '8002')}/mcp",
             },
         }
 
@@ -549,6 +554,18 @@ class BaseAgentAStock:
 
             try:
                 await self.run_with_retry(date)
+
+                # Phase 2: Run daily settlement for limit orders (only if enabled)
+                use_limit_order = os.getenv('LIMIT_ORDER', 'False').lower() == 'true' or 'limit_order' in self.signature.lower()
+                if use_limit_order:
+                    print(f"🔄 Running daily settlement for {self.signature} - Date: {date}")
+                    try:
+                        run_daily_settlement(date, self.signature)
+                        print(f"✅ Daily settlement completed for {self.signature} - Date: {date}")
+                    except Exception as e:
+                        print(f"❌ Settlement error for {self.signature} - Date: {date}: {e}")
+                        # Continue processing even if settlement fails
+
             except Exception as e:
                 print(f"❌ Error processing {self.signature} - Date: {date}")
                 print(e)

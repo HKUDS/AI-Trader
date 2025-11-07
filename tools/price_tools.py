@@ -606,6 +606,41 @@ def get_high_low_prices(
                     results[sym] = {"high": high_price, "low": low_price}
                 except Exception:
                     results[sym] = {"high": None, "low": None}
+            else:
+                # If no direct date match, look for hourly data (US market)
+                if market == "us":
+                    # Find all hourly timestamps for the given date
+                    hourly_data = []
+                    for timestamp, data_point in series.items():
+                        if timestamp.startswith(today_date):
+                            hourly_data.append(data_point)
+
+                    if hourly_data:
+                        # Calculate daily high and low from hourly data
+                        daily_high = None
+                        daily_low = None
+
+                        for hour_data in hourly_data:
+                            if isinstance(hour_data, dict):
+                                high_val = hour_data.get("2. high") or hour_data.get("high") or hour_data.get("High")
+                                low_val = hour_data.get("3. low") or hour_data.get("low") or hour_data.get("Low")
+
+                                try:
+                                    hour_high = float(high_val) if high_val is not None else None
+                                    hour_low = float(low_val) if low_val is not None else None
+
+                                    if hour_high is not None:
+                                        daily_high = hour_high if daily_high is None else max(daily_high, hour_high)
+                                    if hour_low is not None:
+                                        daily_low = hour_low if daily_low is None else min(daily_low, hour_low)
+                                except Exception:
+                                    continue
+
+                        results[sym] = {"high": daily_high, "low": daily_low}
+                    else:
+                        results[sym] = {"high": None, "low": None}
+                else:
+                    results[sym] = {"high": None, "low": None}
 
     # Ensure all requested symbols have entries
     for symbol in symbols:
@@ -832,6 +867,11 @@ def get_today_init_position(today_date: str, signature: str) -> Dict[str, float]
 
 def get_latest_position(today_date: str, signature: str) -> Tuple[Dict[str, float], int]:
     """
+    DEPRECATED: This function has been moved to tools/position_utils.py.
+
+    This function is deprecated and will be removed in a future version.
+    Please import from tools.position_utils instead.
+
     获取最新持仓。从 ../data/agent_data/{signature}/position/position.jsonl 中读取。
     优先选择当天 (today_date) 中 id 最大的记录；
     若当天无记录，则回退到上一个交易日，选择该日中 id 最大的记录。
@@ -845,95 +885,15 @@ def get_latest_position(today_date: str, signature: str) -> Tuple[Dict[str, floa
           - positions: {symbol: weight} 的字典；若未找到任何记录，则为空字典。
           - max_id: 选中记录的最大 id；若未找到任何记录，则为 -1.
     """
-    from tools.general_tools import get_config_value
-    import os
+    import warnings
+    warnings.warn(
+        "get_latest_position is deprecated. Please import from tools.position_utils instead.",
+        DeprecationWarning,
+        stacklevel=2
+    )
 
-    base_dir = Path(__file__).resolve().parents[1]
-
-    # Get log_path from config, default to "agent_data" for backward compatibility
-    log_path = get_config_value("LOG_PATH", "./data/agent_data")
-
-    # Handle different path formats:
-    # - If it's an absolute path (like temp directory), use it directly
-    # - If it's a relative path starting with "./data/", remove the prefix and prepend base_dir/data
-    # - Otherwise, treat as relative to base_dir/data
-    if os.path.isabs(log_path):
-        # Absolute path (like temp directory) - use directly
-        position_file = Path(log_path) / signature / "position" / "position.jsonl"
-    else:
-        if log_path.startswith("./data/"):
-            log_path = log_path[7:]  # Remove "./data/" prefix
-        position_file = base_dir / "data" / log_path / signature / "position" / "position.jsonl"
-
-    if not position_file.exists():
-        return {}, -1
-
-    # 获取市场类型，智能判断
-    market = get_market_type()
-    
-    # Step 1: 先查找当天的记录
-    max_id_today = -1
-    latest_positions_today: Dict[str, float] = {}
-    
-    with position_file.open("r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                doc = json.loads(line)
-                if doc.get("date") == today_date:
-                    current_id = doc.get("id", -1)
-                    if current_id > max_id_today:
-                        max_id_today = current_id
-                        latest_positions_today = doc.get("positions", {})
-            except Exception:
-                continue
-    
-    # 如果当天有记录，直接返回
-    if max_id_today >= 0 and latest_positions_today:
-        return latest_positions_today, max_id_today
-    
-    # Step 2: 当天没有记录，则回退到上一个交易日
-    prev_date = get_yesterday_date(today_date, market=market)
-    
-    max_id_prev = -1
-    latest_positions_prev: Dict[str, float] = {}
-
-    with position_file.open("r", encoding="utf-8") as f:
-        for line in f:
-            if not line.strip():
-                continue
-            try:
-                doc = json.loads(line)
-                if doc.get("date") == prev_date:
-                    current_id = doc.get("id", -1)
-                    if current_id > max_id_prev:
-                        max_id_prev = current_id
-                        latest_positions_prev = doc.get("positions", {})
-            except Exception:
-                continue
-    
-    # 如果前一天也没有记录，尝试找文件中最新的记录（按日期和id排序）
-    if max_id_prev < 0 or not latest_positions_prev:
-        all_records = []
-        with position_file.open("r", encoding="utf-8") as f:
-            for line in f:
-                if not line.strip():
-                    continue
-                try:
-                    doc = json.loads(line)
-                    if doc.get("date") and doc.get("date") < today_date:
-                        all_records.append(doc)
-                except Exception:
-                    continue
-        
-        if all_records:
-            # 按日期和id排序，取最新的一条
-            all_records.sort(key=lambda x: (x.get("date", ""), x.get("id", 0)), reverse=True)
-            latest_positions_prev = all_records[0].get("positions", {})
-            max_id_prev = all_records[0].get("id", -1)
-    
-    return latest_positions_prev, max_id_prev
+    from tools.position_utils import get_latest_position as _get_latest_position
+    return _get_latest_position(today_date, signature)
 
 def add_no_trade_record(today_date: str, signature: str):
     """
