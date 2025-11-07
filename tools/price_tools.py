@@ -496,7 +496,7 @@ def get_open_prices(
         today_date: 日期字符串，格式 YYYY-MM-DD或YYYY-MM-DD HH:MM:SS。
         symbols: 需要查询的股票代码列表。
         merged_path: 可选，自定义 merged.jsonl 路径；默认读取项目根目录下 data/merged.jsonl。
-        market: 市场类型，"us" 为美股，"cn" 为A股
+        market: 市场类型，"us" 为美股，"cn" 为A股，"crypto" 为加密货币
 
     Returns:
         {symbol_price: open_price 或 None} 的字典；若未找到对应日期或标的，则值为 None。
@@ -533,14 +533,84 @@ def get_open_prices(
             if not isinstance(series, dict):
                 continue
             bar = series.get(today_date)
-            
+
             if isinstance(bar, dict):
                 open_val = bar.get("1. buy price")
-                
+
                 try:
                     results[f"{sym}_price"] = float(open_val) if open_val is not None else None
                 except Exception:
                     results[f"{sym}_price"] = None
+
+    return results
+
+
+def get_high_low_prices(
+    today_date: str, symbols: List[str], merged_path: Optional[str] = None, market: str = "us"
+) -> Dict[str, Dict[str, Optional[float]]]:
+    """从 data/merged.jsonl 中读取指定日期与标的的最高价和最低价。
+
+    Args:
+        today_date: 日期字符串，格式 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS。
+        symbols: 需要查询的股票代码列表。
+        merged_path: 可选，自定义 merged.jsonl 路径；默认读取项目根目录下 data/merged.jsonl。
+        market: 市场类型，"us" 为美股，"cn" 为A股，"crypto" 为加密货币
+
+    Returns:
+        {symbol: {"high": high_price, "low": low_price}} 的字典；若未找到对应日期或标的，则值为 None。
+    """
+    wanted = set(symbols)
+    results: Dict[str, Dict[str, Optional[float]]] = {}
+
+    if merged_path is None:
+        merged_file = get_merged_file_path(market)
+    else:
+        merged_file = Path(merged_path)
+
+    if not merged_file.exists():
+        # Initialize with None values for all requested symbols
+        for symbol in symbols:
+            results[symbol] = {"high": None, "low": None}
+        return results
+
+    with merged_file.open("r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                doc = json.loads(line)
+            except Exception:
+                continue
+            meta = doc.get("Meta Data", {}) if isinstance(doc, dict) else {}
+            sym = meta.get("2. Symbol")
+            if sym not in wanted:
+                continue
+            # 查找所有以 "Time Series" 开头的键
+            series = None
+            for key, value in doc.items():
+                if key.startswith("Time Series"):
+                    series = value
+                    break
+            if not isinstance(series, dict):
+                continue
+            bar = series.get(today_date)
+
+            if isinstance(bar, dict):
+                # Try to get high and low prices - check multiple possible field names
+                high_val = bar.get("2. high") or bar.get("high") or bar.get("High")
+                low_val = bar.get("3. low") or bar.get("low") or bar.get("Low")
+
+                try:
+                    high_price = float(high_val) if high_val is not None else None
+                    low_price = float(low_val) if low_val is not None else None
+                    results[sym] = {"high": high_price, "low": low_price}
+                except Exception:
+                    results[sym] = {"high": None, "low": None}
+
+    # Ensure all requested symbols have entries
+    for symbol in symbols:
+        if symbol not in results:
+            results[symbol] = {"high": None, "low": None}
 
     return results
 
