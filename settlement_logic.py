@@ -15,6 +15,37 @@ from tools.price_tools import get_high_low_prices, get_yesterday_date, get_marke
 from tools.general_tools import get_config_value
 
 
+def _format_trade_log(trade: Dict[str, Any]) -> str:
+    """
+    Format trade log entry from JSON format to the desired output format.
+
+    Args:
+        trade: Trade dictionary with keys like timestamp, action, symbol, etc.
+
+    Returns:
+        Formatted string: [YYYYMMDDHHMMSS.ffffff] [action] [symbol] [limit_price] @ [amount] [status]
+    """
+    timestamp = trade.get('timestamp', 0)
+    # Convert timestamp to datetime
+    dt = datetime.fromtimestamp(timestamp)
+    # Format as YYYYMMDDHHMMSS with microseconds
+    formatted_time = dt.strftime('%Y-%m-%d-%H-%M-%S.%f')
+
+    action = trade.get('action', 'N/A')
+    symbol = trade.get('symbol', 'N/A')
+    limit_price = trade.get('limit_price', 'N/A')
+    amount = trade.get('amount', 'N/A')
+    status = trade.get('status', 'N/A')
+
+    # Format price to appropriate decimal places
+    if isinstance(limit_price, (int, float)):
+        limit_price_str = f"{limit_price:.2f}"
+    else:
+        limit_price_str = str(limit_price)
+
+    return f"[{formatted_time}] [{action}] [{symbol}] [{limit_price_str}] @ [{amount}] [{status}]"
+
+
 def run_daily_settlement(today_date: str, signature: str) -> None:
     """
     Run daily settlement for pending orders.
@@ -242,6 +273,9 @@ def run_daily_settlement(today_date: str, signature: str) -> None:
 
         # Step 8: Write T day final position (single write)
         _save_position_record(today_date, signature, last_action_id + 1, executed_trades_log, settled_position)
+        for trade in executed_trades_log:
+            formatted_trade = _format_trade_log(trade)
+            print(formatted_trade)
 
     # Step 9: (Atomic operation end)
 

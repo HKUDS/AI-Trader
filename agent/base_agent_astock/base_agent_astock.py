@@ -255,7 +255,7 @@ class BaseAgentAStock:
             #     "transport": "streamable_http",
             #     "url": f"http://localhost:{os.getenv('TRADE_HTTP_PORT', '8002')}/mcp",
             # },
-            "trade": {
+            "trade by limit order": {
                 "transport": "streamable_http",
                 "url": f"http://localhost:{os.getenv('TRADE_LIMIT_HTTP_PORT', '8006')}/mcp",
             },
