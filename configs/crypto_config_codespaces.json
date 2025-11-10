@@ -1,0 +1,74 @@
+{
+  "agent_type": "BaseAgentCrypto",
+  "market": "crypto",
+  "environment": "codespaces",
+  "description": "GitHub Codespaces configuration (90-180 hours/month limit)",
+  
+  "date_range": {
+    "init_date": "2025-01-01 00:00:00",
+    "end_date": "2025-12-31 23:59:59"
+  },
+  
+  "models": [
+    {
+      "name": "gpt-4o-github",
+      "basemodel": "gpt-4o",
+      "signature": "gpt-4o-github-codespaces",
+      "api_provider": "github_models",
+      "openai_base_url": "https://models.inference.ai.azure.com",
+      "openai_api_key": null,
+      "enabled": true,
+      "priority": 1
+    },
+    {
+      "name": "claude-3.7-sonnet",
+      "basemodel": "anthropic/claude-3.7-sonnet",
+      "signature": "claude-3.7-sonnet-codespaces",
+      "api_provider": "anthropic",
+      "openai_base_url": null,
+      "openai_api_key": null,
+      "enabled": true,
+      "priority": 2
+    }
+  ],
+  
+  "agent_config": {
+    "initial_cash": 10000.0,
+    "trading_interval": "1m",
+    "max_steps": 30,
+    "max_retries": 3,
+    "base_delay": 1.0
+  },
+  
+  "crypto_config": {
+    "exchanges": ["bybit", "binance", "coinbase"],
+    "primary_exchange": "bybit",
+    "asset_type": "derivatives",
+    "sort_by": "24h_change_desc",
+    "top_symbols": 30,
+    "testnet": false,
+    "leverage": 2,
+    "min_volume_usd": 5000000
+  },
+  
+  "log_config": {
+    "log_path": "/workspace/data/agent_data_crypto",
+    "log_level": "INFO",
+    "save_intermediate_steps": false
+  },
+  
+  "risk_management": {
+    "max_position_size_pct": 15,
+    "max_total_exposure_pct": 60,
+    "stop_loss_pct": 3,
+    "take_profit_pct": 8,
+    "trailing_stop": true
+  },
+  
+  "schedule": {
+    "enabled": true,
+    "trading_hours": "09:00-17:00",
+    "timezone": "UTC",
+    "weekdays_only": true
+  }
+}
