@@ -33,6 +33,10 @@ AGENT_REGISTRY = {
     "BaseAgentCrypto": {
         "module": "agent.base_agent_crypto.base_agent_crypto",
         "class": "BaseAgentCrypto"
+    },
+    "BaseAgentCrypto_Hour": {
+        "module": "agent.base_agent_crypto.base_agent_crypto_hour",
+        "class": "BaseAgentCrypto_Hour"
     }
 }
 
@@ -128,7 +132,7 @@ async def main(config_path=None):
     # Auto-detect market from agent_type (BaseAgentAStock always uses CN market)
     if agent_type == "BaseAgentAStock" or agent_type == "BaseAgentAStock_Hour":
         market = "cn"
-    elif agent_type == "BaseAgentCrypto":
+    elif agent_type == "BaseAgentCrypto" or agent_type == "BaseAgentCrypto_Hour":
         market = "crypto"
 
     if market == "crypto":
@@ -240,7 +244,7 @@ async def main(config_path=None):
 
         # Select symbols based on agent type and market
         # Crypto agents don't use stock_symbols parameter
-        if agent_type == "BaseAgentCrypto":
+        if agent_type == "BaseAgentCrypto" or agent_type == "BaseAgentCrypto_Hour":
             stock_symbols = None  # Crypto agent uses its own crypto_symbols
         elif agent_type == "BaseAgentAStock" or agent_type == "BaseAgentAStock_Hour":
             stock_symbols = None  # Let BaseAgentAStock use its default SSE 50
@@ -254,7 +258,7 @@ async def main(config_path=None):
         try:
             # Dynamically create Agent instance
             # Crypto agents have different parameter requirements
-            if agent_type == "BaseAgentCrypto":
+            if agent_type == "BaseAgentCrypto" or agent_type == "BaseAgentCrypto_Hour":
                 agent = AgentClass(
                     signature=signature,
                     basemodel=basemodel,
