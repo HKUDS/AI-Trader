@@ -21,6 +21,7 @@ class MCPServiceManager:
         
         # Set default ports
         self.ports = {
+            'auth': int(os.getenv('AUTH_HTTP_PORT', '8004')),
             'math': int(os.getenv('MATH_HTTP_PORT', '8000')),
             'search': int(os.getenv('SEARCH_HTTP_PORT', '8001')),
             'trade': int(os.getenv('TRADE_HTTP_PORT', '8002')),
@@ -29,6 +30,11 @@ class MCPServiceManager:
         
         # Service configurations
         self.service_configs = {
+            'auth': {
+                'script': '../auth/auth_service.py',
+                'name': 'Authentication',
+                'port': self.ports['auth']
+            },
             'math': {
                 'script': 'tool_math.py',
                 'name': 'Math',

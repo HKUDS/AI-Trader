@@ -2,3 +2,11 @@ langchain==1.0.2
 langchain-openai==1.0.1
 langchain-mcp-adapters>=0.1.0
 fastmcp==2.12.5
+PyJWT==2.8.0
+fastapi==0.109.2
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+passlib[bcrypt]==1.7.4
+python-dotenv==1.0.0
+pytest==8.0.0
+httpx==0.26.0
