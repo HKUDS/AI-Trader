@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 from fastmcp import FastMCP
 
 from typing import Dict, List, Optional, Any
-import fcntl
+from filelock import FileLock
 from pathlib import Path
 # Add project root directory to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -22,22 +22,10 @@ mcp = FastMCP("CryptoTradeTools")
 
 def _position_lock(signature: str):
     """Context manager for file-based lock to serialize position updates per signature."""
-    class _Lock:
-        def __init__(self, name: str):
-            base_dir = Path(project_root) / "data" / "agent_data" / name
-            base_dir.mkdir(parents=True, exist_ok=True)
-            self.lock_path = base_dir / ".position.lock"
-            # Ensure lock file exists
-            self._fh = open(self.lock_path, "a+")
-        def __enter__(self):
-            fcntl.flock(self._fh.fileno(), fcntl.LOCK_EX)
-            return self
-        def __exit__(self, exc_type, exc, tb):
-            try:
-                fcntl.flock(self._fh.fileno(), fcntl.LOCK_UN)
-            finally:
-                self._fh.close()
-    return _Lock(signature)
+    base_dir = Path(project_root) / "data" / "agent_data" / signature
+    base_dir.mkdir(parents=True, exist_ok=True)
+    lock_path = base_dir / ".position.lock"
+    return FileLock(lock_path)
 
 
 
