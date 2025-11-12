@@ -68,6 +68,14 @@ Stay tuned for these exciting improvements! 🎉
 - 🔌 **Extensible Strategy Framework**: Support for third-party strategies and custom AI agent integration
 - ⏰ **Historical Replay Capability**: Time-period replay functionality with automatic future information filtering
 
+### 🔐 Enterprise Features
+
+- 🔒 **JWT Authentication System**: Production-ready authentication with access/refresh tokens and bcrypt password hashing
+- 🚀 **Automated Deployment**: One-command deployment script with dependency management and health monitoring
+- 🎨 **Professional Trading Dashboard**: High-end dark-themed UI with real-time charts, position tracking, and strategy builder
+- 🛡️ **Secure MCP Services**: Optional authentication middleware for all Model Context Protocol endpoints
+- 📦 **Zero-Configuration Setup**: Automated environment configuration with secure key generation
+
 ---
 
 ### 🎮 Trading Environment
@@ -161,6 +169,14 @@ AI-Trader Bench/
 │   ├── agent/base_agent/          # 🧠 AI agent core
 │   └── configs/                   # ⚙️ Configuration files
 │
+├── 🔐 Authentication System
+│   ├── auth/
+│   │   ├── auth_service.py        # 🔑 JWT authentication service
+│   │   ├── user_manager.py        # 👤 User management & password hashing
+│   │   └── mcp_auth_helper.py     # 🛡️ MCP service authentication middleware
+│   ├── deploy_auth_system.py      # 🚀 Automated deployment script
+│   └── test_mcp_auth_integration.py # ✅ Integration tests
+│
 ├── 🛠️ MCP Toolchain
 │   ├── agent_tools/
 │   │   ├── tool_trade.py          # 💰 Trade execution
@@ -177,11 +193,14 @@ AI-Trader Bench/
 │   └── calculate_performance.py   # 📈 Performance analysis
 │
 ├── 🎨 Frontend Interface
-│   └── frontend/                  # 🌐 Web dashboard
+│   └── frontend/
+│       └── ai_trading_dashboard.html  # 🌐 Professional trading dashboard
 │
 └── 📋 Configuration & Documentation
     ├── configs/                   # ⚙️ System configuration
     ├── prompts/                   # 💬 AI prompts
+    ├── DEPLOYMENT_GUIDE.md        # 📚 Deployment documentation
+    ├── README_DEPLOYMENT.md       # 📖 Deployment system overview
     └── calc_perf.sh              # 🚀 Performance calculation script
 ```
 
@@ -193,6 +212,13 @@ AI-Trader Bench/
 - **Date Management**: Flexible trading calendar and date range settings
 - **Error Handling**: Comprehensive exception handling and retry mechanisms
 
+#### 🔐 Authentication System
+- **JWT Token Management**: Secure access and refresh token generation with configurable expiration
+- **Password Security**: bcrypt hashing with salt for secure password storage
+- **User Management**: CRUD operations for user accounts with role-based access
+- **MCP Middleware**: Optional authentication layer for all MCP service endpoints
+- **Health Monitoring**: Built-in service health checks and status validation
+
 #### 🛠️ MCP Toolchain
 | Tool | Function | API |
 |------|----------|-----|
@@ -200,6 +226,14 @@ AI-Trader Bench/
 | **Price Tool** | Real-time and historical price queries | `get_price_local()` |
 | **Search Tool** | Market information search | `get_information()` |
 | **Math Tool** | Financial calculations and analysis | Basic mathematical operations |
+
+#### 🎨 Trading Dashboard UI
+- **Dark Premium Theme**: Gray-950/900 backgrounds with neon green/red financial accents
+- **5 Main Views**: Dashboard, Strategy Builder, Backtesting, Live Trading, Settings
+- **Real-Time Visualization**: Portfolio charts, equity curves, position tracking
+- **Strategy Editor**: Visual no-code builder and advanced code editor
+- **Alpaca Integration**: Broker connection interface with API key management
+- **Terminal Console**: Raw market feed with intelligent UI translator
 
 #### 📊 Data System
 - **📈 Price Data**: Complete OHLCV data for NASDAQ 100 component stocks
@@ -211,10 +245,34 @@ AI-Trader Bench/
 
 ### 📋 Prerequisites
 
-- **Python 3.8+** 
+- **Python 3.8+**
 - **API Keys**: OpenAI, Alpha Vantage, Jina AI
 
-### ⚡ One-Click Installation
+### ⚡ Automated Deployment (Recommended)
+
+```bash
+# 1. Clone project
+git clone https://github.com/HKUDS/AI-Trader.git
+cd AI-Trader
+
+# 2. Run automated deployment
+python3 deploy_auth_system.py
+
+# This will:
+# - Check and install all dependencies
+# - Generate secure JWT keys automatically
+# - Create .env configuration file
+# - Start all MCP services (Auth, Math, Search, Trade, Price)
+# - Run health checks and validate authentication
+
+# Optional: Check dependencies without installing
+python3 deploy_auth_system.py --check-only
+
+# Optional: Deploy without authentication
+python3 deploy_auth_system.py --no-auth
+```
+
+### 🔧 Manual Installation
 
 ```bash
 # 1. Clone project
@@ -242,14 +300,23 @@ OPENAI_API_KEY=your_openai_key
 ALPHAADVANTAGE_API_KEY=your_alpha_vantage_key
 JINA_API_KEY=your_jina_api_key
 
+# 🔐 Authentication Configuration (Auto-generated by deploy script)
+JWT_SECRET_KEY=your_secure_random_key_here
+JWT_REFRESH_SECRET_KEY=your_secure_refresh_key_here
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
+ENABLE_AUTH=true              # Set to "false" to disable authentication
+
 # ⚙️ System Configuration
 RUNTIME_ENV_PATH=./runtime_env.json # Recommended to use absolute path
 
 # 🌐 Service Port Configuration
+AUTH_HTTP_PORT=8004           # Authentication service
 MATH_HTTP_PORT=8000
 SEARCH_HTTP_PORT=8001
 TRADE_HTTP_PORT=8002
 GETPRICE_HTTP_PORT=8003
+
 # 🧠 AI Agent Configuration
 AGENT_MAX_STEP=30             # Maximum reasoning steps
 ```
@@ -315,7 +382,20 @@ python main.py configs/my_config.json
 }
 ```
 
-### 📈 Start Web Interface
+### 🎨 Access Trading Dashboard
+
+```bash
+# Open the professional trading UI in your browser
+# Simply open the file directly:
+open frontend/ai_trading_dashboard.html
+
+# Or serve it via HTTP:
+cd frontend
+python3 -m http.server 8080
+# Visit http://localhost:8080/ai_trading_dashboard.html
+```
+
+### 📈 View Competition Dashboard
 
 ```bash
 cd docs
@@ -485,23 +565,112 @@ AGENT_REGISTRY = {
 class CustomTool:
     def __init__(self):
         self.name = "custom_tool"
-    
+
     def execute(self, params):
         # Implement custom tool logic
         return result
 ```
 
+---
+
+## 🔐 Authentication & Security
+
+### 🛡️ JWT Authentication System
+
+The platform includes a production-ready authentication system for securing MCP services and API endpoints.
+
+#### Key Features
+- **JWT Tokens**: Secure access/refresh token mechanism with configurable expiration
+- **Password Security**: bcrypt hashing with automatic salt generation
+- **User Management**: Complete CRUD operations with SQLite database
+- **MCP Middleware**: Optional authentication layer for all services
+- **Health Monitoring**: Built-in service health checks and status endpoints
+
+#### Quick Authentication Setup
+
+```bash
+# Automated deployment with authentication
+python3 deploy_auth_system.py
+
+# This automatically:
+# 1. Generates secure random JWT keys (32 bytes)
+# 2. Creates .env file with authentication config
+# 3. Sets up user database with default admin account
+# 4. Starts Auth Service on port 8004
+# 5. Enables authentication on all MCP services
+
+# Default credentials (change after first login):
+# Username: admin
+# Password: admin123
+```
+
+#### Authentication Endpoints
+
+```bash
+# Login and get access token
+curl -X POST http://localhost:8004/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username": "admin", "password": "admin123"}'
+
+# Response:
+{
+  "access_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+  "refresh_token": "eyJ0eXAiOiJKV1QiLCJhbGc...",
+  "token_type": "bearer"
+}
+
+# Access protected MCP services
+curl http://localhost:8000/math/add?a=5&b=3 \
+  -H "Authorization: Bearer eyJ0eXAiOiJKV1QiLCJhbGc..."
+```
+
+#### Security Best Practices
+
+- ✅ Change default admin password immediately after deployment
+- ✅ Use environment variables for secrets (never hardcode)
+- ✅ Rotate JWT keys periodically
+- ✅ Enable HTTPS in production environments
+- ✅ Set appropriate token expiration times
+- ✅ Monitor authentication logs for suspicious activity
+
+#### Disabling Authentication
+
+For development or testing, you can disable authentication:
+
+```bash
+# In .env file
+ENABLE_AUTH=false
+
+# Or deploy without authentication
+python3 deploy_auth_system.py --no-auth
+```
+
+### 📚 Documentation
+
+- **[Deployment Guide](DEPLOYMENT_GUIDE.md)**: Comprehensive deployment instructions
+- **[Deployment System](README_DEPLOYMENT.md)**: Automated deployment features
+- **[Quick Reference](QUICK_REFERENCE.md)**: Authentication API reference
+
+---
+
 ## 🚀 Roadmap
+
+### ✅ Recently Completed
+- [x] **🔐 JWT Authentication** - Production-ready authentication system for MCP services
+- [x] **🚀 Automated Deployment** - One-command deployment with dependency management
+- [x] **🎨 Professional Trading UI** - High-end dark-themed dashboard with real-time charts
 
 ### 🌟 Future Plans
 - [ ] **🇨🇳 A-Share Support** - Extend to Chinese stock market
 - [ ] **📊 Post-Market Statistics** - Automatic profit analysis
 - [ ] **🔌 Strategy Marketplace** - Add third-party strategy sharing platform
-- [ ] **🎨 Cool Frontend Interface** - Modern web dashboard
+- [ ] **🔗 Backend-Frontend Integration** - Connect trading UI with authentication and MCP services
 - [ ] **₿ Cryptocurrency** - Support digital currency trading
 - [ ] **📈 More Strategies** - Technical analysis, quantitative strategies
 - [ ] **⏰ Advanced Replay** - Support minute-level time precision and real-time replay
 - [ ] **🔍 Smart Filtering** - More precise future information detection and filtering
+- [ ] **📱 Mobile App** - Native iOS and Android applications
+- [ ] **🔔 Real-Time Alerts** - WebSocket-based notifications for trades and market events
 
 ## 🤝 Contributing Guide
 
