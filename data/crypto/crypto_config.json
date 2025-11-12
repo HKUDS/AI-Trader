@@ -1,0 +1,27 @@
+{
+    "symbols": [
+        "BTC",
+        "ETH",
+        "XRP",
+        "SOL",
+        "ADA",
+        "SUI",
+        "LINK",
+        "AVAX",
+        "LTC",
+        "DOT"
+    ],
+    "auto_merge": {
+        "backup_before_merge": true
+    },
+    "api_settings": {
+        "delay_seconds": 12,
+        "market": "USD",
+        "rate_limit": "12s between calls"
+    },
+    "file_paths": {
+        "coin_folder": "coin",
+        "merged_file": "crypto_merged.jsonl",
+        "config_file": "crypto_config.json"
+    }
+}
