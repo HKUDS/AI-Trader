@@ -193,5 +193,20 @@ if __name__ == "__main__":
     # print(new_result)
     # new_result = sell("AAPL", 1)
     # print(new_result)
+
+    # Check if authentication should be enabled
+    auth_enabled = os.getenv("ENABLE_AUTH", "true").lower() == "true"
+
+    if auth_enabled:
+        try:
+            from auth.mcp_auth_helper import add_auth_to_mcp
+            add_auth_to_mcp(mcp, "Trade Service")
+            print("✅ Trade Service: Authentication enabled")
+        except ImportError as e:
+            print(f"⚠️  Warning: Could not enable authentication: {e}")
+            print("   Running without authentication")
+    else:
+        print("ℹ️  Trade Service: Running without authentication (set ENABLE_AUTH=true to enable)")
+
     port = int(os.getenv("TRADE_HTTP_PORT", "8002"))
     mcp.run(transport="streamable-http", port=port)

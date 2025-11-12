@@ -4,8 +4,13 @@ from datetime import datetime
 from typing import Dict, Any
 from fastmcp import FastMCP
 import os
+import sys
 from dotenv import load_dotenv
+
 load_dotenv()
+
+# Add parent directory to path for auth imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 mcp = FastMCP("LocalPrices")
 
@@ -130,6 +135,21 @@ def get_price_local_function(symbol: str, date: str, filename: str = "merged.jso
 if __name__ == "__main__":
     # print("a test case")
     # print(get_price_local_function("AAPL", "2025-10-16"))
+
+    # Check if authentication should be enabled
+    auth_enabled = os.getenv("ENABLE_AUTH", "true").lower() == "true"
+
+    if auth_enabled:
+        try:
+            from auth.mcp_auth_helper import add_auth_to_mcp
+            add_auth_to_mcp(mcp, "Price Service")
+            print("✅ Price Service: Authentication enabled")
+        except ImportError as e:
+            print(f"⚠️  Warning: Could not enable authentication: {e}")
+            print("   Running without authentication")
+    else:
+        print("ℹ️  Price Service: Running without authentication (set ENABLE_AUTH=true to enable)")
+
     port = int(os.getenv("GETPRICE_HTTP_PORT", "8003"))
     mcp.run(transport="streamable-http", port=port)
 

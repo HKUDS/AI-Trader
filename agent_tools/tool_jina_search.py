@@ -264,6 +264,21 @@ Content: {result['content'][:1000]}...
 
 
 if __name__ == "__main__":
+    # Check if authentication should be enabled
+    auth_enabled = os.getenv("ENABLE_AUTH", "true").lower() == "true"
+
+    if auth_enabled:
+        try:
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            from auth.mcp_auth_helper import add_auth_to_mcp
+            add_auth_to_mcp(mcp, "Search Service")
+            print("✅ Search Service: Authentication enabled")
+        except ImportError as e:
+            print(f"⚠️  Warning: Could not enable authentication: {e}")
+            print("   Running without authentication")
+    else:
+        print("ℹ️  Search Service: Running without authentication (set ENABLE_AUTH=true to enable)")
+
     # Run with streamable-http, support configuring host and port through environment variables to avoid conflicts
     port = int(os.getenv("SEARCH_HTTP_PORT", "8001"))
     mcp.run(transport="streamable-http", port=port)
