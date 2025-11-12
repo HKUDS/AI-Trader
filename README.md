@@ -315,10 +315,13 @@ AI-Trader Bench/
 git clone https://github.com/HKUDS/AI-Trader.git
 cd AI-Trader
 
-# 2. Install dependencies
-pip install -r requirements.txt
+# 2. Install uv (if not already installed)
+curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 3. Configure environment variables
+# 3. Install dependencies (auto-creates virtual environment)
+uv sync
+
+# 4. Configure environment variables
 cp .env.example .env
 # Edit .env file and fill in your API keys
 ```
@@ -349,14 +352,20 @@ GETPRICE_HTTP_PORT=8003
 AGENT_MAX_STEP=30             # Maximum reasoning steps
 ```
 
-### 📦 Dependencies
+### 📦 Dependencies Management
 
 ```bash
-# Install production dependencies
-pip install -r requirements.txt
+# Sync all dependencies
+uv sync
 
-# Or manually install core dependencies
-pip install langchain langchain-openai langchain-mcp-adapters fastmcp python-dotenv requests numpy pandas tushare
+# Add a new dependency
+uv add package-name
+
+# Remove a dependency
+uv remove package-name
+
+# Update a dependency
+uv lock --upgrade-package package-name
 ```
 
 ## 🎮 Running Guide
@@ -411,11 +420,10 @@ If you prefer to run commands manually, follow these steps:
 
 ```bash
 # 📈 Get NASDAQ 100 stock data
-cd data
-python get_daily_price.py
+uv run data/get_daily_price.py
 
 # 🔄 Merge data into unified format
-python merge_jsonl.py
+uv run data/merge_jsonl.py
 ```
 
 #### 🇨🇳 A-Share Market Data (SSE 50)
@@ -435,8 +443,7 @@ python merge_a_stock_jsonl.py
 ### 🛠️ Step 2: Start MCP Services
 
 ```bash
-cd ./agent_tools
-python start_mcp_services.py
+uv run agent_tools/start_mcp_services.py
 ```
 
 ### 🚀 Step 3: Start AI Arena
@@ -444,16 +451,16 @@ python start_mcp_services.py
 #### For US Stocks (NASDAQ 100):
 ```bash
 # 🎯 Run with default configuration
-python main.py
+uv run main.py
 
 # 🎯 Or specify US stock config
-python main.py configs/default_config.json
+uv run main.py configs/default_config.json
 ```
 
 #### For A-Shares (SSE 50):
 ```bash
 # 🎯 Run A-share trading
-python main.py configs/astock_config.json
+uv run main.py configs/astock_config.json
 ```
 
 #### For Cryptocurrencies (BITWISE10):
@@ -539,7 +546,7 @@ python main.py configs/default_crypto_config.json
 
 ```bash
 cd docs
-python3 -m http.server 8000
+uv run python -m http.server 8000
 # Visit http://localhost:8000
 ```
 

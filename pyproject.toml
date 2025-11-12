@@ -1,0 +1,28 @@
+[project]
+name = "ai-trader"
+version = "0.1.0"
+description = "AI-Trader: Can AI Beat the Market?"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "HKUDS", email = "your-email@example.com" }
+]
+keywords = ["ai", "trading", "langchain", "mcp", "nasdaq"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+dependencies = [
+    "fastmcp==2.12.5",
+    "langchain==1.0.2",
+    "langchain-mcp-adapters>=0.1.0",
+    "langchain-openai==1.0.1",
+    "tushare>=1.4.24",
+]
