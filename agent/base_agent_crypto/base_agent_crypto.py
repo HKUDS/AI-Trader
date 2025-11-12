@@ -30,8 +30,22 @@ class DeepSeekChatOpenAI(ChatOpenAI):
     """
 
     def _create_message_dicts(self, messages: list, stop: Optional[list] = None) -> list:
-        """Override to handle response parsing"""
+        """Override to handle request parsing - convert JSON string arguments to dicts"""
         message_dicts = super()._create_message_dicts(messages, stop)
+
+        # Fix tool_calls format in the message dicts for requests
+        for message_dict in message_dicts:
+            if "tool_calls" in message_dict:
+                for tool_call in message_dict["tool_calls"]:
+                    if "function" in tool_call and "arguments" in tool_call["function"]:
+                        args = tool_call["function"]["arguments"]
+                        # If arguments is a string, parse it
+                        if isinstance(args, str):
+                            try:
+                                tool_call["function"]["arguments"] = json.loads(args)
+                            except json.JSONDecodeError:
+                                pass  # Keep as string if parsing fails
+
         return message_dicts
 
     def _generate(self, messages: list, stop: Optional[list] = None, **kwargs):
