@@ -1,0 +1,1469 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Trading Platform - Professional Dashboard</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Alpine.js for interactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Google Fonts - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        * {
+            font-family: 'Inter', sans-serif;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Smooth transitions */
+        * {
+            transition-property: background-color, border-color, color, fill, stroke;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 200ms;
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #374151;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4b5563;
+        }
+
+        /* Marquee animation */
+        @keyframes marquee {
+            0% { transform: translateX(0%); }
+            100% { transform: translateX(-50%); }
+        }
+
+        .animate-marquee {
+            animation: marquee 30s linear infinite;
+        }
+
+        /* Pulse animation for status indicators */
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .animate-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        /* Glow effect */
+        .glow-green {
+            box-shadow: 0 0 20px rgba(74, 222, 128, 0.3);
+        }
+
+        .glow-red {
+            box-shadow: 0 0 20px rgba(239, 68, 68, 0.3);
+        }
+
+        /* Chart container */
+        .chart-container {
+            position: relative;
+            height: 300px;
+        }
+
+        /* Terminal output styling */
+        .terminal-output {
+            line-height: 1.5;
+            letter-spacing: 0.5px;
+        }
+
+        /* Code editor line numbers */
+        .code-editor-gutter {
+            padding-right: 1rem;
+            text-align: right;
+            user-select: none;
+            border-right: 1px solid #374151;
+        }
+
+        /* Hover lift effect */
+        .hover-lift:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        }
+    </style>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'gray-850': '#1f2937',
+                        'gray-950': '#030712',
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+
+<body class="bg-gray-950 text-gray-200 overflow-hidden" x-data="tradingApp()">
+
+    <!-- Main Container -->
+    <div class="flex h-screen overflow-hidden">
+
+        <!-- Side Navigation -->
+        <aside
+            class="fixed inset-y-0 left-0 z-50 bg-gray-900 border-r border-gray-800 transition-all duration-300"
+            :class="sidebarOpen ? 'w-64' : 'w-16 lg:w-64'"
+        >
+            <!-- Logo & Toggle -->
+            <div class="flex items-center justify-between p-5 border-b border-gray-800">
+                <div class="flex items-center space-x-3" x-show="sidebarOpen">
+                    <div class="w-10 h-10 bg-gradient-to-br from-green-400 to-green-600 rounded-lg flex items-center justify-center">
+                        <i data-lucide="trending-up" class="w-6 h-6 text-white"></i>
+                    </div>
+                    <div>
+                        <div class="font-bold text-lg">AI Trader</div>
+                        <div class="text-xs text-gray-400">Pro</div>
+                    </div>
+                </div>
+                <button
+                    @click="sidebarOpen = !sidebarOpen"
+                    class="lg:hidden p-2 hover:bg-gray-800 rounded-lg"
+                >
+                    <i data-lucide="menu" class="w-5 h-5"></i>
+                </button>
+            </div>
+
+            <!-- Navigation Links -->
+            <nav class="p-3 space-y-1">
+                <template x-for="item in navItems" :key="item.id">
+                    <a
+                        @click="activeView = item.id"
+                        class="flex items-center space-x-3 px-3 py-2.5 rounded-lg cursor-pointer hover:bg-gray-800 transition-all"
+                        :class="activeView === item.id ? 'bg-green-800/20 border-l-4 border-green-500' : ''"
+                    >
+                        <i :data-lucide="item.icon" class="w-5 h-5" :class="activeView === item.id ? 'text-green-400' : 'text-gray-400'"></i>
+                        <span
+                            x-show="sidebarOpen"
+                            :class="activeView === item.id ? 'text-green-400 font-medium' : 'text-gray-300'"
+                            x-text="item.label"
+                        ></span>
+                    </a>
+                </template>
+            </nav>
+
+            <!-- Bottom Section -->
+            <div class="absolute bottom-0 left-0 right-0 p-3 border-t border-gray-800 bg-gray-900">
+                <div class="flex items-center space-x-3 px-3 py-2" x-show="sidebarOpen">
+                    <div class="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center">
+                        <i data-lucide="user" class="w-4 h-4"></i>
+                    </div>
+                    <div class="flex-1">
+                        <div class="text-sm font-medium">John Trader</div>
+                        <div class="text-xs text-gray-400">Premium</div>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <div class="flex-1 flex flex-col overflow-hidden" :class="sidebarOpen ? 'ml-64' : 'ml-16 lg:ml-64'">
+
+            <!-- Global Action Bar (Header) -->
+            <header class="bg-gray-900 border-b border-gray-800 px-6 py-4 flex items-center justify-between sticky top-0 z-40">
+
+                <!-- Left Section -->
+                <div class="flex items-center space-x-4">
+                    <!-- Hamburger Menu (Mobile) -->
+                    <button
+                        @click="sidebarOpen = !sidebarOpen"
+                        class="lg:hidden p-2 hover:bg-gray-800 rounded-lg"
+                    >
+                        <i data-lucide="menu" class="w-5 h-5"></i>
+                    </button>
+
+                    <!-- Live/Simulated Toggle -->
+                    <div class="flex items-center space-x-2">
+                        <span class="text-sm text-gray-400">Mode:</span>
+                        <button
+                            @click="isLiveMode = !isLiveMode"
+                            class="relative inline-flex items-center h-8 rounded-full w-24 transition-colors"
+                            :class="isLiveMode ? 'bg-red-700 glow-red' : 'bg-yellow-700'"
+                        >
+                            <span
+                                class="absolute left-1 inline-block w-6 h-6 bg-white rounded-full transition-transform"
+                                :class="isLiveMode ? 'translate-x-16' : 'translate-x-0'"
+                            ></span>
+                            <span class="absolute inset-0 flex items-center justify-between px-2 text-xs font-medium text-white">
+                                <span>SIM</span>
+                                <span>LIVE</span>
+                            </span>
+                        </button>
+                        <div
+                            class="w-2 h-2 rounded-full"
+                            :class="isLiveMode ? 'bg-red-500 animate-pulse' : 'bg-yellow-500'"
+                        ></div>
+                    </div>
+                </div>
+
+                <!-- Right Section -->
+                <div class="flex items-center space-x-4">
+                    <!-- Notifications -->
+                    <button class="relative p-2 hover:bg-gray-800 rounded-lg">
+                        <i data-lucide="bell" class="w-5 h-5"></i>
+                        <span
+                            x-show="notifications > 0"
+                            class="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full text-xs flex items-center justify-center animate-pulse"
+                            x-text="notifications"
+                        ></span>
+                    </button>
+
+                    <!-- Quick Trade Button -->
+                    <button
+                        @click="showQuickTrade = true"
+                        class="flex items-center space-x-2 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg font-medium transition-all glow-green"
+                    >
+                        <i data-lucide="zap" class="w-4 h-4"></i>
+                        <span>Quick Trade</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Main Content -->
+            <main class="flex-1 overflow-y-auto p-6">
+
+                <!-- Dashboard View -->
+                <div x-show="activeView === 'dashboard'" class="space-y-6">
+
+                    <!-- Key Metrics Ticker -->
+                    <div class="bg-gray-900 rounded-xl border border-gray-800 h-12 overflow-hidden">
+                        <div class="flex items-center h-full space-x-8 animate-marquee whitespace-nowrap px-4">
+                            <template x-for="(metric, index) in [...marketMetrics, ...marketMetrics]" :key="index">
+                                <div class="flex items-center space-x-2 border-l border-gray-700 pl-4 first:border-l-0">
+                                    <span class="text-xs text-gray-400" x-text="metric.symbol"></span>
+                                    <span class="font-mono text-sm" x-text="'$' + metric.price"></span>
+                                    <span
+                                        class="text-xs font-medium"
+                                        :class="metric.change >= 0 ? 'text-green-400' : 'text-red-500'"
+                                    >
+                                        <span x-text="metric.change >= 0 ? '▲' : '▼'"></span>
+                                        <span x-text="Math.abs(metric.change).toFixed(2) + '%'"></span>
+                                    </span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <!-- Main Dashboard Grid -->
+                    <div class="grid grid-cols-1 lg:grid-cols-4 gap-6">
+
+                        <!-- P&L Summary Card (2x1 Span) -->
+                        <div class="lg:col-span-2 bg-gray-900 rounded-xl border border-gray-800 p-8 hover-lift">
+                            <div class="flex items-start justify-between mb-4">
+                                <div>
+                                    <div class="text-sm text-gray-400 mb-1">Total Portfolio Value</div>
+                                    <div class="text-5xl font-extrabold" x-text="'$' + portfolioValue.toLocaleString()"></div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-sm text-gray-400 mb-1">24h Change</div>
+                                    <div
+                                        class="text-2xl font-bold flex items-center space-x-2"
+                                        :class="dailyChange >= 0 ? 'text-green-400' : 'text-red-500'"
+                                    >
+                                        <i
+                                            :data-lucide="dailyChange >= 0 ? 'arrow-up' : 'arrow-down'"
+                                            class="w-6 h-6"
+                                        ></i>
+                                        <span x-text="'$' + Math.abs(dailyChange).toLocaleString()"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-2 text-sm">
+                                <span class="text-gray-400">Daily Return:</span>
+                                <span
+                                    class="font-mono font-bold"
+                                    :class="dailyPct >= 0 ? 'text-green-400' : 'text-red-500'"
+                                    x-text="(dailyPct >= 0 ? '+' : '') + dailyPct.toFixed(2) + '%'"
+                                ></span>
+                            </div>
+
+                            <!-- Mini Stats -->
+                            <div class="grid grid-cols-3 gap-4 mt-6 pt-6 border-t border-gray-800">
+                                <div>
+                                    <div class="text-xs text-gray-400">Cash Balance</div>
+                                    <div class="text-lg font-bold mt-1" x-text="'$' + cashBalance.toLocaleString()"></div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-gray-400">Margin Used</div>
+                                    <div class="text-lg font-bold mt-1" x-text="marginUsed + '%'"></div>
+                                </div>
+                                <div>
+                                    <div class="text-xs text-gray-400">Buying Power</div>
+                                    <div class="text-lg font-bold mt-1" x-text="'$' + buyingPower.toLocaleString()"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Portfolio Distribution Chart -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 hover-lift">
+                            <div class="text-sm font-medium mb-4">Portfolio Distribution</div>
+                            <div class="chart-container">
+                                <canvas id="portfolioChart"></canvas>
+                            </div>
+                            <div class="mt-4 space-y-2">
+                                <div class="flex items-center justify-between text-xs">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-3 h-3 bg-blue-500 rounded"></div>
+                                        <span class="text-gray-400">Tech</span>
+                                    </div>
+                                    <span class="font-mono">40%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-3 h-3 bg-green-500 rounded"></div>
+                                        <span class="text-gray-400">Finance</span>
+                                    </div>
+                                    <span class="font-mono">30%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-3 h-3 bg-yellow-500 rounded"></div>
+                                        <span class="text-gray-400">Cash</span>
+                                    </div>
+                                    <span class="font-mono">15%</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs">
+                                    <div class="flex items-center space-x-2">
+                                        <div class="w-3 h-3 bg-gray-500 rounded"></div>
+                                        <span class="text-gray-400">Other</span>
+                                    </div>
+                                    <span class="font-mono">15%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Watchlists & Alerts -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5 hover-lift">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="text-sm font-medium">Watchlist</div>
+                                <button class="p-1 hover:bg-gray-800 rounded">
+                                    <i data-lucide="bell-plus" class="w-4 h-4 text-gray-400"></i>
+                                </button>
+                            </div>
+                            <div class="space-y-3">
+                                <template x-for="stock in watchlist" :key="stock.ticker">
+                                    <div class="flex items-center justify-between">
+                                        <div>
+                                            <div class="font-medium text-sm" x-text="stock.ticker"></div>
+                                            <div class="text-xs text-gray-400" x-text="'$' + stock.price"></div>
+                                        </div>
+                                        <div class="text-right">
+                                            <div
+                                                class="text-sm font-mono"
+                                                :class="stock.change >= 0 ? 'text-green-400' : 'text-red-500'"
+                                                x-text="(stock.change >= 0 ? '+' : '') + stock.change.toFixed(2) + '%'"
+                                            ></div>
+                                            <div class="w-16 h-6 mt-1">
+                                                <!-- Sparkline placeholder -->
+                                                <svg viewBox="0 0 64 24" class="w-full h-full">
+                                                    <polyline
+                                                        points="0,12 16,8 32,14 48,6 64,10"
+                                                        fill="none"
+                                                        :stroke="stock.change >= 0 ? '#4ade80' : '#ef4444'"
+                                                        stroke-width="2"
+                                                    />
+                                                </svg>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                        <!-- Open Positions Panel (Full Width) -->
+                        <div class="lg:col-span-4 bg-gray-900 rounded-xl border border-gray-800 p-5 hover-lift">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="text-sm font-medium">Open Positions</div>
+                                <button class="text-xs text-gray-400 hover:text-green-400 flex items-center space-x-1">
+                                    <i data-lucide="refresh-cw" class="w-3 h-3"></i>
+                                    <span>Refresh</span>
+                                </button>
+                            </div>
+                            <div class="overflow-x-auto">
+                                <table class="w-full">
+                                    <thead class="text-xs text-gray-400 border-b border-gray-800">
+                                        <tr>
+                                            <th class="text-left py-2">Ticker</th>
+                                            <th class="text-right py-2">Shares</th>
+                                            <th class="text-right py-2">Entry Price</th>
+                                            <th class="text-right py-2">Current Price</th>
+                                            <th class="text-right py-2">Unrealized P&L</th>
+                                            <th class="text-right py-2">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="text-sm">
+                                        <template x-for="position in positions" :key="position.ticker">
+                                            <tr class="border-b border-gray-800/50 hover:bg-gray-800/30">
+                                                <td class="py-3 font-medium" x-text="position.ticker"></td>
+                                                <td class="text-right font-mono" x-text="position.shares"></td>
+                                                <td class="text-right font-mono" x-text="'$' + position.entryPrice"></td>
+                                                <td class="text-right font-mono" x-text="'$' + position.currentPrice"></td>
+                                                <td class="text-right">
+                                                    <span
+                                                        class="px-2 py-1 rounded text-xs font-mono"
+                                                        :class="position.pnl >= 0 ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'"
+                                                        x-text="(position.pnl >= 0 ? '+$' : '-$') + Math.abs(position.pnl).toLocaleString()"
+                                                    ></span>
+                                                </td>
+                                                <td class="text-right">
+                                                    <button class="px-3 py-1 text-xs bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded border border-red-800">
+                                                        Close
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Live News & Sentiment Feed -->
+                        <div class="lg:col-span-4 bg-gray-900 rounded-xl border border-gray-800 p-5 hover-lift">
+                            <div class="text-sm font-medium mb-4">Live News & Sentiment</div>
+                            <div class="max-h-96 overflow-y-auto space-y-3">
+                                <template x-for="news in newsItems" :key="news.id">
+                                    <div class="flex items-start space-x-3 p-3 bg-gray-950 rounded-lg hover:bg-gray-800/50">
+                                        <div class="w-8 h-8 bg-gray-800 rounded flex items-center justify-center flex-shrink-0">
+                                            <i data-lucide="newspaper" class="w-4 h-4 text-gray-400"></i>
+                                        </div>
+                                        <div class="flex-1">
+                                            <div class="text-sm font-medium mb-1" x-text="news.headline"></div>
+                                            <div class="flex items-center space-x-2 text-xs text-gray-400">
+                                                <span x-text="news.source"></span>
+                                                <span>•</span>
+                                                <span x-text="news.time"></span>
+                                            </div>
+                                            <div class="mt-2 flex items-center space-x-2">
+                                                <span class="text-xs text-gray-400">Sentiment:</span>
+                                                <div class="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden max-w-xs">
+                                                    <div
+                                                        class="h-full rounded-full transition-all"
+                                                        :class="{
+                                                            'bg-green-500': news.sentiment > 0.3,
+                                                            'bg-yellow-500': news.sentiment >= -0.3 && news.sentiment <= 0.3,
+                                                            'bg-red-500': news.sentiment < -0.3
+                                                        }"
+                                                        :style="'width: ' + ((news.sentiment + 1) * 50) + '%'"
+                                                    ></div>
+                                                </div>
+                                                <span class="text-xs font-mono" x-text="news.sentiment.toFixed(2)"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- AI Strategy Builder View -->
+                <div x-show="activeView === 'strategy'" class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold">AI Strategy Builder</h2>
+                            <p class="text-gray-400 text-sm mt-1">Create and manage your trading strategies</p>
+                        </div>
+                        <button class="px-4 py-2 bg-gray-700/50 border border-gray-600 hover:bg-gray-700 rounded-lg flex items-center space-x-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>New Strategy</span>
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                        <!-- Strategy Editor -->
+                        <div class="lg:col-span-2 bg-gray-900 rounded-xl border border-gray-800 p-5">
+                            <!-- Mode Toggle -->
+                            <div class="flex items-center space-x-2 mb-6 border-b border-gray-800 pb-4">
+                                <button
+                                    @click="strategyMode = 'nocode'"
+                                    class="px-4 py-2 rounded-lg transition-all"
+                                    :class="strategyMode === 'nocode' ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'"
+                                >
+                                    No-Code Builder
+                                </button>
+                                <button
+                                    @click="strategyMode = 'code'"
+                                    class="px-4 py-2 rounded-lg transition-all"
+                                    :class="strategyMode === 'code' ? 'bg-green-600 text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'"
+                                >
+                                    Code Editor
+                                </button>
+                            </div>
+
+                            <!-- No-Code Mode -->
+                            <div x-show="strategyMode === 'nocode'" class="space-y-4">
+                                <div class="p-4 bg-gray-950 rounded-lg border-2 border-dashed border-gray-700 text-center">
+                                    <i data-lucide="blocks" class="w-12 h-12 mx-auto text-gray-600 mb-2"></i>
+                                    <div class="text-gray-400">Drag and drop strategy blocks here</div>
+                                    <div class="mt-4 flex items-center justify-center space-x-2">
+                                        <div class="px-3 py-2 bg-gray-800 rounded border border-gray-700 text-sm">
+                                            If RSI > 70
+                                        </div>
+                                        <div class="px-3 py-2 bg-gray-800 rounded border border-gray-700 text-sm">
+                                            Execute Sell
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Code Mode -->
+                            <div x-show="strategyMode === 'code'" class="space-y-4">
+                                <div class="bg-gray-950 rounded-lg overflow-hidden border border-gray-800">
+                                    <div class="flex items-center justify-between px-4 py-2 bg-gray-900 border-b border-gray-800">
+                                        <div class="text-xs text-gray-400">strategy.py</div>
+                                        <div class="flex items-center space-x-2 text-xs text-gray-400">
+                                            <i data-lucide="save" class="w-3 h-3"></i>
+                                            <span>Saved</span>
+                                        </div>
+                                    </div>
+                                    <div class="flex">
+                                        <div class="code-editor-gutter text-xs text-gray-600 p-4 bg-gray-900">
+                                            <div>1</div>
+                                            <div>2</div>
+                                            <div>3</div>
+                                            <div>4</div>
+                                            <div>5</div>
+                                            <div>6</div>
+                                            <div>7</div>
+                                            <div>8</div>
+                                            <div>9</div>
+                                            <div>10</div>
+                                        </div>
+                                        <textarea
+                                            class="flex-1 p-4 bg-gray-950 text-gray-200 font-mono text-sm resize-none focus:outline-none h-96"
+                                            placeholder="# Write your strategy here..."
+                                        >def strategy(data):
+    # Calculate indicators
+    rsi = calculate_rsi(data, period=14)
+    macd = calculate_macd(data)
+
+    # Entry conditions
+    if rsi < 30 and macd > 0:
+        return 'BUY'
+
+    # Exit conditions
+    elif rsi > 70:
+        return 'SELL'</textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Parameters Panel -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+                            <div class="text-sm font-medium mb-4">Strategy Parameters</div>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-2">Strategy Name</label>
+                                    <input
+                                        type="text"
+                                        class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500"
+                                        placeholder="My Strategy"
+                                    >
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-2">Max Position Size</label>
+                                    <input
+                                        type="number"
+                                        class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500"
+                                        placeholder="10000"
+                                    >
+                                    <div class="text-xs text-gray-500 mt-1">Maximum dollar value per position</div>
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-2">Max Drawdown (%)</label>
+                                    <input
+                                        type="number"
+                                        class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500"
+                                        placeholder="10"
+                                    >
+                                    <div class="text-xs text-gray-500 mt-1">If exceeded, the bot stops trading</div>
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-2">Stop Loss (%)</label>
+                                    <input
+                                        type="number"
+                                        class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500"
+                                        placeholder="5"
+                                    >
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-2">Take Profit (%)</label>
+                                    <input
+                                        type="number"
+                                        class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500"
+                                        placeholder="15"
+                                    >
+                                </div>
+                                <button class="w-full px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg font-medium">
+                                    Save Strategy
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Strategy List -->
+                        <div class="lg:col-span-3 bg-gray-900 rounded-xl border border-gray-800 p-5">
+                            <div class="text-sm font-medium mb-4">My Strategies</div>
+                            <table class="w-full">
+                                <thead class="text-xs text-gray-400 border-b border-gray-800">
+                                    <tr>
+                                        <th class="text-left py-2">Name</th>
+                                        <th class="text-center py-2">Risk Score</th>
+                                        <th class="text-center py-2">Last Run</th>
+                                        <th class="text-center py-2">Status</th>
+                                        <th class="text-right py-2">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="text-sm">
+                                    <template x-for="strategy in strategies" :key="strategy.id">
+                                        <tr class="border-b border-gray-800/50 hover:bg-gray-800/30">
+                                            <td class="py-3 font-medium" x-text="strategy.name"></td>
+                                            <td class="text-center">
+                                                <span
+                                                    class="px-2 py-1 rounded text-xs font-medium"
+                                                    :class="{
+                                                        'bg-green-900/30 text-green-400': strategy.risk <= 3,
+                                                        'bg-yellow-900/30 text-yellow-400': strategy.risk > 3 && strategy.risk <= 7,
+                                                        'bg-red-900/30 text-red-400': strategy.risk > 7
+                                                    }"
+                                                    x-text="strategy.risk + '/10'"
+                                                ></span>
+                                            </td>
+                                            <td class="text-center text-gray-400" x-text="strategy.lastRun"></td>
+                                            <td class="text-center">
+                                                <span
+                                                    class="px-2 py-1 rounded text-xs"
+                                                    :class="strategy.active ? 'bg-green-900/30 text-green-400' : 'bg-gray-800 text-gray-400'"
+                                                    x-text="strategy.active ? 'Active' : 'Inactive'"
+                                                ></span>
+                                            </td>
+                                            <td class="text-right space-x-2">
+                                                <button class="p-1 hover:bg-gray-800 rounded">
+                                                    <i data-lucide="edit" class="w-4 h-4 text-gray-400"></i>
+                                                </button>
+                                                <button class="p-1 hover:bg-gray-800 rounded">
+                                                    <i data-lucide="trash-2" class="w-4 h-4 text-red-400"></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Backtesting View -->
+                <div x-show="activeView === 'backtest'" class="space-y-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-2xl font-bold">Backtesting & Optimization</h2>
+                            <p class="text-gray-400 text-sm mt-1">Test strategies on historical data</p>
+                        </div>
+                        <button class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg flex items-center space-x-2">
+                            <i data-lucide="play" class="w-4 h-4"></i>
+                            <span>Run Backtest</span>
+                        </button>
+                    </div>
+
+                    <!-- Equity Curve Chart -->
+                    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="text-sm font-medium">Equity Curve</div>
+                            <div class="flex items-center space-x-2 text-xs">
+                                <button class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded">1M</button>
+                                <button class="px-3 py-1 bg-green-600 rounded">3M</button>
+                                <button class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded">1Y</button>
+                                <button class="px-3 py-1 bg-gray-800 hover:bg-gray-700 rounded">ALL</button>
+                            </div>
+                        </div>
+                        <div class="h-80">
+                            <canvas id="equityCurveChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Key Stats Display -->
+                    <div class="grid grid-cols-2 lg:grid-cols-6 gap-4">
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                            <div class="text-xs text-gray-400 mb-1">Total Return</div>
+                            <div class="text-2xl font-bold text-green-400">+42.5%</div>
+                        </div>
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                            <div class="text-xs text-gray-400 mb-1">Sharpe Ratio</div>
+                            <div class="text-2xl font-bold">1.85</div>
+                        </div>
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                            <div class="text-xs text-gray-400 mb-1">Max Drawdown</div>
+                            <div class="text-2xl font-bold text-red-400">-12.3%</div>
+                        </div>
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                            <div class="text-xs text-gray-400 mb-1">Win Rate</div>
+                            <div class="text-2xl font-bold">68.5%</div>
+                        </div>
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                            <div class="text-xs text-gray-400 mb-1">Total Trades</div>
+                            <div class="text-2xl font-bold">247</div>
+                        </div>
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-4">
+                            <div class="text-xs text-gray-400 mb-1">Profit Factor</div>
+                            <div class="text-2xl font-bold">2.15</div>
+                        </div>
+                    </div>
+
+                    <!-- Trade Analysis Table -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+                            <div class="text-sm font-medium mb-4 text-green-400">Top 10 Winning Trades</div>
+                            <div class="space-y-2">
+                                <div class="flex items-center justify-between text-xs p-2 bg-green-900/10 rounded">
+                                    <span class="font-mono">TSLA</span>
+                                    <span class="text-gray-400">05/12/24</span>
+                                    <span class="text-green-400 font-mono">+$1,250</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs p-2 bg-green-900/10 rounded">
+                                    <span class="font-mono">NVDA</span>
+                                    <span class="text-gray-400">05/10/24</span>
+                                    <span class="text-green-400 font-mono">+$980</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+                            <div class="text-sm font-medium mb-4 text-red-400">Top 10 Losing Trades</div>
+                            <div class="space-y-2">
+                                <div class="flex items-center justify-between text-xs p-2 bg-red-900/10 rounded">
+                                    <span class="font-mono">META</span>
+                                    <span class="text-gray-400">05/08/24</span>
+                                    <span class="text-red-400 font-mono">-$420</span>
+                                </div>
+                                <div class="flex items-center justify-between text-xs p-2 bg-red-900/10 rounded">
+                                    <span class="font-mono">AMZN</span>
+                                    <span class="text-gray-400">05/05/24</span>
+                                    <span class="text-red-400 font-mono">-$315</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Optimization Panel -->
+                    <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+                        <div class="text-sm font-medium mb-4">Hyperparameter Optimization</div>
+                        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-2">Parameter Range</label>
+                                <select class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500">
+                                    <option>RSI Period (10-30)</option>
+                                    <option>MACD Fast (5-15)</option>
+                                    <option>MACD Slow (20-40)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-2">Optimization Metric</label>
+                                <select class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500">
+                                    <option>Sharpe Ratio</option>
+                                    <option>Total Return</option>
+                                    <option>Win Rate</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end">
+                                <button class="w-full px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg font-medium">
+                                    Run Optimization
+                                </button>
+                            </div>
+                        </div>
+                        <div class="text-xs text-gray-400 mb-2">Top 3 Parameter Sets:</div>
+                        <table class="w-full text-xs">
+                            <thead class="text-gray-400 border-b border-gray-800">
+                                <tr>
+                                    <th class="text-left py-2">Parameters</th>
+                                    <th class="text-right py-2">Sharpe Ratio</th>
+                                    <th class="text-right py-2">Return</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="border-b border-gray-800/50">
+                                    <td class="py-2 font-mono">RSI:14, MACD:12/26</td>
+                                    <td class="text-right font-mono text-green-400">1.85</td>
+                                    <td class="text-right font-mono text-green-400">+42.5%</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Live Trading View -->
+                <div x-show="activeView === 'trading'" class="space-y-6">
+                    <div>
+                        <h2 class="text-2xl font-bold">Live Trading & Execution</h2>
+                        <p class="text-gray-400 text-sm mt-1">Execute and monitor live trades</p>
+                    </div>
+
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                        <!-- Order Entry Panel -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+                            <div class="text-sm font-medium mb-4">Quick Order Entry</div>
+                            <div class="space-y-4">
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-2">Symbol</label>
+                                    <input
+                                        type="text"
+                                        class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500 uppercase"
+                                        placeholder="TSLA"
+                                    >
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <div>
+                                        <label class="text-xs text-gray-400 block mb-2">Order Type</label>
+                                        <select class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500 text-sm">
+                                            <option>Market</option>
+                                            <option>Limit</option>
+                                            <option>Stop</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="text-xs text-gray-400 block mb-2">Time in Force</label>
+                                        <select class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500 text-sm">
+                                            <option>Day</option>
+                                            <option>GTC</option>
+                                            <option>IOC</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="text-xs text-gray-400 block mb-2">Quantity</label>
+                                    <div class="flex items-center space-x-2">
+                                        <button class="w-10 h-10 bg-gray-950 border border-gray-800 rounded-lg hover:bg-gray-800">
+                                            <i data-lucide="minus" class="w-4 h-4 mx-auto"></i>
+                                        </button>
+                                        <input
+                                            type="number"
+                                            class="flex-1 px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500 text-center"
+                                            value="100"
+                                        >
+                                        <button class="w-10 h-10 bg-gray-950 border border-gray-800 rounded-lg hover:bg-gray-800">
+                                            <i data-lucide="plus" class="w-4 h-4 mx-auto"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="p-3 bg-gray-950 rounded-lg space-y-2 text-xs">
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Est. Cost:</span>
+                                        <span class="font-mono">$25,450.00</span>
+                                    </div>
+                                    <div class="flex justify-between">
+                                        <span class="text-gray-400">Margin Usage:</span>
+                                        <span class="font-mono">$5,000 (10%)</span>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    <button class="py-3 bg-green-600 hover:bg-green-500 rounded-lg font-bold text-white glow-green">
+                                        BUY
+                                    </button>
+                                    <button class="py-3 bg-red-600 hover:bg-red-500 rounded-lg font-bold text-white glow-red">
+                                        SELL
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Order Book/History -->
+                        <div class="lg:col-span-2 bg-gray-900 rounded-xl border border-gray-800 p-5">
+                            <div class="flex items-center space-x-4 mb-4 border-b border-gray-800">
+                                <button
+                                    @click="orderTab = 'pending'"
+                                    class="pb-2 px-2 text-sm transition-all"
+                                    :class="orderTab === 'pending' ? 'border-b-2 border-green-500 text-green-400 font-medium' : 'text-gray-400 hover:text-gray-300'"
+                                >
+                                    Pending Orders
+                                </button>
+                                <button
+                                    @click="orderTab = 'filled'"
+                                    class="pb-2 px-2 text-sm transition-all"
+                                    :class="orderTab === 'filled' ? 'border-b-2 border-green-500 text-green-400 font-medium' : 'text-gray-400 hover:text-gray-300'"
+                                >
+                                    Filled Orders
+                                </button>
+                                <button
+                                    @click="orderTab = 'history'"
+                                    class="pb-2 px-2 text-sm transition-all"
+                                    :class="orderTab === 'history' ? 'border-b-2 border-green-500 text-green-400 font-medium' : 'text-gray-400 hover:text-gray-300'"
+                                >
+                                    History
+                                </button>
+                            </div>
+
+                            <div x-show="orderTab === 'pending'">
+                                <div class="text-center py-12 text-gray-400">
+                                    <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 opacity-50"></i>
+                                    <div class="text-sm">No pending orders</div>
+                                </div>
+                            </div>
+
+                            <div x-show="orderTab === 'filled'">
+                                <table class="w-full text-xs">
+                                    <thead class="text-gray-400 border-b border-gray-800">
+                                        <tr>
+                                            <th class="text-left py-2">Time</th>
+                                            <th class="text-left py-2">Symbol</th>
+                                            <th class="text-left py-2">Side</th>
+                                            <th class="text-right py-2">Qty</th>
+                                            <th class="text-right py-2">Price</th>
+                                            <th class="text-right py-2">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr class="border-b border-gray-800/50">
+                                            <td class="py-2 font-mono text-gray-400">14:30:05</td>
+                                            <td class="py-2 font-medium">TSLA</td>
+                                            <td class="py-2"><span class="text-green-400">BUY</span></td>
+                                            <td class="text-right py-2 font-mono">100</td>
+                                            <td class="text-right py-2 font-mono">$254.50</td>
+                                            <td class="text-right py-2"><span class="text-green-400">Filled</span></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <div x-show="orderTab === 'history'">
+                                <table class="w-full text-xs">
+                                    <thead class="text-gray-400 border-b border-gray-800">
+                                        <tr>
+                                            <th class="text-left py-2">Date</th>
+                                            <th class="text-left py-2">Symbol</th>
+                                            <th class="text-left py-2">Type</th>
+                                            <th class="text-right py-2">Qty</th>
+                                            <th class="text-right py-2">Avg Price</th>
+                                            <th class="text-right py-2">P&L</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr class="border-b border-gray-800/50">
+                                            <td class="py-2 font-mono text-gray-400">11/10/24</td>
+                                            <td class="py-2 font-medium">AAPL</td>
+                                            <td class="py-2 text-gray-400">Round Trip</td>
+                                            <td class="text-right py-2 font-mono">50</td>
+                                            <td class="text-right py-2 font-mono">$175.25</td>
+                                            <td class="text-right py-2 font-mono text-green-400">+$450.00</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <!-- EXECUTION CONSOLE (Terminal-to-UI Translator) -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                        <!-- Raw Terminal Feed -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="text-sm font-medium">Raw Terminal Feed</div>
+                                <button class="text-xs text-gray-400 hover:text-green-400">
+                                    <i data-lucide="download" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                            <div class="bg-gray-950 rounded-lg p-4 h-96 overflow-y-auto font-mono text-xs terminal-output">
+                                <div class="text-gray-500">[2025-11-12 14:30:05]</div>
+                                <div class="text-green-400">POST /v2/orders → status 200</div>
+                                <div class="text-gray-400 mb-2">{"symbol": "TSLA", "qty": 100, "side": "buy", "type": "market"}</div>
+
+                                <div class="text-gray-500">[2025-11-12 14:30:06]</div>
+                                <div class="text-green-400">Order filled successfully</div>
+                                <div class="text-gray-400 mb-2">{"id": "abc123", "filled_qty": 100, "filled_avg_price": 254.50}</div>
+
+                                <div class="text-gray-500">[2025-11-12 14:31:12]</div>
+                                <div class="text-blue-400">GET /v2/positions → status 200</div>
+                                <div class="text-gray-400 mb-2">{"symbol": "TSLA", "qty": 100, "market_value": 25450.00}</div>
+
+                                <div class="text-gray-500">[2025-11-12 14:32:05]</div>
+                                <div class="text-yellow-400">WARNING: Margin usage at 45%</div>
+                                <div class="text-gray-400 mb-2">Consider reducing position sizes</div>
+                            </div>
+                        </div>
+
+                        <!-- Translated UI Alerts -->
+                        <div class="bg-gray-900 rounded-xl border border-gray-800 p-5">
+                            <div class="text-sm font-medium mb-4">Translated UI Alerts</div>
+                            <div class="space-y-3 h-96 overflow-y-auto">
+                                <!-- SUCCESS Alert -->
+                                <div class="p-3 bg-green-900/50 border border-green-800 rounded-lg flex items-start space-x-3">
+                                    <i data-lucide="check-circle" class="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5"></i>
+                                    <div class="flex-1">
+                                        <div class="text-sm font-medium text-green-400 mb-1">Order Filled Successfully</div>
+                                        <div class="text-xs text-green-300">Purchased 100 shares of TSLA at $254.50</div>
+                                        <div class="text-xs text-gray-400 mt-1">14:30:06</div>
+                                    </div>
+                                </div>
+
+                                <!-- WARNING Alert -->
+                                <div class="p-3 bg-yellow-900/50 border border-yellow-800 rounded-lg flex items-start space-x-3">
+                                    <i data-lucide="alert-triangle" class="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5"></i>
+                                    <div class="flex-1">
+                                        <div class="text-sm font-medium text-yellow-400 mb-1">Margin Usage Alert</div>
+                                        <div class="text-xs text-yellow-300">Your margin usage is at 45%. Consider reducing positions.</div>
+                                        <div class="text-xs text-gray-400 mt-1">14:32:05</div>
+                                    </div>
+                                </div>
+
+                                <!-- INFO Alert -->
+                                <div class="p-3 bg-blue-900/50 border border-blue-800 rounded-lg flex items-start space-x-3">
+                                    <i data-lucide="info" class="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5"></i>
+                                    <div class="flex-1">
+                                        <div class="text-sm font-medium text-blue-400 mb-1">Position Updated</div>
+                                        <div class="text-xs text-blue-300">TSLA position now valued at $25,450</div>
+                                        <div class="text-xs text-gray-400 mt-1">14:31:12</div>
+                                    </div>
+                                </div>
+
+                                <!-- ERROR Alert -->
+                                <div class="p-3 bg-red-900/50 border border-red-800 rounded-lg flex items-start space-x-3">
+                                    <i data-lucide="x-circle" class="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5"></i>
+                                    <div class="flex-1">
+                                        <div class="text-sm font-medium text-red-400 mb-1">Order Rejected</div>
+                                        <div class="text-xs text-red-300">Insufficient buying power for this order</div>
+                                        <div class="text-xs text-gray-400 mt-1">14:28:15</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- Settings View -->
+                <div x-show="activeView === 'settings'" class="space-y-6">
+                    <div>
+                        <h2 class="text-2xl font-bold">Settings & Integrations</h2>
+                        <p class="text-gray-400 text-sm mt-1">Configure your trading environment</p>
+                    </div>
+
+                    <!-- Alpaca Integration Card -->
+                    <div class="bg-gray-900 rounded-xl border border-gray-800 p-6">
+                        <div class="flex items-center justify-between mb-6">
+                            <div>
+                                <div class="text-lg font-bold mb-1">Alpaca Trading Bot</div>
+                                <div class="text-sm text-gray-400">Connect to your Alpaca brokerage account</div>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <div class="w-2 h-2 bg-green-500 rounded-full"></div>
+                                <span class="text-sm text-green-400 font-medium">CONNECTED</span>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-2">API Key</label>
+                                <input
+                                    type="password"
+                                    class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500 font-mono text-sm"
+                                    value="••••••••••••••••"
+                                >
+                            </div>
+                            <div>
+                                <label class="text-xs text-gray-400 block mb-2">Secret Key</label>
+                                <input
+                                    type="password"
+                                    class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500 font-mono text-sm"
+                                    value="••••••••••••••••••••••••••••"
+                                >
+                            </div>
+                        </div>
+
+                        <div class="mt-4 flex items-center space-x-2">
+                            <button class="px-4 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-lg text-sm">
+                                Test Connection
+                            </button>
+                            <button class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium">
+                                Save Credentials
+                            </button>
+                        </div>
+
+                        <div class="mt-6 p-4 bg-gray-950 rounded-lg">
+                            <div class="text-xs text-gray-400 mb-2">Account Info</div>
+                            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                    <div class="text-gray-400 text-xs">Account ID</div>
+                                    <div class="font-mono mt-1">ALP123456</div>
+                                </div>
+                                <div>
+                                    <div class="text-gray-400 text-xs">Status</div>
+                                    <div class="mt-1 text-green-400">Active</div>
+                                </div>
+                                <div>
+                                    <div class="text-gray-400 text-xs">Pattern Day Trader</div>
+                                    <div class="mt-1">No</div>
+                                </div>
+                                <div>
+                                    <div class="text-gray-400 text-xs">Last Sync</div>
+                                    <div class="font-mono mt-1 text-xs">2 min ago</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Data Management -->
+                    <div class="bg-gray-900 rounded-xl border border-gray-800 p-6">
+                        <div class="text-lg font-bold mb-4">Data Management</div>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between p-4 bg-gray-950 rounded-lg">
+                                <div>
+                                    <div class="font-medium">Historical Data Sync</div>
+                                    <div class="text-sm text-gray-400 mt-1">Last synced: 1 hour ago</div>
+                                </div>
+                                <button class="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-medium">
+                                    Sync Now
+                                </button>
+                            </div>
+                            <div class="flex items-center justify-between p-4 bg-gray-950 rounded-lg">
+                                <div>
+                                    <div class="font-medium">Export Trade History</div>
+                                    <div class="text-sm text-gray-400 mt-1">Download your complete trading history</div>
+                                </div>
+                                <button class="px-4 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-lg text-sm">
+                                    Export CSV
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- UI Preferences -->
+                    <div class="bg-gray-900 rounded-xl border border-gray-800 p-6">
+                        <div class="text-lg font-bold mb-4">UI Preferences</div>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="text-sm text-gray-400 block mb-2">Chart Provider</label>
+                                <select class="w-full lg:w-64 px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500">
+                                    <option>TradingView</option>
+                                    <option>D3.js</option>
+                                    <option>Chart.js</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-sm text-gray-400 block mb-2">Default Timeframe</label>
+                                <select class="w-full lg:w-64 px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500">
+                                    <option>1 Day</option>
+                                    <option>1 Hour</option>
+                                    <option>15 Minutes</option>
+                                    <option>5 Minutes</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center justify-between p-4 bg-gray-950 rounded-lg">
+                                <div>
+                                    <div class="font-medium">Enable Sound Alerts</div>
+                                    <div class="text-sm text-gray-400 mt-1">Play sounds for order fills and alerts</div>
+                                </div>
+                                <label class="relative inline-flex items-center cursor-pointer">
+                                    <input type="checkbox" class="sr-only peer" checked>
+                                    <div class="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-green-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- Quick Trade Modal -->
+    <div
+        x-show="showQuickTrade"
+        @click.away="showQuickTrade = false"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0"
+        x-transition:enter-end="opacity-100"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100"
+        x-transition:leave-end="opacity-0"
+        class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+        style="display: none;"
+    >
+        <div
+            @click.stop
+            class="bg-gray-900 rounded-xl border border-gray-800 p-6 max-w-md w-full"
+            x-transition:enter="transition ease-out duration-200"
+            x-transition:enter-start="opacity-0 scale-95"
+            x-transition:enter-end="opacity-100 scale-100"
+            x-transition:leave="transition ease-in duration-150"
+            x-transition:leave-start="opacity-100 scale-100"
+            x-transition:leave-end="opacity-0 scale-95"
+        >
+            <div class="flex items-center justify-between mb-6">
+                <div class="text-xl font-bold">Quick Trade</div>
+                <button @click="showQuickTrade = false" class="p-2 hover:bg-gray-800 rounded-lg">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-xs text-gray-400 block mb-2">Symbol</label>
+                    <input
+                        type="text"
+                        class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500 uppercase text-lg font-mono"
+                        placeholder="TSLA"
+                        autofocus
+                    >
+                </div>
+                <div>
+                    <label class="text-xs text-gray-400 block mb-2">Quantity</label>
+                    <input
+                        type="number"
+                        class="w-full px-3 py-2 bg-gray-950 border border-gray-800 rounded-lg focus:outline-none focus:border-green-500 text-lg font-mono"
+                        value="100"
+                    >
+                </div>
+                <div class="grid grid-cols-2 gap-2 pt-4">
+                    <button class="py-3 bg-green-600 hover:bg-green-500 rounded-lg font-bold text-white glow-green">
+                        BUY
+                    </button>
+                    <button class="py-3 bg-red-600 hover:bg-red-500 rounded-lg font-bold text-white glow-red">
+                        SELL
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function tradingApp() {
+            return {
+                // UI State
+                sidebarOpen: true,
+                activeView: 'dashboard',
+                isLiveMode: false,
+                notifications: 3,
+                showQuickTrade: false,
+                strategyMode: 'nocode',
+                orderTab: 'filled',
+
+                // Navigation
+                navItems: [
+                    { id: 'dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
+                    { id: 'strategy', label: 'Strategy Builder', icon: 'brain-circuit' },
+                    { id: 'backtest', label: 'Backtesting', icon: 'chart-line' },
+                    { id: 'trading', label: 'Live Trading', icon: 'trending-up' },
+                    { id: 'settings', label: 'Settings', icon: 'settings' }
+                ],
+
+                // Portfolio Data
+                portfolioValue: 452100.92,
+                dailyChange: 3540.12,
+                dailyPct: 1.25,
+                cashBalance: 45250,
+                marginUsed: 42,
+                buyingPower: 125000,
+
+                // Market Metrics
+                marketMetrics: [
+                    { symbol: 'NASDAQ', price: '16,245.30', change: 1.2 },
+                    { symbol: 'S&P 500', price: '4,567.80', change: 0.8 },
+                    { symbol: 'VIX', price: '15.42', change: -2.3 },
+                    { symbol: 'TSLA', price: '254.50', change: 3.5 },
+                    { symbol: 'AAPL', price: '178.25', change: 1.1 },
+                    { symbol: 'NVDA', price: '485.60', change: 5.2 }
+                ],
+
+                // Watchlist
+                watchlist: [
+                    { ticker: 'TSLA', price: '254.50', change: 3.5 },
+                    { ticker: 'NVDA', price: '485.60', change: 5.2 },
+                    { ticker: 'AAPL', price: '178.25', change: 1.1 },
+                    { ticker: 'MSFT', price: '372.50', change: -0.5 },
+                    { ticker: 'META', price: '325.80', change: 2.3 }
+                ],
+
+                // Open Positions
+                positions: [
+                    { ticker: 'TSLA', shares: 100, entryPrice: '245.00', currentPrice: '254.50', pnl: 950 },
+                    { ticker: 'NVDA', shares: 50, entryPrice: '470.00', currentPrice: '485.60', pnl: 780 },
+                    { ticker: 'AAPL', shares: 200, entryPrice: '180.00', currentPrice: '178.25', pnl: -350 },
+                    { ticker: 'MSFT', shares: 75, entryPrice: '375.00', currentPrice: '372.50', pnl: -187.50 }
+                ],
+
+                // News Items
+                newsItems: [
+                    {
+                        id: 1,
+                        headline: 'Tesla announces new production facility in Texas',
+                        source: 'Bloomberg',
+                        time: '2 min ago',
+                        sentiment: 0.7
+                    },
+                    {
+                        id: 2,
+                        headline: 'Fed signals potential rate cut in upcoming meeting',
+                        source: 'Reuters',
+                        time: '15 min ago',
+                        sentiment: 0.4
+                    },
+                    {
+                        id: 3,
+                        headline: 'Tech stocks rally on strong earnings reports',
+                        source: 'CNBC',
+                        time: '1 hour ago',
+                        sentiment: 0.8
+                    },
+                    {
+                        id: 4,
+                        headline: 'Oil prices decline amid oversupply concerns',
+                        source: 'WSJ',
+                        time: '2 hours ago',
+                        sentiment: -0.3
+                    }
+                ],
+
+                // Strategies
+                strategies: [
+                    { id: 1, name: 'RSI Momentum', risk: 4, lastRun: '11/12/24', active: true },
+                    { id: 2, name: 'MACD Crossover', risk: 6, lastRun: '11/10/24', active: false },
+                    { id: 3, name: 'Mean Reversion', risk: 8, lastRun: '11/08/24', active: true },
+                    { id: 4, name: 'Breakout Scanner', risk: 9, lastRun: '11/05/24', active: false }
+                ],
+
+                // Initialize charts
+                init() {
+                    this.$nextTick(() => {
+                        lucide.createIcons();
+                        this.initCharts();
+                    });
+                },
+
+                initCharts() {
+                    // Portfolio Distribution Chart
+                    const portfolioCtx = document.getElementById('portfolioChart');
+                    if (portfolioCtx) {
+                        new Chart(portfolioCtx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: ['Tech', 'Finance', 'Cash', 'Other'],
+                                datasets: [{
+                                    data: [40, 30, 15, 15],
+                                    backgroundColor: ['#3b82f6', '#10b981', '#eab308', '#6b7280'],
+                                    borderWidth: 0
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        display: false
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    // Equity Curve Chart
+                    const equityCtx = document.getElementById('equityCurveChart');
+                    if (equityCtx) {
+                        const dates = [];
+                        const values = [];
+                        const benchmark = [];
+
+                        for (let i = 0; i < 90; i++) {
+                            dates.push(`Day ${i + 1}`);
+                            values.push(10000 + Math.random() * 5000 + i * 100);
+                            benchmark.push(10000 + i * 80);
+                        }
+
+                        new Chart(equityCtx, {
+                            type: 'line',
+                            data: {
+                                labels: dates,
+                                datasets: [{
+                                    label: 'Strategy',
+                                    data: values,
+                                    borderColor: '#4ade80',
+                                    backgroundColor: 'rgba(74, 222, 128, 0.1)',
+                                    tension: 0.4,
+                                    fill: true
+                                }, {
+                                    label: 'Benchmark',
+                                    data: benchmark,
+                                    borderColor: '#60a5fa',
+                                    backgroundColor: 'transparent',
+                                    tension: 0.4,
+                                    borderDash: [5, 5]
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: {
+                                        display: true,
+                                        labels: {
+                                            color: '#9ca3af'
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: {
+                                        display: false
+                                    },
+                                    y: {
+                                        grid: {
+                                            color: '#1f2937'
+                                        },
+                                        ticks: {
+                                            color: '#9ca3af',
+                                            callback: function(value) {
+                                                return '$' + value.toLocaleString();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        // Reinitialize Lucide icons when content changes
+        document.addEventListener('alpine:initialized', () => {
+            setInterval(() => {
+                lucide.createIcons();
+            }, 100);
+        });
+    </script>
+</body>
+</html>
