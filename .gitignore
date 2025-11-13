@@ -117,3 +117,4 @@ test_*.py
 /data/*_test_agent/
 *__test*
 *_test.json
+*_plan.md
