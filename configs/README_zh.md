@@ -4,9 +4,18 @@
 
 ## 文件说明
 
+此目录包含多个配置文件，用于不同的交易场景：
+
+### 可用配置文件
+
+| 配置文件 | 市场 | 交易频率 | 说明 |
+|---------|------|---------|------|
+| `default_config.json` | 美股（纳斯达克100） | 日线 | 默认美股交易配置 |
+| `astock_config.json` | A股（上证50） | 日线 | A股市场交易配置 |
+
 ### `default_config.json`
 
-主要的配置文件，定义了所有系统参数。该文件由`livebaseagent_config.py`加载，包含以下部分：
+主要的配置文件，定义了所有系统参数。该文件由`main.py`加载，包含以下部分：
 
 #### 代理配置
 - **`agent_type`**: 指定要使用的代理类
@@ -35,18 +44,41 @@
 
 ## 使用方法
 
-### 默认配置
+### 使用脚本快速启动
+
+最简单的方式是使用特定配置运行系统：
+
+```bash
+# 美股市场（纳斯达克100）- 使用 default_config.json
+bash scripts/main.sh
+
+# 美股市场小时级数据
+bash scripts/main_step1.sh  # 准备小时级价格数据
+bash scripts/main_step2.sh  # 启动MCP服务
+bash scripts/main_step3.sh  # 使用 test_real_hour_config.json 运行
+
+# A股市场（上证50）- 使用 astock_config.json
+bash scripts/main_a_stock_step1.sh  # 准备A股数据
+bash scripts/main_a_stock_step2.sh  # 启动MCP服务
+bash scripts/main_a_stock_step3.sh  # 使用 astock_config.json 运行
+```
+
+### 手动配置
+
+#### 默认配置
 当未指定特定配置文件时，系统会自动加载`default_config.json`：
 
 ```bash
-python livebaseagent_config.py
+python main.py
 ```
 
-### 自定义配置
+#### 自定义配置
 您可以指定自定义配置文件：
 
 ```bash
-python livebaseagent_config.py configs/my_custom_config.json
+python main.py configs/my_custom_config.json
+python main.py configs/astock_config.json
+python main.py configs/test_real_hour_config.json
 ```
 
 ### 环境变量覆盖
@@ -56,10 +88,11 @@ python livebaseagent_config.py configs/my_custom_config.json
 
 ## 配置示例
 
-### 最小配置
+### 美股配置示例（BaseAgent）
 ```json
 {
   "agent_type": "BaseAgent",
+  "market": "us",
   "date_range": {
     "init_date": "2025-01-01",
     "end_date": "2025-01-31"
@@ -73,11 +106,38 @@ python livebaseagent_config.py configs/my_custom_config.json
     }
   ],
   "agent_config": {
-    "max_steps": 10,
-    "initial_cash": 5000.0
+    "max_steps": 30,
+    "initial_cash": 10000.0
   },
   "log_config": {
     "log_path": "./data/agent_data"
+  }
+}
+```
+
+### A股配置示例（BaseAgentAStock）
+```json
+{
+  "agent_type": "BaseAgentAStock",
+  "market": "cn",
+  "date_range": {
+    "init_date": "2025-10-09",
+    "end_date": "2025-10-31"
+  },
+  "models": [
+    {
+      "name": "claude-3.7-sonnet",
+      "basemodel": "anthropic/claude-3.7-sonnet",
+      "signature": "claude-3.7-sonnet",
+      "enabled": true
+    }
+  ],
+  "agent_config": {
+    "max_steps": 30,
+    "initial_cash": 100000.0
+  },
+  "log_config": {
+    "log_path": "./data/agent_data_astock"
   }
 }
 ```
@@ -122,6 +182,19 @@ python livebaseagent_config.py configs/my_custom_config.json
 }
 ```
 
+## 代理类型说明
+
+### BaseAgent（通用代理）
+- **市场支持**：美股或A股（通过`market`参数配置）
+- **使用场景**：通用交易代理，支持灵活的市场选择
+- **股票池**：可配置（美股默认纳斯达克100，A股默认上证50）
+
+### BaseAgentAStock（A股专用代理）
+- **市场支持**：仅A股市场
+- **使用场景**：专为A股优化，内置中国市场交易规则
+- **股票池**：默认上证50
+- **交易规则**：T+1结算，100股为一手，人民币计价
+
 ## 注意事项
 
 - 配置文件必须是有效的JSON格式
@@ -129,12 +202,15 @@ python livebaseagent_config.py configs/my_custom_config.json
 - 只有`enabled: true`的模型才会用于交易模拟
 - 配置错误会导致系统退出并显示相应的错误消息
 - 配置系统通过`AGENT_REGISTRY`映射支持动态代理类加载
+- 使用`BaseAgentAStock`时，`market`参数会自动设置为`"cn"`
+- 初始资金建议：美股 $10,000，A股 ¥100,000
 
 ## 配置参数详解
 
 ### 代理类型 (agent_type)
 目前支持的类型：
-- `BaseAgent`: 基础交易代理，使用MCP工具链进行交易决策
+- `BaseAgent`: 基础交易代理，支持美股和A股市场
+- `BaseAgentAStock`: A股专用交易代理，内置A股交易规则
 
 ### 模型配置 (models)
 每个模型需要包含以下字段：

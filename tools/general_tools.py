@@ -1,12 +1,41 @@
-
-import os
 import json
+import os
 from pathlib import Path
+from typing import Any
+
 from dotenv import load_dotenv
+
 load_dotenv()
 
-def _load_runtime_env() -> dict:
+def _resolve_runtime_env_path() -> str:
+    """Resolve runtime env path from RUNTIME_ENV_PATH in .env file.
+    
+    Simple strategy:
+    1. Read RUNTIME_ENV_PATH from environment (.env file)
+    2. If relative path, resolve from project root
+    3. Return the path (will be created by write_config_value if needed)
+    """
     path = os.environ.get("RUNTIME_ENV_PATH")
+    
+    if not path:
+        # Fallback to default if not set
+        path = "data/.runtime_env.json"
+    
+    # If relative path, resolve from project root
+    if not os.path.isabs(path):
+        base_dir = Path(__file__).resolve().parents[1]
+        path = str(base_dir / path)
+    
+    # Ensure directory exists
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    
+    return path
+
+
+def _load_runtime_env() -> dict:
+    path = _resolve_runtime_env_path()
+    if path is None:
+        return {}
     try:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
@@ -20,17 +49,25 @@ def _load_runtime_env() -> dict:
 
 def get_config_value(key: str, default=None):
     _RUNTIME_ENV = _load_runtime_env()
-    
+
     if key in _RUNTIME_ENV:
         return _RUNTIME_ENV[key]
     return os.getenv(key, default)
 
-def write_config_value(key: str, value: any):
+
+def write_config_value(key: str, value: Any):
+    path = _resolve_runtime_env_path()
+    if path is None:
+        print(f"⚠️  WARNING: RUNTIME_ENV_PATH not set, config value '{key}' not persisted")
+        return
     _RUNTIME_ENV = _load_runtime_env()
     _RUNTIME_ENV[key] = value
-    path = os.environ.get("RUNTIME_ENV_PATH")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(_RUNTIME_ENV, f, ensure_ascii=False, indent=4)
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(_RUNTIME_ENV, f, ensure_ascii=False, indent=4)
+    except Exception as e:
+        print(f"❌ Error writing config to {path}: {e}")
+
 
 def extract_conversation(conversation: dict, output_type: str):
     """Extract information from a conversation payload.
@@ -139,4 +176,3 @@ def extract_first_tool_message_content(conversation: dict):
     if isinstance(first, dict):
         return first.get("content")
     return getattr(first, "content", None)
-

@@ -6,8 +6,8 @@ let allAgentsData = {};
 let currentAgent = null;
 let allocationChart = null;
 
-// Initialize the page
-async function init() {
+// Load data and refresh UI
+async function loadDataAndRefresh() {
     showLoading();
 
     try {
@@ -26,15 +26,21 @@ async function init() {
             await loadAgentPortfolio(firstAgent);
         }
 
-        // Set up event listeners
-        setupEventListeners();
-
     } catch (error) {
-        console.error('Error initializing page:', error);
+        console.error('Error loading data:', error);
         alert('Failed to load portfolio data. Please check console for details.');
     } finally {
         hideLoading();
     }
+}
+
+// Initialize the page
+async function init() {
+    // Set up event listeners first
+    setupEventListeners();
+
+    // Load initial data
+    await loadDataAndRefresh();
 }
 
 // Populate agent selector dropdown
@@ -281,11 +287,24 @@ function updateTradeHistory(agentName) {
         const iconClass = trade.action === 'buy' ? 'buy' : 'sell';
         const actionText = trade.action === 'buy' ? 'Bought' : 'Sold';
 
+        // Format the timestamp for hourly data
+        let formattedDate = trade.date;
+        if (trade.date.includes(':')) {
+            const date = new Date(trade.date);
+            formattedDate = date.toLocaleString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
         tradeItem.innerHTML = `
             <div class="trade-icon ${iconClass}">${icon}</div>
             <div class="trade-details">
                 <div class="trade-action">${actionText} ${trade.amount} shares of ${trade.symbol}</div>
-                <div class="trade-meta">${trade.date}</div>
+                <div class="trade-meta">${formattedDate}</div>
             </div>
         `;
 
@@ -298,6 +317,30 @@ function setupEventListeners() {
     document.getElementById('agentSelect').addEventListener('change', (e) => {
         loadAgentPortfolio(e.target.value);
     });
+
+    // Market switching
+    const usMarketBtn = document.getElementById('usMarketBtn');
+    const cnMarketBtn = document.getElementById('cnMarketBtn');
+
+    if (usMarketBtn && cnMarketBtn) {
+        usMarketBtn.addEventListener('click', async () => {
+            if (dataLoader.getMarket() !== 'us') {
+                dataLoader.setMarket('us');
+                usMarketBtn.classList.add('active');
+                cnMarketBtn.classList.remove('active');
+                await loadDataAndRefresh();
+            }
+        });
+
+        cnMarketBtn.addEventListener('click', async () => {
+            if (dataLoader.getMarket() !== 'cn') {
+                dataLoader.setMarket('cn');
+                cnMarketBtn.classList.add('active');
+                usMarketBtn.classList.remove('active');
+                await loadDataAndRefresh();
+            }
+        });
+    }
 
     // Scroll to top button
     const scrollBtn = document.getElementById('scrollToTop');
