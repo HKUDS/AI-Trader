@@ -1,4 +1,20 @@
+# Core dependencies
 langchain==1.0.2
 langchain-openai==1.0.1
 langchain-mcp-adapters>=0.1.0
 fastmcp==2.12.5
+python-dotenv>=1.0.0
+requests>=2.31.0
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Testing dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-mock>=3.11.1
+
+# Development dependencies
+mypy>=1.5.0
+black>=23.7.0
+flake8>=6.1.0
+isort>=5.12.0

@@ -5,10 +5,50 @@ from typing import Dict, List, Optional, Any
 # Add project root directory to Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
-from tools.price_tools import get_yesterday_date, get_open_prices, get_yesterday_open_and_close_price, get_latest_position, get_yesterday_profit
+from tools.price_tools import get_yesterday_date, get_open_prices, get_yesterday_open_and_close_price, get_latest_position, get_yesterday_profit, all_nasdaq_100_symbols
 import json
 from tools.general_tools import get_config_value,write_config_value
+from tools.logging_config import get_logger_for_module
+
+# Initialize logger
+logger = get_logger_for_module(__name__)
+
 mcp = FastMCP("TradeTools")
+
+
+def validate_trade_inputs(symbol: str, amount: int, action: str) -> Optional[Dict[str, Any]]:
+    """
+    Validate trading inputs for buy/sell operations.
+
+    Args:
+        symbol: Stock symbol to validate
+        amount: Number of shares to trade
+        action: Trade action ('buy' or 'sell')
+
+    Returns:
+        None if validation passes, error dict otherwise
+    """
+    # Validate symbol is a non-empty string
+    if not symbol or not isinstance(symbol, str):
+        return {"error": "Invalid symbol: must be a non-empty string", "symbol": symbol}
+
+    # Validate symbol is in NASDAQ 100
+    if symbol not in all_nasdaq_100_symbols:
+        return {
+            "error": f"Invalid symbol: {symbol} is not in NASDAQ 100 trading universe",
+            "symbol": symbol,
+            "valid_symbols": all_nasdaq_100_symbols[:10] + ["..."]  # Show first 10 for brevity
+        }
+
+    # Validate amount is a positive integer
+    if not isinstance(amount, int):
+        return {"error": f"Invalid amount: must be an integer, got {type(amount).__name__}", "amount": amount}
+
+    if amount <= 0:
+        return {"error": f"Invalid amount: must be positive (> 0), got {amount}", "amount": amount}
+
+    # All validations passed
+    return None
 
 
 
@@ -16,30 +56,36 @@ mcp = FastMCP("TradeTools")
 def buy(symbol: str, amount: int) -> Dict[str, Any]:
     """
     Buy stock function
-    
+
     This function simulates stock buying operations, including the following steps:
-    1. Get current position and operation ID
-    2. Get stock opening price for the day
-    3. Validate buy conditions (sufficient cash)
-    4. Update position (increase stock quantity, decrease cash)
-    5. Record transaction to position.jsonl file
-    
+    1. Validate inputs (symbol in NASDAQ 100, amount > 0)
+    2. Get current position and operation ID
+    3. Get stock opening price for the day
+    4. Validate buy conditions (sufficient cash)
+    5. Update position (increase stock quantity, decrease cash)
+    6. Record transaction to position.jsonl file
+
     Args:
         symbol: Stock symbol, such as "AAPL", "MSFT", etc.
         amount: Buy quantity, must be a positive integer, indicating how many shares to buy
-        
+
     Returns:
         Dict[str, Any]:
           - Success: Returns new position dictionary (containing stock quantity and cash balance)
           - Failure: Returns {"error": error message, ...} dictionary
-        
+
     Raises:
         ValueError: Raised when SIGNATURE environment variable is not set
-        
+
     Example:
         >>> result = buy("AAPL", 10)
         >>> print(result)  # {"AAPL": 110, "MSFT": 5, "CASH": 5000.0, ...}
     """
+    # Step 0: Validate inputs
+    validation_error = validate_trade_inputs(symbol, amount, "buy")
+    if validation_error is not None:
+        return validation_error
+
     # Step 1: Get environment variables and basic information
     # Get signature (model name) from environment variable, used to determine data storage path
     signature = get_config_value("SIGNATURE")
@@ -55,9 +101,10 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
     try:
         current_position, current_action_id = get_latest_position(today_date, signature)
     except Exception as e:
-        print(e)
-        print(current_position, current_action_id)
-        print(today_date, signature)
+        logger.error(f"Failed to get latest position: {e}")
+        logger.debug(f"Position: {current_position}, Action ID: {current_action_id}")
+        logger.debug(f"Date: {today_date}, Signature: {signature}")
+        raise
     # Step 3: Get stock opening price for the day
     # Use get_open_prices function to get the opening price of specified stock for the day
     # If stock symbol does not exist or price data is missing, KeyError exception will be raised
@@ -72,7 +119,9 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
     try:
         cash_left = current_position["CASH"] - this_symbol_price * amount
     except Exception as e:
-        print(current_position, "CASH", this_symbol_price, amount)
+        logger.error(f"Failed to calculate cash: {e}")
+        logger.debug(f"Position: {current_position}, Price: {this_symbol_price}, Amount: {amount}")
+        raise
 
     # Check if cash balance is sufficient for purchase
     if cash_left < 0:
@@ -94,43 +143,56 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
         # Use append mode ("a") to write new transaction record
         # Each operation ID increments by 1, ensuring uniqueness of operation sequence
         position_file_path = os.path.join(project_root, "data", "agent_data", signature, "position", "position.jsonl")
+        transaction_record = {
+            "date": today_date,
+            "id": current_action_id + 1,
+            "this_action": {"action": "buy", "symbol": symbol, "amount": amount},
+            "positions": new_position
+        }
         with open(position_file_path, "a") as f:
             # Write JSON format transaction record, containing date, operation ID, transaction details and updated position
-            print(f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'buy','symbol':symbol,'amount':amount},'positions': new_position})}")
-            f.write(json.dumps({"date": today_date, "id": current_action_id + 1, "this_action":{"action":"buy","symbol":symbol,"amount":amount},"positions": new_position}) + "\n")
+            logger.info(f"BUY executed: {symbol} x{amount} @ ${this_symbol_price:.2f}, Cash remaining: ${cash_left:.2f}")
+            logger.debug(f"Writing transaction to position.jsonl: {json.dumps(transaction_record)}")
+            f.write(json.dumps(transaction_record) + "\n")
         # Step 7: Return updated position
         write_config_value("IF_TRADE", True)
-        print("IF_TRADE", get_config_value("IF_TRADE"))
+        logger.info(f"Trade flag set: IF_TRADE={get_config_value('IF_TRADE')}")
         return new_position
 
 @mcp.tool()
 def sell(symbol: str, amount: int) -> Dict[str, Any]:
     """
     Sell stock function
-    
+
     This function simulates stock selling operations, including the following steps:
-    1. Get current position and operation ID
-    2. Get stock opening price for the day
-    3. Validate sell conditions (position exists, sufficient quantity)
-    4. Update position (decrease stock quantity, increase cash)
-    5. Record transaction to position.jsonl file
-    
+    1. Validate inputs (symbol in NASDAQ 100, amount > 0)
+    2. Get current position and operation ID
+    3. Get stock opening price for the day
+    4. Validate sell conditions (position exists, sufficient quantity)
+    5. Update position (decrease stock quantity, increase cash)
+    6. Record transaction to position.jsonl file
+
     Args:
         symbol: Stock symbol, such as "AAPL", "MSFT", etc.
         amount: Sell quantity, must be a positive integer, indicating how many shares to sell
-        
+
     Returns:
         Dict[str, Any]:
           - Success: Returns new position dictionary (containing stock quantity and cash balance)
           - Failure: Returns {"error": error message, ...} dictionary
-        
+
     Raises:
         ValueError: Raised when SIGNATURE environment variable is not set
-        
+
     Example:
         >>> result = sell("AAPL", 10)
         >>> print(result)  # {"AAPL": 90, "MSFT": 5, "CASH": 15000.0, ...}
     """
+    # Step 0: Validate inputs
+    validation_error = validate_trade_inputs(symbol, amount, "sell")
+    if validation_error is not None:
+        return validation_error
+
     # Step 1: Get environment variables and basic information
     # Get signature (model name) from environment variable, used to determine data storage path
     signature = get_config_value("SIGNATURE")
@@ -179,13 +241,22 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
     # Use append mode ("a") to write new transaction record
     # Each operation ID increments by 1, ensuring uniqueness of operation sequence
     position_file_path = os.path.join(project_root, "data", "agent_data", signature, "position", "position.jsonl")
+    transaction_record = {
+        "date": today_date,
+        "id": current_action_id + 1,
+        "this_action": {"action": "sell", "symbol": symbol, "amount": amount},
+        "positions": new_position
+    }
     with open(position_file_path, "a") as f:
         # Write JSON format transaction record, containing date, operation ID and updated position
-        print(f"Writing to position.jsonl: {json.dumps({'date': today_date, 'id': current_action_id + 1, 'this_action':{'action':'sell','symbol':symbol,'amount':amount},'positions': new_position})}")
-        f.write(json.dumps({"date": today_date, "id": current_action_id + 1, "this_action":{"action":"sell","symbol":symbol,"amount":amount},"positions": new_position}) + "\n")
+        cash_gained = this_symbol_price * amount
+        logger.info(f"SELL executed: {symbol} x{amount} @ ${this_symbol_price:.2f}, Cash gained: ${cash_gained:.2f}")
+        logger.debug(f"Writing transaction to position.jsonl: {json.dumps(transaction_record)}")
+        f.write(json.dumps(transaction_record) + "\n")
 
     # Step 7: Return updated position
     write_config_value("IF_TRADE", True)
+    logger.info(f"Trade flag set: IF_TRADE={get_config_value('IF_TRADE')}")
     return new_position
 
 if __name__ == "__main__":

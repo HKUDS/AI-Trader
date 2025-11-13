@@ -12,6 +12,10 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 from tools.general_tools import get_config_value
+from tools.logging_config import get_logger_for_module
+
+# Initialize logger
+logger = get_logger_for_module(__name__)
 
 all_nasdaq_100_symbols = [
     "NVDA", "MSFT", "AAPL", "GOOG", "GOOGL", "AMZN", "META", "AVGO", "TSLA",
@@ -26,6 +30,41 @@ all_nasdaq_100_symbols = [
     "KDP", "MCHP", "GEHC", "VRSK", "CTSH", "CSGP", "KHC", "ODFL", "DXCM", "TTD",
     "ON", "BIIB", "LULU", "CDW", "GFS"
 ]
+
+
+def validate_no_look_ahead(requested_date: str, context: str = "") -> None:
+    """
+    Validate that requested date is not in the future compared to TODAY_DATE.
+    This prevents look-ahead bias in backtesting.
+
+    Args:
+        requested_date: Date string in YYYY-MM-DD format to validate
+        context: Optional context string for error message
+
+    Raises:
+        ValueError: If requested_date is after TODAY_DATE
+    """
+    today_date = get_config_value("TODAY_DATE")
+    if today_date is None:
+        # If TODAY_DATE is not set, skip validation (for testing purposes)
+        return
+
+    try:
+        requested_dt = datetime.strptime(requested_date, "%Y-%m-%d")
+        today_dt = datetime.strptime(today_date, "%Y-%m-%d")
+
+        if requested_dt > today_dt:
+            context_str = f" in {context}" if context else ""
+            raise ValueError(
+                f"Look-ahead bias detected{context_str}: Cannot access data from {requested_date} "
+                f"when current trading date is {today_date}. "
+                f"Requested date is {(requested_dt - today_dt).days} days in the future."
+            )
+    except ValueError as e:
+        if "Look-ahead bias" in str(e):
+            raise
+        # If date parsing fails, ignore (will be caught elsewhere)
+        pass
 
 def get_yesterday_date(today_date: str) -> str:
     """
@@ -58,6 +97,9 @@ def get_open_prices(today_date: str, symbols: List[str], merged_path: Optional[s
     Returns:
         {symbol_price: open_price 或 None} 的字典；若未找到对应日期或标的，则值为 None。
     """
+    # Validate no look-ahead bias
+    validate_no_look_ahead(today_date, "get_open_prices")
+
     wanted = set(symbols)
     results: Dict[str, Optional[float]] = {}
 
@@ -106,6 +148,9 @@ def get_yesterday_open_and_close_price(today_date: str, symbols: List[str], merg
     Returns:
         (买入价字典, 卖出价字典) 的元组；若未找到对应日期或标的，则值为 None。
     """
+    # Validate no look-ahead bias
+    validate_no_look_ahead(today_date, "get_yesterday_open_and_close_price")
+
     wanted = set(symbols)
     buy_results: Dict[str, Optional[float]] = {}
     sell_results: Dict[str, Optional[float]] = {}
@@ -237,7 +282,7 @@ def get_today_init_position(today_date: str, modelname: str) -> Dict[str, float]
     position_file = base_dir / "data" / "agent_data" / modelname / "position" / "position.jsonl"
 
     if not position_file.exists():
-        print(f"Position file {position_file} does not exist")
+        logger.warning(f"Position file {position_file} does not exist")
         return {}
     
     yesterday_date = get_yesterday_date(today_date)
@@ -335,7 +380,7 @@ def add_no_trade_record(today_date: str, modelname: str):
     """
     save_item = {}
     current_position, current_action_id = get_latest_position(today_date, modelname)
-    print(current_position, current_action_id)
+    logger.debug(f"Adding no-trade record - Position: {current_position}, Action ID: {current_action_id}")
     save_item["date"] = today_date
     save_item["id"] = current_action_id+1
     save_item["this_action"] = {"action":"no_trade","symbol":"","amount":0}
