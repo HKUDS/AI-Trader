@@ -114,24 +114,38 @@ def get_latest_position(today_date: str, signature: str) -> Tuple[Dict[str, floa
             except Exception:
                 continue
 
-    # 如果前一天也没有记录，尝试找文件中最新的记录（按日期和id排序）
+    # 🔧 CRITICAL FIX: 改进 fallback 逻辑 - 查找小于等于指定日期的最新记录
     if max_id_prev < 0 or not latest_positions_prev:
-        all_records = []
+        latest_valid_doc = None
+        max_valid_date_str = None
+
         with position_file.open("r", encoding="utf-8") as f:
             for line in f:
                 if not line.strip():
                     continue
                 try:
                     doc = json.loads(line)
-                    if doc.get("date") and doc.get("date") < today_date:
-                        all_records.append(doc)
+                    doc_date_str = doc.get("date")
+
+                    # 修复点：查找小于或等于 (<=) 查询日期的最新记录
+                    if doc_date_str and doc_date_str <= today_date:
+                        # 找到这些有效记录中，日期最新的那一条
+                        if max_valid_date_str is None or doc_date_str >= max_valid_date_str:
+                            # 如果日期相同，保留ID更大的记录
+                            if max_valid_date_str == doc_date_str and latest_valid_doc:
+                                if doc.get("id", -1) > latest_valid_doc.get("id", -1):
+                                    latest_valid_doc = doc
+                            else:
+                                max_valid_date_str = doc_date_str
+                                latest_valid_doc = doc
+                except json.JSONDecodeError:
+                    continue
                 except Exception:
                     continue
 
-        if all_records:
-            # 按日期和id排序，取最新的一条
-            all_records.sort(key=lambda x: (x.get("date", ""), x.get("id", 0)), reverse=True)
-            latest_positions_prev = all_records[0].get("positions", {})
-            max_id_prev = all_records[0].get("id", -1)
+        # 使用找到的最新有效记录
+        if latest_valid_doc:
+            latest_positions_prev = latest_valid_doc.get("positions", {})
+            max_id_prev = latest_valid_doc.get("id", -1)
 
     return latest_positions_prev, max_id_prev
