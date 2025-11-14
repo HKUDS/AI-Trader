@@ -5,6 +5,7 @@ class DataLoader {
     constructor() {
         this.agentData = {};
         this.priceCache = {};
+        this.pendingPriceRequests = {}; // Deduplicate pending price requests
         this.config = null;
         this.baseDataPath = './data';
         this.currentMarket = 'us'; // 'us' or 'cn'
@@ -15,6 +16,7 @@ class DataLoader {
         this.currentMarket = market;
         this.agentData = {};
         this.priceCache = {};
+        this.pendingPriceRequests = {}; // Clear pending requests
     }
 
     // Get current market
@@ -125,44 +127,64 @@ class DataLoader {
 
     // Load price data for a specific stock symbol
     async loadStockPrice(symbol) {
+        // Return cached data if available
         if (this.priceCache[symbol]) {
             return this.priceCache[symbol];
         }
 
+        // Return existing pending request to avoid duplicate requests
+        if (this.pendingPriceRequests[symbol]) {
+            return this.pendingPriceRequests[symbol];
+        }
+
         if (this.currentMarket === 'cn') {
             // For A-shares, load all prices at once
-            await this.loadAStockPrices();
+            if (!this.pendingPriceRequests['__A_STOCK_ALL__']) {
+                this.pendingPriceRequests['__A_STOCK_ALL__'] = this.loadAStockPrices().finally(() => {
+                    delete this.pendingPriceRequests['__A_STOCK_ALL__'];
+                });
+            }
+            await this.pendingPriceRequests['__A_STOCK_ALL__'];
             return this.priceCache[symbol] || null;
         }
 
-        // For US stocks, load individual JSON files
-        try {
-            const priceFilePrefix = window.configLoader.getPriceFilePrefix();
-            const filePath = `${this.baseDataPath}/${priceFilePrefix}${symbol}.json`;
-            const response = await fetch(filePath);
-            if (!response.ok) {
-                console.warn(`[loadStockPrice] ❌ ${symbol}: HTTP ${response.status}`);
-                throw new Error(`Failed to load price for ${symbol}`);
-            }
+        // For US stocks, load individual JSON files with deduplication
+        const pricePromise = (async () => {
+            try {
+                const priceFilePrefix = window.configLoader.getPriceFilePrefix();
+                const filePath = `${this.baseDataPath}/${priceFilePrefix}${symbol}.json`;
+                const response = await fetch(filePath);
+                if (!response.ok) {
+                    console.warn(`[loadStockPrice] ❌ ${symbol}: HTTP ${response.status}`);
+                    throw new Error(`Failed to load price for ${symbol}`);
+                }
 
-            const data = await response.json();
-            // Support both hourly (60min) and daily data formats
-            this.priceCache[symbol] = data['Time Series (60min)'] || data['Time Series (Daily)'];
+                const data = await response.json();
+                // Support both hourly (60min) and daily data formats
+                this.priceCache[symbol] = data['Time Series (60min)'] || data['Time Series (Daily)'];
 
-            if (!this.priceCache[symbol]) {
-                console.warn(`[loadStockPrice] ❌ ${symbol}: No time series data found`);
+                if (!this.priceCache[symbol]) {
+                    console.warn(`[loadStockPrice] ❌ ${symbol}: No time series data found`);
+                    return null;
+                }
+
+                const dataPointCount = Object.keys(this.priceCache[symbol]).length;
+                const sampleDates = Object.keys(this.priceCache[symbol]).sort().slice(0, 3);
+                console.log(`[loadStockPrice] ✅ ${symbol}: ${dataPointCount} points, samples: ${sampleDates.join(', ')}`);
+
+                return this.priceCache[symbol];
+            } catch (error) {
+                console.error(`[loadStockPrice] ❌ ${symbol}:`, error.message);
                 return null;
+            } finally {
+                // Clean up pending request after completion
+                delete this.pendingPriceRequests[symbol];
             }
+        })();
 
-            const dataPointCount = Object.keys(this.priceCache[symbol]).length;
-            const sampleDates = Object.keys(this.priceCache[symbol]).sort().slice(0, 3);
-            console.log(`[loadStockPrice] ✅ ${symbol}: ${dataPointCount} points, samples: ${sampleDates.join(', ')}`);
-
-            return this.priceCache[symbol];
-        } catch (error) {
-            console.error(`[loadStockPrice] ❌ ${symbol}:`, error.message);
-            return null;
-        }
+        // Save pending promise for deduplication
+        this.pendingPriceRequests[symbol] = pricePromise;
+        return pricePromise;
     }
 
     // Get closing price for a symbol on a specific date/time
@@ -209,14 +231,24 @@ class DataLoader {
         // Get all stock symbols (exclude CASH)
         const symbols = Object.keys(position.positions).filter(s => s !== 'CASH');
 
-        for (const symbol of symbols) {
-            const shares = position.positions[symbol];
-            if (shares > 0) {
-                const price = await this.getClosingPrice(symbol, date);
-                if (price && !isNaN(price)) {
-                    totalValue += shares * price;
+        // Fetch all stock prices in parallel
+        const pricePromises = symbols.map(symbol =>
+            this.getClosingPrice(symbol, date).then(price => ({
+                symbol,
+                shares: position.positions[symbol],
+                price
+            }))
+        );
+
+        const priceResults = await Promise.all(pricePromises);
+
+        // Calculate total value
+        for (const result of priceResults) {
+            if (result.shares > 0) {
+                if (result.price && !isNaN(result.price)) {
+                    totalValue += result.shares * result.price;
                 } else {
-                    console.warn(`Missing or invalid price for ${symbol} on ${date}`);
+                    console.warn(`Missing or invalid price for ${result.symbol} on ${date}`);
                     hasMissingPrice = true;
                 }
             }
@@ -305,7 +337,10 @@ class DataLoader {
             });
 
             // Fill all dates in range (skip weekends)
+            // Collect all dates and positions that need calculation
+            const dateCalculations = [];
             let currentPosition = null;
+
             for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
                 // Extract date string in local timezone (avoid UTC conversion issues)
                 const year = d.getFullYear();
@@ -330,24 +365,33 @@ class DataLoader {
                     continue;
                 }
 
-                // Calculate asset value using current iteration date for price lookup
-                // This ensures we get the price for the actual date we're calculating
-                const assetValue = await this.calculateAssetValue(currentPosition, dateStr);
-
-                // Only skip if we couldn't calculate asset value due to missing prices
-                // Allow zero or negative values in case of losses
-                if (assetValue === null || isNaN(assetValue)) {
-                    console.warn(`Skipping date ${dateStr} for ${agentName} due to missing price data`);
-                    continue;
-                }
-
-                assetHistory.push({
+                dateCalculations.push({
                     date: dateStr,
-                    value: assetValue,
-                    id: currentPosition.id,
-                    action: positionMap[dateStr]?.this_action || null  // Only show action if position changed
+                    position: currentPosition,
+                    hasAction: !!positionMap[dateStr]
                 });
             }
+
+            // Calculate asset values for all dates in parallel
+            const assetValuePromises = dateCalculations.map(calc =>
+                this.calculateAssetValue(calc.position, calc.date).then(value => ({
+                    date: calc.date,
+                    value,
+                    id: calc.position.id,
+                    action: calc.hasAction ? positionMap[calc.date]?.this_action : null
+                }))
+            );
+
+            const assetResults = await Promise.all(assetValuePromises);
+
+            // Filter out invalid results and add to history
+            assetResults.forEach(result => {
+                if (result.value === null || isNaN(result.value)) {
+                    console.warn(`Skipping date ${result.date} for ${agentName} due to missing price data`);
+                } else {
+                    assetHistory.push(result);
+                }
+            });
 
         } else {
             // US STOCKS LOGIC: Keep original simple logic
@@ -371,16 +415,26 @@ class DataLoader {
 
             console.log(`Reduced from ${positions.length} to ${uniquePositions.length} unique positions for ${agentName}`);
 
-            for (const position of uniquePositions) {
-                const timestamp = position.date;
-                const assetValue = await this.calculateAssetValue(position, timestamp);
-                assetHistory.push({
-                    date: timestamp,
-                    value: assetValue,
+            // Calculate asset values for all timestamps in parallel
+            const assetValuePromises = uniquePositions.map(position =>
+                this.calculateAssetValue(position, position.date).then(value => ({
+                    date: position.date,
+                    value,
                     id: position.id,
                     action: position.this_action || null
-                });
-            }
+                }))
+            );
+
+            const assetResults = await Promise.all(assetValuePromises);
+
+            // Filter out invalid results and add to history
+            assetResults.forEach(result => {
+                if (result.value === null || isNaN(result.value)) {
+                    console.warn(`Skipping date ${result.date} for ${agentName} due to missing price data`);
+                } else {
+                    assetHistory.push(result);
+                }
+            });
         }
 
         // Check if we have enough valid data
@@ -571,28 +625,50 @@ class DataLoader {
         console.log('Starting to load all agents data...');
         const agents = await this.loadAgentList();
         console.log('Found agents:', agents);
+
+        // Load all agent data in parallel
+        const loadPromises = agents.map(agent =>
+            this.loadAgentData(agent).then(data => {
+                if (data) {
+                    console.log(`Successfully loaded ${agent}`);
+                    return { agent, data };
+                } else {
+                    console.log(`Failed to load data for ${agent}`);
+                    return null;
+                }
+            }).catch(error => {
+                console.error(`Error loading ${agent}:`, error);
+                return null;
+            })
+        );
+
+        // Wait for all agent data to load in parallel
+        const agentResults = await Promise.all(loadPromises);
+
+        // Assemble agent data
         const allData = {};
-
-        for (const agent of agents) {
-            console.log(`Loading data for ${agent}...`);
-            const data = await this.loadAgentData(agent);
-            if (data) {
-                allData[agent] = data;
-                console.log(`Successfully added ${agent} to allData`);
-            } else {
-                console.log(`Failed to load data for ${agent}`);
+        agentResults.forEach(result => {
+            if (result && result.data) {
+                allData[result.agent] = result.data;
             }
-        }
+        });
 
-        console.log('Final allData:', Object.keys(allData));
+        // Populate this.agentData before loading benchmark
+        // This ensures benchmark can read agent data for date range and initial value
         this.agentData = allData;
 
-        // Load benchmark data (QQQ for US, SSE 50 for A-shares)
-        const benchmarkData = await this.loadBenchmarkData();
+        // Load benchmark data AFTER agents are loaded and this.agentData is populated
+        const benchmarkData = await this.loadBenchmarkData().catch(error => {
+            console.error('Error loading benchmark:', error);
+            return null;
+        });
+
         if (benchmarkData) {
             allData[benchmarkData.name] = benchmarkData;
             console.log(`Successfully added ${benchmarkData.name} to allData`);
         }
+
+        console.log('Final allData:', Object.keys(allData));
 
         return allData;
     }
