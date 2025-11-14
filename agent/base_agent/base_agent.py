@@ -19,6 +19,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
+from utils.date_utils import parse_date
 
 # Best-effort import for a console/stdout callback handler across LangChain versions
 try:  # langchain <=0.1 style
@@ -587,14 +588,14 @@ class BaseAgent:
                     if max_date is None:
                         max_date = current_date
                     else:
-                        current_date_obj = datetime.strptime(current_date, "%Y-%m-%d")
-                        max_date_obj = datetime.strptime(max_date, "%Y-%m-%d")
+                        current_date_obj = parse_date(current_date)
+                        max_date_obj = parse_date(max_date)
                         if current_date_obj > max_date_obj:
                             max_date = current_date
 
         # Check if new dates need to be processed
-        max_date_obj = datetime.strptime(max_date, "%Y-%m-%d")
-        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
+        max_date_obj = parse_date(max_date)
+        end_date_obj = parse_date(end_date)
 
         if end_date_obj <= max_date_obj:
             return []
@@ -602,14 +603,13 @@ class BaseAgent:
         # Generate trading date list, filtered by actual trading days
         trading_dates = []
         current_date = max_date_obj + timedelta(days=1)
-
+        from tools.price_tools import is_trading_day
         while current_date <= end_date_obj:
             date_str = current_date.strftime("%Y-%m-%d")
             # Check if this is an actual trading day in merged.jsonl
             if is_trading_day(date_str, market=self.market):
                 trading_dates.append(date_str)
             current_date += timedelta(days=1)
-
         return trading_dates
 
     async def run_with_retry(self, today_date: str) -> None:
