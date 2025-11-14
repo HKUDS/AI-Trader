@@ -17,6 +17,76 @@ from tools.general_tools import get_config_value
 mcp = FastMCP("TradeLimitTools")
 
 
+def get_current_orders(today_date: str, signature: str) -> List[Dict[str, Any]]:
+    """
+    Read all current pending orders for the given date and signature.
+
+    Args:
+        today_date: Trading date
+        signature: Model signature for data path
+
+    Returns:
+        List of order dictionaries
+    """
+    log_path = get_config_value("LOG_PATH", "./data/agent_data")
+
+    # Handle different path formats
+    if os.path.isabs(log_path):
+        pending_dir = Path(log_path) / signature / "pending_orders"
+    else:
+        if log_path.startswith("./data/"):
+            log_path = log_path[7:]
+        pending_dir = Path(project_root) / "data" / log_path / signature / "pending_orders"
+
+    pending_file_path = pending_dir / f"{today_date}.jsonl"
+
+    orders = []
+    if pending_file_path.exists():
+        try:
+            with open(pending_file_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        order = json.loads(line)
+                        orders.append(order)
+        except Exception as e:
+            print(f"Warning: Could not read pending orders: {e}")
+
+    return orders
+
+
+def format_order_summary(orders: List[Dict[str, Any]]) -> str:
+    """
+    Format orders list into the required format.
+
+    Args:
+        orders: List of order dictionaries
+
+    Returns:
+        Formatted string with all orders
+    """
+    if not orders:
+        return "No current orders"
+
+    formatted_orders = []
+    for order in orders:
+        action = order.get('action', 'N/A')
+        symbol = order.get('symbol', 'N/A')
+        limit_price = order.get('limit_price', 'N/A')
+        amount = order.get('amount', 'N/A')
+
+        # Format price to appropriate decimal places
+        if isinstance(limit_price, (int, float)):
+            limit_price_str = f"{limit_price:.2f}"
+        else:
+            limit_price_str = str(limit_price)
+
+        formatted_orders.append(f"[{action}] [{symbol}] [{limit_price_str}] @ [{amount}]")
+    prefix = "Current unsettled orders: "
+    unsettled_orders = prefix + " | ".join(formatted_orders)
+    return unsettled_orders
+
+
 
 
 @mcp.tool()
@@ -161,10 +231,15 @@ def place_limit_buy_order(symbol: str, amount: int, limit_price: float) -> Dict[
         # Don't fail the order if IF_TRADE setting fails
         print(f"Warning: Could not set IF_TRADE flag: {e}")
 
-    # Step 6: Return order confirmation without market data leakage
+    # Step 6: Get all current orders and format them
+    current_orders = get_current_orders(today_date, signature)
+    current_orders_summary = format_order_summary(current_orders)
+
+    # Step 7: Return order confirmation with all current orders
     return {
         "status": "OrderPlaced",
         "message": f"Limit order for {amount} {symbol} @ {limit_price} has been placed and is pending settlement.",
+        "current_orders": current_orders_summary,
         "symbol": symbol,
         "amount": amount,
         "limit_price": limit_price,
@@ -316,10 +391,15 @@ def place_limit_sell_order(symbol: str, amount: int, limit_price: float) -> Dict
         # Don't fail the order if IF_TRADE setting fails
         print(f"Warning: Could not set IF_TRADE flag: {e}")
 
-    # Step 6: Return order confirmation without market data leakage
+    # Step 6: Get all current orders and format them
+    current_orders = get_current_orders(today_date, signature)
+    current_orders_summary = format_order_summary(current_orders)
+
+    # Step 7: Return order confirmation with all current orders
     return {
         "status": "OrderPlaced",
         "message": f"Limit order for {amount} {symbol} @ {limit_price} has been placed and is pending settlement.",
+        "current_orders": current_orders_summary,
         "symbol": symbol,
         "amount": amount,
         "limit_price": limit_price,
