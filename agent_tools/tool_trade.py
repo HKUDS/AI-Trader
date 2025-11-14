@@ -40,6 +40,41 @@ def _position_lock(signature: str):
     return _Lock(signature)
 
 
+def validate_trade_inputs(symbol: str, amount: int, action: str) -> Optional[Dict[str, Any]]:
+    """
+    Validate trading inputs for buy/sell operations.
+
+    Args:
+        symbol: Stock symbol to validate
+        amount: Number of shares to trade
+        action: Trade action ('buy' or 'sell')
+
+    Returns:
+        None if validation passes, error dict otherwise
+    """
+    # Validate symbol is a non-empty string
+    if not symbol or not isinstance(symbol, str):
+        return {"error": "Invalid symbol: must be a non-empty string", "symbol": symbol}
+
+    # Validate symbol is in NASDAQ 100
+    if symbol not in all_nasdaq_100_symbols:
+        return {
+            "error": f"Invalid symbol: {symbol} is not in NASDAQ 100 trading universe",
+            "symbol": symbol,
+            "valid_symbols": all_nasdaq_100_symbols[:10] + ["..."]  # Show first 10 for brevity
+        }
+
+    # Validate amount is a positive integer
+    if not isinstance(amount, int):
+        return {"error": f"Invalid amount: must be an integer, got {type(amount).__name__}", "amount": amount}
+
+    if amount <= 0:
+        return {"error": f"Invalid amount: must be positive (> 0), got {amount}", "amount": amount}
+
+    # All validations passed
+    return None
+
+
 
 @mcp.tool()
 def buy(symbol: str, amount: int) -> Dict[str, Any]:
@@ -72,6 +107,11 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
         >>> result = buy("600519.SH", 100)  # Chinese A-shares must be multiples of 100
         >>> print(result)  # {"600519.SH": 100, "CASH": 85000.0, ...}
     """
+    # Step 0: Validate inputs
+    validation_error = validate_trade_inputs(symbol, amount, "buy")
+    if validation_error is not None:
+        return validation_error
+
     # Step 1: Get environment variables and basic information
     # Get signature (model name) from environment variable, used to determine data storage path
     signature = get_config_value("SIGNATURE")
@@ -144,7 +184,9 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
     try:
         cash_left = current_position["CASH"] - this_symbol_price * amount
     except Exception as e:
-        print(current_position, "CASH", this_symbol_price, amount)
+        logger.error(f"Failed to calculate cash: {e}")
+        logger.debug(f"Position: {current_position}, Price: {this_symbol_price}, Amount: {amount}")
+        raise
 
     # Check if cash balance is sufficient for purchase
     if cash_left < 0:
@@ -193,7 +235,7 @@ def buy(symbol: str, amount: int) -> Dict[str, Any]:
             )
         # Step 7: Return updated position
         write_config_value("IF_TRADE", True)
-        print("IF_TRADE", get_config_value("IF_TRADE"))
+        logger.info(f"Trade flag set: IF_TRADE={get_config_value('IF_TRADE')}")
         return new_position
 
 
@@ -266,6 +308,11 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
         >>> result = sell("600519.SH", 100)  # Chinese A-shares must be multiples of 100
         >>> print(result)  # {"600519.SH": 0, "CASH": 115000.0, ...}
     """
+    # Step 0: Validate inputs
+    validation_error = validate_trade_inputs(symbol, amount, "sell")
+    if validation_error is not None:
+        return validation_error
+
     # Step 1: Get environment variables and basic information
     # Get signature (model name) from environment variable, used to determine data storage path
     signature = get_config_value("SIGNATURE")
@@ -401,6 +448,7 @@ def sell(symbol: str, amount: int) -> Dict[str, Any]:
 
     # Step 7: Return updated position
     write_config_value("IF_TRADE", True)
+    logger.info(f"Trade flag set: IF_TRADE={get_config_value('IF_TRADE')}")
     return new_position
 
 

@@ -14,6 +14,10 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 from tools.general_tools import get_config_value
+from tools.logging_config import get_logger_for_module
+
+# Initialize logger
+logger = get_logger_for_module(__name__)
 
 
 def get_market_type() -> str:
@@ -501,6 +505,9 @@ def get_open_prices(
     Returns:
         {symbol_price: open_price 或 None} 的字典；若未找到对应日期或标的，则值为 None。
     """
+    # Validate no look-ahead bias
+    validate_no_look_ahead(today_date, "get_open_prices")
+
     wanted = set(symbols)
     results: Dict[str, Optional[float]] = {}
 
@@ -559,6 +566,9 @@ def get_yesterday_open_and_close_price(
     Returns:
         (买入价字典, 卖出价字典) 的元组；若未找到对应日期或标的，则值为 None。
     """
+    # Validate no look-ahead bias
+    validate_no_look_ahead(today_date, "get_yesterday_open_and_close_price")
+
     wanted = set(symbols)
     buy_results: Dict[str, Optional[float]] = {}
     sell_results: Dict[str, Optional[float]] = {}
@@ -728,7 +738,7 @@ def get_today_init_position(today_date: str, signature: str) -> Dict[str, float]
 #     position_file = base_dir / "data" / "agent_data" / signature / "position" / "position.jsonl"
 
     if not position_file.exists():
-        print(f"Position file {position_file} does not exist")
+        logger.warning(f"Position file {position_file} does not exist")
         return {}
     
     # 获取市场类型，智能判断
