@@ -8,7 +8,7 @@ import pandas as pd
 
 def convert_a_stock_to_jsonl(
     csv_path: str = "A_stock_data/daily_prices_sse_50.csv",
-    output_path: str = "A_stock_data/merged.jsonl",
+    output_path: str = "merged.jsonl",
     stock_name_csv: str = "A_stock_data/sse_50_weight.csv",
 ) -> None:
     """Convert A-share CSV data to JSONL format compatible with the trading system.
