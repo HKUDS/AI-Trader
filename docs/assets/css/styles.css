@@ -245,6 +245,51 @@ body {
     opacity: 1;
 }
 
+/* Granularity Control */
+.granularity-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    transition: opacity 0.3s ease, width 0.3s ease;
+}
+
+.granularity-wrapper.hidden {
+    display: none;
+}
+
+.granularity-divider {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 0 6px;
+}
+
+.granularity-btn {
+    padding: 4px 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: var(--font-mono);
+    letter-spacing: 0.5px;
+}
+
+.granularity-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.granularity-btn.active {
+    color: var(--accent-cyan);
+    background: rgba(0, 255, 204, 0.1);
+    border-color: rgba(0, 255, 204, 0.2);
+    box-shadow: 0 0 10px rgba(0, 255, 204, 0.1);
+}
+
 /* GitHub Link - Premium Design */
 .github-link {
     display: flex;
@@ -2201,15 +2246,15 @@ body {
 @keyframes chart-point-pulse {
     0%, 100% {
         box-shadow: 0 0 10px currentColor,
-                    0 0 20px currentColor,
-                    0 0 30px currentColor;
+        0 0 20px currentColor,
+        0 0 30px currentColor;
         transform: scale(1);
     }
     50% {
         box-shadow: 0 0 15px currentColor,
-                    0 0 30px currentColor,
-                    0 0 45px currentColor,
-                    0 0 60px currentColor;
+        0 0 30px currentColor,
+        0 0 45px currentColor,
+        0 0 60px currentColor;
         transform: scale(1.15);
     }
 }
@@ -2232,7 +2277,7 @@ body {
     }
     50% {
         box-shadow: 0 0 0 4px rgba(0, 212, 255, 0.2),
-                    0 0 12px 2px rgba(0, 212, 255, 0.1);
+        0 0 12px 2px rgba(0, 212, 255, 0.1);
     }
 }
 
@@ -2242,9 +2287,9 @@ body {
     }
     50% {
         background: linear-gradient(90deg,
-            var(--secondary-bg) 0%,
-            rgba(0, 212, 255, 0.05) 50%,
-            var(--secondary-bg) 100%);
+        var(--secondary-bg) 0%,
+        rgba(0, 212, 255, 0.05) 50%,
+        var(--secondary-bg) 100%);
     }
 }
 
@@ -2340,11 +2385,11 @@ body {
     width: 3px;
     height: 100%;
     background: linear-gradient(180deg,
-        transparent 0%,
-        var(--accent-blue) 20%,
-        var(--accent-cyan) 50%,
-        var(--accent-blue) 80%,
-        transparent 100%);
+    transparent 0%,
+    var(--accent-blue) 20%,
+    var(--accent-cyan) 50%,
+    var(--accent-blue) 80%,
+    transparent 100%);
     opacity: 0;
     animation: action-card-edge-glow 2.5s ease-in-out infinite;
 }
@@ -2491,6 +2536,6 @@ body {
 /* Print styles */
 @media print {
     #chartjs-tooltip {
-        display: none \!important;
+        display: none !important;
     }
 }

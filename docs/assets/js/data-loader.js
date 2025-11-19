@@ -102,8 +102,14 @@ class DataLoader {
         }
 
         try {
-            const response = await fetch(`${this.baseDataPath}/A_stock/merged.jsonl`);
-            if (!response.ok) throw new Error('Failed to load A-share prices');
+            const marketConfig = this.getMarketConfig();
+            // Default to merged.jsonl if not specified
+            const priceFile = marketConfig && marketConfig.price_data_file ? 
+                marketConfig.price_data_file : 'A_stock/merged.jsonl';
+            
+            console.log(`Loading A-share prices from ${priceFile}...`);
+            const response = await fetch(`${this.baseDataPath}/${priceFile}`);
+            if (!response.ok) throw new Error(`Failed to load A-share prices from ${priceFile}`);
 
             const text = await response.text();
             const lines = text.trim().split('\n');
@@ -112,7 +118,8 @@ class DataLoader {
                 if (!line.trim()) continue;
                 const data = JSON.parse(line);
                 const symbol = data['Meta Data']['2. Symbol'];
-                this.priceCache[symbol] = data['Time Series (Daily)'];
+                // Support both Daily and 60min keys
+                this.priceCache[symbol] = data['Time Series (Daily)'] || data['Time Series (60min)'];
             }
 
             console.log(`Loaded prices for ${Object.keys(this.priceCache).length} A-share stocks`);
@@ -129,7 +136,7 @@ class DataLoader {
             return this.priceCache[symbol];
         }
 
-        if (this.currentMarket === 'cn') {
+        if (this.currentMarket.startsWith('cn')) {
             // For A-shares, load all prices at once
             await this.loadAStockPrices();
             return this.priceCache[symbol] || null;
@@ -179,7 +186,8 @@ class DataLoader {
         }
 
         // For A-shares: Extract date only for daily data matching
-        if (this.currentMarket === 'cn') {
+        // Only do this fuzzy matching if we are NOT in hourly mode or if exact match failed
+        if (this.currentMarket.startsWith('cn')) {
             const dateOnly = dateOrTimestamp.split(' ')[0]; // "2025-10-01 10:00:00" -> "2025-10-01"
             if (prices[dateOnly]) {
                 const closePrice = prices[dateOnly]['4. close'] || prices[dateOnly]['4. sell price'];
@@ -223,7 +231,7 @@ class DataLoader {
         }
 
         // For A-shares: If any stock price is missing, return null to skip this date
-        if (this.currentMarket === 'cn' && hasMissingPrice) {
+        if (this.currentMarket.startsWith('cn') && hasMissingPrice) {
             return null;
         }
 
@@ -242,9 +250,13 @@ class DataLoader {
         console.log(`Processing ${positions.length} positions for ${agentName}...`);
 
         let assetHistory = [];
+        
+        const marketConfig = this.getMarketConfig();
+        const isHourlyConfig = marketConfig && marketConfig.time_granularity === 'hourly';
 
-        if (this.currentMarket === 'cn') {
-            // A-SHARES LOGIC: Handle multiple transactions per day AND fill date gaps
+        if (this.currentMarket.startsWith('cn') && !isHourlyConfig) {
+            // A-SHARES DAILY LOGIC: Handle multiple transactions per day AND fill date gaps
+            // Used only for 'cn' (daily) market, not 'cn_hour'
 
             // Detect if data is hourly or daily
             const firstDate = positions[0]?.date || '';
@@ -331,11 +343,8 @@ class DataLoader {
                 }
 
                 // Calculate asset value using current iteration date for price lookup
-                // This ensures we get the price for the actual date we're calculating
                 const assetValue = await this.calculateAssetValue(currentPosition, dateStr);
 
-                // Only skip if we couldn't calculate asset value due to missing prices
-                // Allow zero or negative values in case of losses
                 if (assetValue === null || isNaN(assetValue)) {
                     console.warn(`Skipping date ${dateStr} for ${agentName} due to missing price data`);
                     continue;
@@ -350,7 +359,8 @@ class DataLoader {
             }
 
         } else {
-            // US STOCKS LOGIC: Keep original simple logic
+            // US STOCKS OR CN HOURLY LOGIC: Keep timestamps, do not flatten to daily
+            console.log(`Using fine-grained timestamp logic for ${this.currentMarket} (hourly/raw mode)`);
 
             // Group positions by timestamp and take only the last position for each timestamp
             const positionsByTimestamp = {};
@@ -374,6 +384,13 @@ class DataLoader {
             for (const position of uniquePositions) {
                 const timestamp = position.date;
                 const assetValue = await this.calculateAssetValue(position, timestamp);
+                
+                // For CN Hourly, we might have missing prices if timestamp doesn't align perfectly
+                if (assetValue === null) {
+                     console.warn(`Skipping timestamp ${timestamp} for ${agentName} due to missing price`);
+                     continue;
+                }
+
                 assetHistory.push({
                     date: timestamp,
                     value: assetValue,
@@ -422,7 +439,7 @@ class DataLoader {
 
         if (this.currentMarket === 'us') {
             return await this.loadQQQData();
-        } else if (this.currentMarket === 'cn') {
+        } else if (this.currentMarket.startsWith('cn')) {
             return await this.loadSSE50Data();
         }
 
@@ -433,8 +450,8 @@ class DataLoader {
     async loadSSE50Data() {
         try {
             console.log('Loading SSE 50 Index data...');
-            const marketConfig = this.getMarketConfig();
-            const benchmarkFile = marketConfig ? marketConfig.benchmark_file : 'A_stock/index_daily_sse_50.json';
+            // Always use daily SSE 50 data, even in hourly mode
+            const benchmarkFile = 'A_stock/index_daily_sse_50.json';
 
             const response = await fetch(`${this.baseDataPath}/${benchmarkFile}`);
             if (!response.ok) throw new Error('Failed to load SSE 50 Index data');
@@ -447,8 +464,12 @@ class DataLoader {
                 return null;
             }
 
+            const marketConfig = this.getMarketConfig();
             const benchmarkName = marketConfig ? marketConfig.benchmark_display_name : 'SSE 50';
-            return this.createBenchmarkAssetHistory(benchmarkName, timeSeries, 'CNY');
+            
+            // For hourly mode, we need to expand daily benchmark to match hourly agent timestamps
+            const isHourlyMode = this.currentMarket === 'cn_hour';
+            return this.createBenchmarkAssetHistory(benchmarkName, timeSeries, 'CNY', isHourlyMode);
         } catch (error) {
             console.error('Error loading SSE 50 data:', error);
             return null;
@@ -475,7 +496,7 @@ class DataLoader {
     }
 
     // Create benchmark asset history from time series data
-    createBenchmarkAssetHistory(name, timeSeries, currency) {
+    createBenchmarkAssetHistory(name, timeSeries, currency, expandToHourly = false) {
         try {
             // Convert to asset history format
             const assetHistory = [];
@@ -496,6 +517,9 @@ class DataLoader {
             // Find the earliest start date and latest end date across all agents
             let startDate = null;
             let endDate = null;
+            // Collect all agent timestamps for hourly expansion
+            const allAgentTimestamps = new Set();
+            
             if (agentNames.length > 0) {
                 agentNames.forEach(agentName => {
                     const agent = this.agentData[agentName];
@@ -509,22 +533,44 @@ class DataLoader {
                         if (!endDate || agentEndDate > endDate) {
                             endDate = agentEndDate;
                         }
+                        
+                        // Collect all timestamps if we need to expand
+                        if (expandToHourly) {
+                            agent.assetHistory.forEach(h => allAgentTimestamps.add(h.date));
+                        }
                     }
                 });
             }
 
             let benchmarkStartPrice = null;
             let currentValue = initialValue;
-
+            
+            // Build a price map for easy lookup
+            const priceMap = {};
             for (const date of dates) {
-                if (startDate && date < startDate) continue;
-                if (endDate && date > endDate) continue;
-
-                // Support both US format ('4. close') and A-share format ('4. sell price')
                 const closePrice = timeSeries[date]['4. close'] || timeSeries[date]['4. sell price'];
-                if (!closePrice) continue;
+                if (closePrice) {
+                    priceMap[date] = parseFloat(closePrice);
+                }
+            }
 
-                const price = parseFloat(closePrice);
+            // If expanding to hourly, use agent timestamps; otherwise use benchmark dates
+            const timestampsToUse = expandToHourly ? 
+                Array.from(allAgentTimestamps).sort() : 
+                dates;
+
+            for (const timestamp of timestampsToUse) {
+                // Extract date part for daily benchmark lookup
+                const dateOnly = timestamp.split(' ')[0];
+                
+                // Skip if outside agent date range
+                if (startDate && timestamp < startDate) continue;
+                if (endDate && timestamp > endDate) continue;
+
+                // Find the benchmark price for this date
+                const price = priceMap[dateOnly];
+                if (!price) continue;
+
                 if (!benchmarkStartPrice) {
                     benchmarkStartPrice = price;
                 }
@@ -534,9 +580,9 @@ class DataLoader {
                 currentValue = initialValue * (1 + benchmarkReturn);
 
                 assetHistory.push({
-                    date: date,
+                    date: timestamp,
                     value: currentValue,
-                    id: `${name.toLowerCase().replace(/\s+/g, '-')}-${date}`,
+                    id: `${name.toLowerCase().replace(/\s+/g, '-')}-${timestamp}`,
                     action: null
                 });
             }
