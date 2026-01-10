@@ -316,9 +316,9 @@ AI-Trader Bench/
 ### 📋 Prerequisites
 
 
-- **Python 3.10+** 
-- **API Keys**: 
-  - OpenAI (for AI models)
+- **Python 3.10+**
+- **API Keys**:
+  - OpenAI (for AI models) **OR** BlockRun.AI wallet (pay-per-request alternative)
   - Alpha Vantage (for NASDAQ 100 data)
   - Jina AI (for market information search)
   - Tushare (for A-share market data, optional)
@@ -343,9 +343,17 @@ cp .env.example .env
 Create `.env` file and configure the following variables:
 
 ```bash
-# 🤖 AI Model API Configuration
+# 🤖 AI Model API Configuration (Choose ONE option)
+
+# Option 1: Traditional API Key (OpenAI/Anthropic)
 OPENAI_API_BASE=https://your-openai-proxy.com/v1
 OPENAI_API_KEY=your_openai_key
+
+# Option 2: BlockRun.AI - Pay-per-request (x402 micropayments on Base)
+# No API key needed - just a wallet. Your private key NEVER leaves your machine.
+# Only EIP-712 signatures are sent for payment authorization.
+# Get USDC on Base: https://blockrun.ai/docs/getting-started
+BLOCKRUN_WALLET_KEY=your_base_chain_wallet_private_key
 
 # 📊 Data Source Configuration
 ALPHAADVANTAGE_API_KEY=your_alpha_vantage_key  # For NASDAQ 100 and cryptocurrency data
@@ -365,6 +373,34 @@ CRYPTO_HTTP_PORT=8005
 # 🧠 AI Agent Configuration
 AGENT_MAX_STEP=30             # Maximum reasoning steps
 ```
+
+### 💳 BlockRun.AI Payment Option
+
+[BlockRun.AI](https://blockrun.ai) provides pay-per-request access to multiple LLM providers (OpenAI, Anthropic, Google, DeepSeek) via x402 micropayments on Base chain.
+
+**Why BlockRun?**
+- 🔐 **Secure**: Your private key never leaves your machine - only signatures are sent
+- 💰 **Pay-per-use**: No monthly subscriptions, pay only for what you use in USDC
+- 🌐 **Multi-provider**: Access GPT-4o, Claude, Gemini, DeepSeek via single integration
+
+**To use BlockRun**, prefix your model name with `blockrun/` in your config:
+
+```json
+{
+  "models": [
+    {
+      "name": "gpt-4o-blockrun",
+      "basemodel": "blockrun/openai/gpt-4o",
+      "signature": "gpt-4o-blockrun",
+      "enabled": true
+    }
+  ]
+}
+```
+
+Available BlockRun models: `openai/gpt-4o`, `openai/gpt-4o-mini`, `anthropic/claude-sonnet-4`, `google/gemini-2.5-pro`, `deepseek/deepseek-chat`, etc.
+
+For setup instructions, visit: [BlockRun Documentation](https://blockrun.ai/docs)
 
 ### 📦 Dependencies
 
@@ -836,6 +872,7 @@ Thanks to the following open source projects and services:
 - [Tushare](https://tushare.pro/) - China A-share market data API
 - [efinance](https://github.com/Micro-sheep/efinance) - A-share hourly data acquisition
 - [Jina AI](https://jina.ai/) - Information search service
+- [BlockRun.AI](https://blockrun.ai) - Pay-per-request LLM gateway (x402 micropayments)
 
 ## 👥 Administrator
 
