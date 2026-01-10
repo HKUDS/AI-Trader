@@ -352,7 +352,7 @@ OPENAI_API_KEY=your_openai_key
 # Option 2: BlockRun.AI - Pay-per-request (x402 micropayments on Base)
 # No API key needed - just a wallet. Your private key NEVER leaves your machine.
 # Only EIP-712 signatures are sent for payment authorization.
-# Get USDC on Base: https://blockrun.ai/docs/getting-started
+# Get USDC on Base: https://blockrun.ai/docs
 BLOCKRUN_WALLET_KEY=your_base_chain_wallet_private_key
 
 # 📊 Data Source Configuration
