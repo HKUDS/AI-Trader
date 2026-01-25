@@ -28,6 +28,12 @@ from quant_backtest.strategies import (
     MeanReversionStrategy,
 )
 from quant_backtest.data import DataFetcher, generate_sample_data, SAMPLE_SYMBOLS
+from quant_backtest.data.providers import (
+    YahooFinanceProvider,
+    UnifiedDataProvider,
+    US_STOCKS,
+    get_stock_list,
+)
 from quant_backtest.config import Settings, load_settings, save_settings
 from quant_backtest.utils.visualization import (
     plot_equity_curve,
@@ -67,8 +73,12 @@ def render_sidebar():
     st.sidebar.header("📊 Data Source")
     data_source = st.sidebar.selectbox(
         "Select Data Source",
-        ["Sample Data (Instant)", "Yahoo Finance (Free)", "AI-Trader Data", "Upload CSV"],
-        help="Choose where to get market data. Sample data requires no API."
+        [
+            "Sample Data (Instant)",
+            "Yahoo Finance (Real Data - FREE)",
+            "AI-Trader Data",
+        ],
+        help="Choose where to get market data. Yahoo Finance is FREE and requires no API key!"
     )
 
     # Symbol Selection
@@ -81,13 +91,42 @@ def render_sidebar():
             available_symbols,
             default=["AAPL", "GOOGL", "MSFT"],
         )
-    elif data_source == "Yahoo Finance (Free)":
-        symbols_input = st.sidebar.text_input(
-            "Enter Symbols (comma-separated)",
-            value="AAPL, GOOGL, MSFT",
-            help="Enter stock tickers like AAPL, GOOGL, etc."
+
+    elif data_source == "Yahoo Finance (Real Data - FREE)":
+        # Stock category presets
+        stock_preset = st.sidebar.selectbox(
+            "Quick Select",
+            ["Custom", "Tech Giants", "S&P 500 Top 20", "NASDAQ 100 Top 20",
+             "Finance", "Healthcare", "ETFs"],
+            help="Choose a preset list or enter custom symbols"
         )
-        selected_symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
+
+        preset_map = {
+            "Tech Giants": US_STOCKS.get("tech", [])[:10],
+            "S&P 500 Top 20": US_STOCKS.get("sp500_top20", []),
+            "NASDAQ 100 Top 20": US_STOCKS.get("nasdaq100_top20", []),
+            "Finance": US_STOCKS.get("finance", []),
+            "Healthcare": US_STOCKS.get("healthcare", []),
+            "ETFs": US_STOCKS.get("etfs", []),
+        }
+
+        if stock_preset == "Custom":
+            symbols_input = st.sidebar.text_input(
+                "Enter Symbols (comma-separated)",
+                value="AAPL, GOOGL, MSFT, NVDA, AMZN",
+                help="Enter US stock tickers"
+            )
+            selected_symbols = [s.strip().upper() for s in symbols_input.split(",") if s.strip()]
+        else:
+            preset_symbols = preset_map.get(stock_preset, [])
+            selected_symbols = st.sidebar.multiselect(
+                "Select from preset",
+                preset_symbols,
+                default=preset_symbols[:5] if len(preset_symbols) > 5 else preset_symbols,
+            )
+
+        st.sidebar.info("Yahoo Finance - FREE, no API key needed!")
+
     elif data_source == "AI-Trader Data":
         fetcher = DataFetcher()
         available_symbols = fetcher.get_available_symbols()
@@ -100,7 +139,8 @@ def render_sidebar():
         else:
             st.sidebar.warning("No AI-Trader data found")
             selected_symbols = []
-    else:  # Upload CSV
+
+    else:
         selected_symbols = []
 
     # Date Range
@@ -235,16 +275,19 @@ def load_data(config: dict) -> Dict[str, List[dict]]:
             seed=42,  # Reproducible results
         )
 
-    elif data_source == "Yahoo Finance (Free)":
-        fetcher = DataFetcher()
+    elif data_source == "Yahoo Finance (Real Data - FREE)":
         try:
-            return fetcher.fetch_yahoo(
+            provider = YahooFinanceProvider()
+            return provider.get_multiple(
                 symbols=symbols,
                 start_date=start_date.strftime("%Y-%m-%d"),
                 end_date=end_date.strftime("%Y-%m-%d"),
             )
         except ImportError:
             st.error("yfinance not installed. Run: pip install yfinance")
+            return {}
+        except Exception as e:
+            st.error(f"Error fetching data: {e}")
             return {}
 
     elif data_source == "AI-Trader Data":
@@ -456,10 +499,11 @@ def render_main_content():
     st.markdown("""
     **Free, open-source quantitative algorithm tracking and backtesting.**
 
-    - ✅ **Zero Cost** - No API keys or subscriptions required
-    - 📊 **Multiple Strategies** - SMA, RSI, MACD, Bollinger Bands, and more
-    - 📈 **Rich Analytics** - Sharpe ratio, max drawdown, win rate, and more
-    - 🔧 **Fully Customizable** - Adjust parameters to match your requirements
+    - ✅ **100% Free** - Yahoo Finance real data with no API key required
+    - 📊 **6 Built-in Strategies** - SMA, RSI, MACD, Bollinger Bands, Momentum, Mean Reversion
+    - 📈 **Rich Analytics** - Sharpe ratio, Sortino, max drawdown, win rate, and more
+    - 🔧 **Fully Customizable** - Adjust all parameters to match your trading style
+    - 📰 **Real Market Data** - Trade on actual US stock data from Yahoo Finance
     """)
 
     st.markdown("---")
