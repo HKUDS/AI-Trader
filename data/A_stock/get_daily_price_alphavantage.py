@@ -109,14 +109,15 @@ def load_existing_data(filepath: str):
 
 def get_daily_price(SYMBOL: str):
     FUNCTION = "TIME_SERIES_DAILY"
-    OUTPUTSIZE = "full"
+    OUTPUTSIZE = "compact"
     APIKEY = os.getenv("ALPHAADVANTAGE_API_KEY")
     url = (
-        f"https://www.alphavantage.co/query?function={FUNCTION}&symbol={SYMBOL}&outputsize={OUTPUTSIZE}&apikey={APIKEY}"
+        f"https://www.alphavantage.co/query?function={FUNCTION}&symbol={SYMBOL}&entitlement=delayed&outputsize={OUTPUTSIZE}&apikey={APIKEY}"
     )
     r = requests.get(url)
     data = r.json()
-    print(data)
+    stock_name = data.get("Meta Data").get("2. Symbol")
+    print("Done for ", stock_name)
     if data.get("Note") is not None or data.get("Information") is not None:
         print(f"Error")
         exit()
@@ -142,7 +143,7 @@ def get_daily_price(SYMBOL: str):
             json.dump(adaily_data, f, ensure_ascii=False, indent=4)
         
         # 对于 index_daily_sse_50.json，也需要合并
-        index_file = "./index_daily_sse_50.json"
+        index_file = "./A_stock_data/index_daily_sse_50.json"
         existing_index_data = load_existing_data(index_file)
         index_data = data.copy()
         index_data["Meta Data"]["2. Symbol"] = "000016.SH"

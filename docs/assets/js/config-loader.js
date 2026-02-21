@@ -150,6 +150,18 @@ class ConfigLoader {
         return this.config.ui;
     }
 
+    // Get cache configuration
+    getCacheConfig() {
+        if (!this.config || !this.config.cache) {
+            return {
+                enabled: true,
+                max_age_days: 7,
+                show_performance_metrics: true
+            };
+        }
+        return this.config.cache;
+    }
+
     // Check if an agent is enabled
     isAgentEnabled(folderName) {
         const agent = this.getAgentConfig(folderName);

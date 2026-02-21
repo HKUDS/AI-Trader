@@ -7,9 +7,9 @@ import pandas as pd
 
 
 def convert_a_stock_to_jsonl(
-    csv_path: str = "daily_prices_sse_50.csv",
+    csv_path: str = "A_stock_data/daily_prices_sse_50.csv",
     output_path: str = "merged.jsonl",
-    stock_name_csv: str = "sse_50_weight.csv",
+    stock_name_csv: str = "A_stock_data/sse_50_weight.csv",
 ) -> None:
     """Convert A-share CSV data to JSONL format compatible with the trading system.
 
@@ -20,9 +20,9 @@ def convert_a_stock_to_jsonl(
     - Includes stock name from sse_50_weight.csv for better AI understanding
 
     Args:
-        csv_path: Path to the A-share daily price CSV file
-        output_path: Path to output JSONL file
-        stock_name_csv: Path to SSE 50 weight CSV containing stock names
+        csv_path: Path to the A-share daily price CSV file (default: A_stock_data/daily_prices_sse_50.csv)
+        output_path: Path to output JSONL file (default: A_stock_data/merged.jsonl)
+        stock_name_csv: Path to SSE 50 weight CSV containing stock names (default: A_stock_data/sse_50_weight.csv)
     """
     csv_path = Path(csv_path)
     output_path = Path(output_path)
@@ -99,7 +99,7 @@ def convert_a_stock_to_jsonl(
                     "2. Symbol": ts_code,
                     "2.1. Name": stock_name,
                     "3. Last Refreshed": latest_date_formatted,
-                    "4. Output Size": "Full",
+                    "4. Output Size": "Full Size",
                     "5. Time Zone": "Asia/Shanghai",
                 },
                 "Time Series (Daily)": time_series,

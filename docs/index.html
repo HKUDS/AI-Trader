@@ -23,6 +23,11 @@
             <div class="market-selector">
                 <button id="usMarketBtn" class="market-btn active" data-market="us">🇺🇸 US Market</button>
                 <button id="cnMarketBtn" class="market-btn" data-market="cn">🇨🇳 A-Shares</button>
+                <div id="granularityWrapper" class="granularity-wrapper hidden">
+                    <div class="granularity-divider"></div>
+                    <button id="dailyBtn" class="granularity-btn active" title="Daily Data">1D</button>
+                    <button id="hourlyBtn" class="granularity-btn" title="Hourly Data">1H</button>
+                </div>
             </div>
             <a href="https://github.com/HKUDS/AI-Trader" target="_blank" rel="noopener noreferrer" class="github-link" aria-label="View source on GitHub">
                 <svg class="github-icon" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
@@ -123,8 +128,9 @@
         <p>AI-Trader &copy; 2025 | AI-Powered Trading Agent Benchmark</p>
     </footer>
 
-    <script src="assets/js/config-loader.js?v=12.0"></script>
-    <script src="assets/js/data-loader.js?v=12.0"></script>
+    <script src="assets/js/config-loader.js?v=14.0"></script>
+    <script src="assets/js/cache-manager.js?v=3.0"></script>
+    <script src="assets/js/data-loader.js?v=14.0"></script>
     <script src="assets/js/transaction-loader.js?v=12.0"></script>
     <script src="assets/js/asset-chart.js?v=12.0"></script>
 </body>

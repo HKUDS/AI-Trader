@@ -30,6 +30,7 @@ def _workspace_data_path(filename: str, symbol: Optional[str] = None) -> Path:
         filename: Data filename (e.g., 'merged.jsonl')
         symbol: Stock symbol for auto-detecting market type.
                 If symbol ends with .SH or .SZ, use A-stock data path.
+                If symbol ends with -USDT, use crypto data path.
 
     Returns:
         Path to the data file
@@ -40,6 +41,10 @@ def _workspace_data_path(filename: str, symbol: Optional[str] = None) -> Path:
     if symbol and (symbol.endswith(".SH") or symbol.endswith(".SZ")):
         # Chinese A-shares
         return base_dir / "data" / "A_stock" / filename
+    elif symbol and symbol.endswith("-USDT"):
+        # Cryptocurrencies
+        crypto_filename = "crypto_merged.jsonl" if filename == "merged.jsonl" else filename
+        return base_dir / "data" / "crypto" / crypto_filename
     else:
         # US stocks (default)
         return base_dir / "data" / filename

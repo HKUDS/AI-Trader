@@ -59,7 +59,22 @@ class BaseAgent_Hour(BaseAgent):
             tools=self.tools,
             system_prompt=get_agent_system_prompt(today_date, self.signature),
         )
-        
+        # If verbose, try to attach console callbacks to the agent itself
+        if getattr(self, "verbose", False):
+            try:
+                from agent.base_agent.base_agent import _ConsoleHandler  # reuse resolved handler
+                if _ConsoleHandler is not None:
+                    handler = _ConsoleHandler()
+                    self.agent = self.agent.with_config({
+                        "callbacks": [handler],
+                        "tags": [self.signature, today_date],
+                        "run_name": f"{self.signature}-session"
+                    })
+                else:
+                    print("⚠️ Verbose requested but no StdOut/Console callback handler found in current LangChain version.")
+            except Exception:
+                pass
+
         # Initial user query
         user_query = [{"role": "user", "content": f"Please analyze and update today's ({today_date}) positions."}]
         message = user_query.copy()

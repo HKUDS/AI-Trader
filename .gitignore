@@ -1,4 +1,3 @@
-CLAUDE.md
 logs/
 data/*.json
 data/*.jsonl
@@ -85,6 +84,7 @@ configs/hour_config.json
 configs/test_config.json
 configs/test_day_config.json
 configs/astock.json
+configs/astock_hour.json
 configs/test_*.json
 
 # Data directories (optional - uncomment if needed)
@@ -106,3 +106,16 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
+# Documentation
+CLAUDE.md
+plan.md
+*_plan.md
+design.md
+deprecated/
+*_SUCCESS.md
+test_*.py
+*.backup
+/data/*_test_agent/
+*__test*
+*_test.json
+*_backup_*

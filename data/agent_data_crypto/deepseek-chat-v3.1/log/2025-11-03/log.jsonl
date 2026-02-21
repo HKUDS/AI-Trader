@@ -1,0 +1,2 @@
+{"signature": "deepseek-chat-v3.1", "new_messages": [{"role": "user", "content": "Please analyze and update today's (2025-11-03) positions."}]}
+{"signature": "deepseek-chat-v3.1", "new_messages": [{"role": "assistant", "content": "<FINISH_SIGNAL>"}]}

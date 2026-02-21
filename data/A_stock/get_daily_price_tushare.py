@@ -215,8 +215,8 @@ def get_daily_price_a_stock(
         df2 = df2.sort_values(by=["trade_date", "ts_code"], ascending=True).reset_index(drop=True)
 
         if output_dir is None:
-            # Use absolute path relative to script location (already in A_stock directory)
-            output_dir = Path(__file__).parent
+            # Use A_stock_data subdirectory as default
+            output_dir = Path(__file__).parent / "A_stock_data"
         else:
             output_dir = Path(output_dir)
 
@@ -365,13 +365,13 @@ def get_index_daily_data(
 
 
 if __name__ == "__main__":
-    fallback_path = Path(__file__).parent / "sse_50_weight.csv"
+    fallback_path = Path(__file__).parent / "A_stock_data" / "sse_50_weight.csv"
 
     # Get constituent stocks daily prices
-    df = get_daily_price_a_stock(index_code="000016.SH", daily_start_date="20250101", fallback_csv=fallback_path)
+    df = get_daily_price_a_stock(index_code="000016.SH", daily_start_date="20251001", fallback_csv=fallback_path)
 
     # Get index daily data and convert to JSON
     print("\n" + "=" * 50)
     print("Fetching index daily data...")
     print("=" * 50)
-    df_index = get_index_daily_data(index_code="000016.SH", start_date="20250101")
+    df_index = get_index_daily_data(index_code="000016.SH", start_date="20251001")
