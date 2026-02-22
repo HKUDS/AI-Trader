@@ -1,0 +1,23 @@
+{
+  "okx": {
+    "url": "wss://wspri.coinall.ltd:8443/ws/v5/public",
+    "symbol": "BTC-USDT",
+    "channels": ["candle3m"],
+    "ping_interval": 25,
+    "reconnect_delay": 5
+  },
+  "strategy": {
+    "strategy_type": "reversal_rsi",
+    "strategy_params": {
+      "rsi_name": "rsi_14",
+      "ma_name": "ma_20",
+      "consecutive_bearish": 4
+    },
+    "history_size": 100
+  },
+  "agent": {
+    "trigger_interval_seconds": 60,
+    "trigger_on_candle": true
+  },
+  "max_candle_buffer": 500
+}

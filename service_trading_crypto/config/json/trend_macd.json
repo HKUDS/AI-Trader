@@ -1,0 +1,19 @@
+{
+  "okx": {
+    "url": "wss://wspri.coinall.ltd:8443/ws/v5/public",
+    "symbol": "BTC-USDT",
+    "channels": ["candle4H", "candle15m"],
+    "ping_interval": 25,
+    "reconnect_delay": 5
+  },
+  "strategy": {
+    "strategy_type": "trend_macd",
+    "strategy_params": {},
+    "history_size": 100
+  },
+  "agent": {
+    "trigger_interval_seconds": 60,
+    "trigger_on_candle": true
+  },
+  "max_candle_buffer": 500
+}

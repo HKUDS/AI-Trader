@@ -1,0 +1,9 @@
+# WebSocket: OKX market data stream
+websockets==16.0
+
+# Agent (LLM + MCP), optional when using rule-based strategy only
+langchain==1.0.2
+langchain-openai==1.0.1
+langchain-mcp-adapters==0.2.1
+fastmcp==2.12.5
+python-dotenv==1.2.1
