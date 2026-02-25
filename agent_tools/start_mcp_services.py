@@ -66,7 +66,7 @@ class MCPServiceManager:
             result = sock.connect_ex(("localhost", port))
             sock.close()
             return result != 0  # Port is available if connection failed
-        except:
+        except OSError:
             return False
 
     def check_port_conflicts(self):
@@ -154,7 +154,7 @@ class MCPServiceManager:
             result = sock.connect_ex(("localhost", port))
             sock.close()
             return result == 0
-        except:
+        except OSError:
             return False
 
     def start_all_services(self):
