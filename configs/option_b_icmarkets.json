@@ -1,10 +1,10 @@
 {
     "agent_type": "BaseAgentForex",
     "market": "forex",
-    "instance": "option_a",
+    "instance": "option_b",
 
     "date_range": {
-        "init_date": "2026-01-01",
+        "init_date": "2026-03-01",
         "end_date": "2026-12-31"
     },
 
@@ -14,8 +14,8 @@
 
         "firm_rules": {
             "compound": {
-                "description": "Option A: IC Markets micro account - aggressive compound from £47 upward",
-                "profit_target_percent": 100.0,
+                "description": "Option B: IC Markets personal account - compound £50 to £50,000",
+                "profit_target_percent": 99900.0,
                 "firm_max_daily_loss_percent": 20.0,
                 "firm_max_total_drawdown_percent": 50.0,
                 "drawdown_type": "fixed",
@@ -24,13 +24,24 @@
                 "phases": 1,
                 "leverage": "1:500",
                 "news_trading_allowed": true,
-                "weekend_holding_allowed": false
+                "weekend_holding_allowed": false,
+                "account_type": "personal",
+                "broker": "IC Markets"
             }
         },
 
+        "milestones": {
+            "_comment": "Compound milestones - adjust risk as account grows",
+            "phase_1": { "from": 50, "to": 500, "risk_percent": 3.0, "description": "Aggressive micro lot phase" },
+            "phase_2": { "from": 500, "to": 2500, "risk_percent": 2.5, "description": "Building momentum" },
+            "phase_3": { "from": 2500, "to": 10000, "risk_percent": 2.0, "description": "Scaling up carefully" },
+            "phase_4": { "from": 10000, "to": 25000, "risk_percent": 1.5, "description": "Protecting gains" },
+            "phase_5": { "from": 25000, "to": 50000, "risk_percent": 1.0, "description": "Conservative finish" }
+        },
+
         "personal_rules": {
-            "_comment": "Option A: More aggressive risk for small account compounding, but still disciplined",
-            "risk_percent_per_trade": 2.0,
+            "_comment": "Option B: Aggressive compounding with disciplined risk management - £50 to £50,000",
+            "risk_percent_per_trade": 3.0,
             "max_risk_percent_per_trade": 5.0,
             "personal_daily_loss_cap_ratio": 0.5,
             "max_trades_per_day": 3,
@@ -38,7 +49,7 @@
             "stop_trading_after_consecutive_losses": 2,
             "stop_trading_after_daily_loss_trades": 3,
             "reduce_size_at_target_percent": 60,
-            "reduced_risk_percent": 1.0,
+            "reduced_risk_percent": 1.5,
             "min_risk_reward_ratio": 1.5,
             "max_spread_pips": 2.0,
             "avoid_news_window_minutes": 30,
@@ -51,14 +62,17 @@
             "preferred_session": "london_ny_overlap"
         },
 
-        "account_size": 47.33,
+        "account_size": 50.0,
+        "account_currency": "GBP",
+        "target_balance": 50000.0,
 
         "behavioral_rules": {
             "after_loss_action": "reduce_next_trade_size_or_stop",
             "after_two_consecutive_losses": "stop_trading_for_session",
             "no_revenge_trading": true,
             "no_strategy_switching": true,
-            "journal_every_trade": true
+            "journal_every_trade": true,
+            "scale_risk_with_milestones": true
         }
     },
 
@@ -70,7 +84,7 @@
         {
             "name": "claude-sonnet-4-6",
             "basemodel": "anthropic/claude-sonnet-4-6",
-            "signature": "option-a-icmarkets",
+            "signature": "option-b-icmarkets",
             "enabled": true
         }
     ],
@@ -79,7 +93,7 @@
         "max_steps": 50,
         "max_retries": 3,
         "base_delay": 2.0,
-        "initial_cash": 47.33,
+        "initial_cash": 50.0,
         "verbose": true
     },
 
