@@ -268,6 +268,7 @@ async def main(config_path=None):
                 # Forex agent with full challenge config and MT4/MT5 support
                 challenge_config = config.get("challenge_config", {})
                 mt4_mt5_config = config.get("mt4_mt5_config", {})
+                live_loop_cfg = config.get("live_loop_config", {})
                 agent = AgentClass(
                     signature=signature,
                     basemodel=basemodel,
@@ -282,6 +283,8 @@ async def main(config_path=None):
                     openai_api_key=openai_api_key,
                     challenge_config=challenge_config,
                     mt4_mt5_config=mt4_mt5_config,
+                    trading_sessions=live_loop_cfg.get("trading_sessions"),
+                    loop_interval_seconds=live_loop_cfg.get("interval_seconds", 300),
                 )
             elif agent_type == "BaseAgentCrypto":
                 agent = AgentClass(
@@ -316,8 +319,17 @@ async def main(config_path=None):
             # Initialize MCP connection and AI model
             await agent.initialize()
             print("✅ Initialization successful")
-            # Run all trading days in date range
-            await agent.run_date_range(INIT_DATE, END_DATE)
+
+            # Check if live loop mode is enabled (forex only)
+            live_loop_config = config.get("live_loop_config", {})
+            if agent_type == "BaseAgentForex" and live_loop_config.get("enabled", False):
+                print("🔴 LIVE LOOP MODE ENABLED")
+                print(f"   Interval: {live_loop_config.get('interval_seconds', 300)}s")
+                print(f"   Sessions: {live_loop_config.get('trading_sessions', ['london_ny_overlap'])}")
+                await agent.run_live_loop()
+            else:
+                # Run all trading days in date range
+                await agent.run_date_range(INIT_DATE, END_DATE)
 
             # Display final position summary
             summary = agent.get_position_summary()
