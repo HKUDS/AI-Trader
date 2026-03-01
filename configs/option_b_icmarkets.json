@@ -62,7 +62,7 @@
             "preferred_session": "london_ny_overlap"
         },
 
-        "account_size": 50.0,
+        "account_size": 49.58,
         "account_currency": "GBP",
         "target_balance": 50000.0,
 
@@ -93,7 +93,7 @@
         "max_steps": 50,
         "max_retries": 3,
         "base_delay": 2.0,
-        "initial_cash": 50.0,
+        "initial_cash": 49.58,
         "verbose": true
     },
 
