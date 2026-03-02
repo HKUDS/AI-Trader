@@ -12,7 +12,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 load_dotenv()
 
-from prompts.agent_prompt import all_nasdaq_100_symbols
 # Import tools and prompts
 from tools.general_tools import get_config_value, write_config_value
 
@@ -263,6 +262,7 @@ async def main(config_path=None):
 
             stock_symbols = all_sse_50_symbols
         else:
+            from prompts.agent_prompt import all_nasdaq_100_symbols
             stock_symbols = all_nasdaq_100_symbols
 
         try:
