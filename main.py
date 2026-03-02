@@ -12,8 +12,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 load_dotenv()
 
-# Import tools and prompts
-from tools.general_tools import get_config_value, write_config_value
+# tools.general_tools is imported lazily inside main() to avoid
+# failures on sparse-checkout setups that only have forex files.
 
 # Agent class mapping table - for dynamic import and instantiation
 AGENT_REGISTRY = {
@@ -223,7 +223,8 @@ async def main(config_path=None):
             
         # Initialize runtime configuration
         # Use the shared config file from RUNTIME_ENV_PATH in .env
-        
+        from tools.general_tools import get_config_value, write_config_value
+
         project_root = _Path(__file__).resolve().parent
         
         # Get log path configuration
