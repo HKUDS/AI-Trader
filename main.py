@@ -1,10 +1,14 @@
 import asyncio
 import json
 import os
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from pathlib import Path as _Path
 from dotenv import load_dotenv
+
+# Ensure project root is on sys.path so submodules resolve on all platforms
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 load_dotenv()
 
