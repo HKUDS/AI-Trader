@@ -304,7 +304,7 @@ class BaseAgentForex:
                 print(f"Survivable losing streak: ~{losing_streak} consecutive losses "
                       f"before firm DD breach")
             print(f"Min trading days: {self.min_trading_days}")
-            print(f"Min R:R ratio: {self.min_rr_ratio}:1")
+            print(f"Min R:R ratio: 1:{self.min_rr_ratio}")
 
         if not self.openai_api_key:
             if is_anthropic_model(self.basemodel):

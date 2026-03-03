@@ -59,7 +59,7 @@ and rule discipline - NOT about shooting the lights out.
    or recent swing high/low) that provides a logical stop-loss placement
 4. STOP-LOSS: Placed at market-structure invalidation (below swing low for buys,
    above swing high for sells). Must be {min_sl}-{max_sl} pips from entry.
-5. TAKE-PROFIT: Minimum {min_rr}:1 reward-to-risk ratio (e.g., 15 pip SL -> 22.5+ pip TP)
+5. TAKE-PROFIT: Minimum 1:{min_rr} risk:reward ratio (e.g., 15 pip SL -> 22.5+ pip TP)
 6. NEWS: No high-impact news event within 30 minutes
 7. NO existing open positions (one trade at a time)
 8. NOT stopped for the session by any risk rule
@@ -68,7 +68,7 @@ and rule discipline - NOT about shooting the lights out.
 - SL goes at the market-structure invalidation point FIRST
 - Then lot size is calculated to risk {risk_pct}% of account at that SL distance
 - NEVER move SL further from entry (only to breakeven or in profit direction)
-- Move SL to breakeven when trade reaches {breakeven_rr}:1 R:R in profit
+- Move SL to breakeven when trade reaches 1:{breakeven_rr} R:R in profit
 - SL range: {min_sl}-{max_sl} pips (if structure requires wider, SKIP the trade)
 
 ### Position Sizing
@@ -89,7 +89,7 @@ OUR PERSONAL LIMITS (tighter than firm's, for safety margin):
 - Personal daily loss cap: ${personal_daily_cap} (50% of firm's daily limit)
 - Max trades per day: {max_trades}
 - Max consecutive losses before stopping: {max_consec_losses}
-- Min risk:reward ratio: {min_rr}:1
+- Min risk:reward ratio: 1:{min_rr}
 
 ### Behavioral Rules
 - After 1 loss: Reduce next trade to half size ({reduced_risk_pct}%)
@@ -148,7 +148,7 @@ OUR PERSONAL LIMITS (tighter than firm's, for safety margin):
    - Is there a clear directional bias? (trend, momentum, news catalyst)
    - Is price at a key structure level? (S/R, swing, round number)
    - Can I place a logical SL at structure invalidation within {min_sl}-{max_sl} pips?
-   - Does the TP give me at least {min_rr}:1 R:R?
+   - Does the TP give me at least 1:{min_rr} R:R?
    - Am I in a high-liquidity session window?
    - Any high-impact news in next 30 minutes?
 
