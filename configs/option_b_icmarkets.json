@@ -107,9 +107,9 @@
     },
 
     "live_loop_config": {
-        "enabled": false,
+        "enabled": true,
         "interval_seconds": 300,
-        "trading_sessions": ["london_ny_overlap"]
+        "trading_sessions": ["london", "new_york"]
     },
 
     "log_config": {

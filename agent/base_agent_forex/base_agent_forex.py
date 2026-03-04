@@ -546,6 +546,7 @@ class BaseAgentForex:
         self.daily_pnl = 0.0
         self.trades_today = 0
         self.losses_today = 0
+        self.consecutive_losses = 0
         self.session_stopped = False
         self.total_trading_days += 1
 
@@ -917,8 +918,16 @@ class BaseAgentForex:
                   f"Target: ${self.target_balance:,.0f}")
 
         cycle = 0
+        current_trading_date = None
         while True:
             try:
+                # Reset daily state when the date changes
+                today = datetime.utcnow().strftime("%Y-%m-%d")
+                if today != current_trading_date:
+                    current_trading_date = today
+                    self.start_new_trading_day()
+                    print(f"\n--- New trading day: {today} ---")
+
                 if not self.is_valid_trading_time():
                     print(f"Outside trading session. "
                           f"Sleeping {self.loop_interval_seconds}s...")
