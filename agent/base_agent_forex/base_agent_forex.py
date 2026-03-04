@@ -166,15 +166,20 @@ class BaseAgentForex:
             "min_trading_days", self.firm.get("min_trading_days_per_phase", 10))
         self.weekend_holding_allowed = self.firm.get("weekend_holding_allowed", False)
 
-        # Profit target
+        # Profit target — use explicit target_balance from config if provided
+        explicit_target = self.challenge_config.get("target_balance")
         profit_target_pct = self.firm.get("profit_target_percent")
         if profit_target_pct is None:
-            # 2-step: use phase 1 target to start
             phase_1 = self.firm.get("phase_1_target_percent", 8.0)
             profit_target_pct = phase_1
-        self.profit_target = self.account_size * (profit_target_pct / 100)
         self.profit_target_pct = profit_target_pct
-        self.target_balance = self.account_size + self.profit_target
+
+        if explicit_target is not None:
+            self.target_balance = float(explicit_target)
+            self.profit_target = self.target_balance - self.account_size
+        else:
+            self.profit_target = self.account_size * (profit_target_pct / 100)
+            self.target_balance = self.account_size + self.profit_target
 
         # Personal limits (our tighter guardrails)
         daily_cap_ratio = self.personal.get("personal_daily_loss_cap_ratio", 0.5)
@@ -184,10 +189,11 @@ class BaseAgentForex:
         self.reduced_risk_percent = self.personal.get("reduced_risk_percent", 0.25)
         self.reduce_size_at_pct = self.personal.get("reduce_size_at_target_percent", 60)
         self.min_rr_ratio = self.personal.get("min_risk_reward_ratio", 1.5)
-        self.max_trades_per_day = self.personal.get("max_trades_per_day", 3)
+        self.max_trades_per_day = self.personal.get(
+            "max_trades_per_day", 5 if self.is_compound_mode else 3)
         self.max_concurrent_trades = self.personal.get("max_concurrent_trades", 1)
         self.stop_after_consecutive_losses = self.personal.get(
-            "stop_trading_after_consecutive_losses", 2)
+            "stop_trading_after_consecutive_losses", 3 if self.is_compound_mode else 2)
         self.max_spread_pips = self.personal.get("max_spread_pips", 2.0)
         self.max_sl_pips = self.personal.get("max_sl_pips", 30)
         self.min_sl_pips = self.personal.get("min_sl_pips", 5)
@@ -297,22 +303,23 @@ class BaseAgentForex:
         """Initialize MCP client and AI model."""
         print(f"Initializing forex agent: {self.signature}")
         print(f"Mode: {'CHALLENGE' if self.challenge_mode else 'STANDARD'}")
+        ccy = self.challenge_config.get("account_currency", "$")
         if self.challenge_mode:
             print(f"Challenge type: {self.challenge_type.upper()}")
             desc = self.firm.get("description", "")
             if desc:
                 print(f"  {desc}")
-            print(f"Account size: ${self.account_size:,.0f}")
-            print(f"Profit target: ${self.profit_target:,.0f} "
-                  f"({self.profit_target_pct}%) -> ${self.target_balance:,.0f}")
-            print(f"Firm limits: {self.firm_daily_loss_pct}% daily loss "
-                  f"(${self.firm_daily_loss_limit:,.0f}) / "
+            print(f"Account size: {ccy}{self.account_size:,.0f}")
+            print(f"Profit target: {ccy}{self.profit_target:,.0f} "
+                  f"-> {ccy}{self.target_balance:,.0f}")
+            print(f"Limits: {self.firm_daily_loss_pct}% daily loss "
+                  f"({ccy}{self.firm_daily_loss_limit:,.0f}) / "
                   f"{self.firm_max_dd_pct}% total DD "
-                  f"(${self.firm_max_drawdown:,.0f}) [{self.drawdown_type}]")
-            print(f"Our risk per trade: {self.risk_percent}% "
-                  f"(${self.account_size * self.risk_percent / 100:,.0f})")
-            print(f"Our daily loss cap: ${self.personal_daily_loss_cap:,.0f} "
-                  f"(50% of firm's ${self.firm_daily_loss_limit:,.0f})")
+                  f"({ccy}{self.firm_max_drawdown:,.0f}) [{self.drawdown_type}]")
+            print(f"Risk per trade: {self.risk_percent}% "
+                  f"({ccy}{self.account_size * self.risk_percent / 100:,.2f})")
+            print(f"Daily loss cap: {ccy}{self.personal_daily_loss_cap:,.0f} "
+                  f"(50% of firm's {ccy}{self.firm_daily_loss_limit:,.0f})")
             risk_per_trade = self.account_size * self.risk_percent / 100
             if risk_per_trade > 0:
                 losing_streak = int(self.firm_max_drawdown / risk_per_trade)
@@ -1009,9 +1016,10 @@ class BaseAgentForex:
         print(f"Interval: {self.loop_interval_seconds}s")
         print(f"Sessions: {self.trading_sessions}")
         print(f"Pairs: {self.forex_symbols}")
+        ccy = self.challenge_config.get("account_currency", "$")
         if self.challenge_mode:
             print(f"Challenge: {self.challenge_type} | "
-                  f"Target: ${self.target_balance:,.0f}")
+                  f"Target: {ccy}{self.target_balance:,.0f}")
 
         cycle = 0
         current_trading_date = None
@@ -1033,14 +1041,15 @@ class BaseAgentForex:
                 cycle += 1
                 session_id = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
                 status = self.get_challenge_status()
+                ccy = status.get("account_currency", "$")
                 print(f"\n{'='*60}")
                 print(f"Cycle {cycle} | {session_id}")
-                print(f"Balance: ${status['balance']:,.2f} | "
-                      f"P/L: ${status['total_pnl']:+,.2f} | "
+                print(f"Balance: {ccy}{status['balance']:,.2f} | "
+                      f"P/L: {ccy}{status['total_pnl']:+,.2f} | "
                       f"Progress: {status['progress_pct']:.1f}% | "
                       f"Risk: {status['current_risk_pct']}%")
-                print(f"DD room: ${status['drawdown_room_remaining']:,.0f} | "
-                      f"Daily room: ${status['daily_loss_room']:,.0f} | "
+                print(f"DD room: {ccy}{status['drawdown_room_remaining']:,.0f} | "
+                      f"Daily room: {ccy}{status['daily_loss_room']:,.0f} | "
                       f"Trades today: {status['trades_today']}/{status['max_trades_today']}")
                 print(f"{'='*60}")
 
@@ -1088,8 +1097,9 @@ class BaseAgentForex:
                 "challenge_state": self.get_challenge_status(),
             }) + "\n")
 
+        ccy = self.challenge_config.get("account_currency", "$")
         print(f"Forex Agent {self.signature} registered")
-        print(f"Balance: ${self.initial_cash:,.0f}")
+        print(f"Balance: {ccy}{self.initial_cash:,.0f}")
         print(f"Pairs: {len(self.forex_symbols)}")
 
     def get_trading_dates(self, init_date: str, end_date: str) -> List[str]:
