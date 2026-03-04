@@ -1,22 +1,13 @@
 """
-BaseAgentForex class - Autonomous forex trading agent for prop firm challenges.
+BaseAgentForex class - Autonomous forex trading agent.
 
-Designed to PASS prop firm evaluations (FundedNext Express, Stellar 1-Step,
-Stellar 2-Step, Stellar Instant) through strict risk control, a simple edge,
-and rule discipline - not aggressive compounding.
+Supports two modes:
+1. PROP FIRM CHALLENGE: Conservative risk, pass the evaluation
+2. COMPOUND MODE: Aggressive compounding from micro to target (e.g. £50 → £50k)
 
-Core principle: Don't hit drawdown. Structure risk so a 5-8 trade losing
-streak is survivable, and the profit target is reached through consistent
-small wins over time.
-
-Key design decisions:
-- Risk 0.5% per trade (well below any firm's daily limit)
-- Personal daily loss cap at 50% of the firm's daily limit
-- Reduce size when 60-80% of the way to target
-- Stop after 2 consecutive losses in a session
-- Max 3 trades per day
-- No strategy switching mid-challenge
-- No weekend holding (firm rule)
+In compound mode, risk scales dynamically with balance milestones defined in
+the challenge config. Early phases are aggressive (3-5%) to build capital fast;
+later phases taper down (1-1.5%) to protect compounded gains.
 
 Trading backends:
 - mt5_native: Direct MetaTrader5 IPC (Windows, lowest latency)
@@ -54,17 +45,10 @@ load_dotenv()
 
 class BaseAgentForex:
     """
-    Autonomous forex trading agent for prop firm challenge evaluation.
+    Autonomous forex trading agent supporting prop firm and compound modes.
 
-    Operates with disciplined risk management designed to pass challenges
-    by protecting capital first and letting profits accumulate through
-    consistent, small-risk trades.
-
-    Supports FundedNext challenge types:
-    - Express: 12.5% target, 2.5% daily loss, 5% max drawdown
-    - Stellar 1-Step: 10% target, 3% daily loss, 6% trailing DD
-    - Stellar 2-Step: 8%+5% targets, 5% daily loss, 10% max DD
-    - Stellar Instant: No target, 6% trailing DD (funded immediately)
+    In compound mode, risk is milestone-driven: aggressive at small balances
+    to build capital, tapering as the account grows to protect gains.
     """
 
     MAJOR_PAIRS = [
@@ -156,6 +140,12 @@ class BaseAgentForex:
 
         # Load behavioral rules
         self.behavioral = self.challenge_config.get("behavioral_rules", {})
+
+        # Load compound milestones (for milestone-based risk scaling)
+        self.milestones = self._parse_milestones(
+            self.challenge_config.get("milestones", {})
+        )
+        self.is_compound_mode = self.challenge_type == "compound"
 
         # Account size from config
         account_size = self.challenge_config.get("account_size", initial_cash)
@@ -262,6 +252,31 @@ class BaseAgentForex:
             return float('inf')
         return self.account_size * (float(pct) / 100)
 
+    def _get_current_milestone(self, balance: float) -> Optional[Dict[str, Any]]:
+        """Return the milestone dict for the current balance, or None."""
+        for ms in self.milestones:
+            if ms["from"] <= balance < ms["to"]:
+                return ms
+        if self.milestones and balance >= self.milestones[-1]["to"]:
+            return self.milestones[-1]
+        return None
+
+    @staticmethod
+    def _parse_milestones(milestones_dict: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Parse milestone config into sorted list of {from, to, risk_percent}."""
+        parsed = []
+        for key, val in milestones_dict.items():
+            if key.startswith("_"):
+                continue
+            if isinstance(val, dict) and "from" in val and "to" in val:
+                parsed.append({
+                    "from": float(val["from"]),
+                    "to": float(val["to"]),
+                    "risk_percent": float(val.get("risk_percent", 3.0)),
+                })
+        parsed.sort(key=lambda m: m["from"])
+        return parsed
+
     def _get_default_mcp_config(self) -> Dict[str, Dict[str, Any]]:
         return {
             "math": {
@@ -349,26 +364,61 @@ class BaseAgentForex:
 
     def get_current_risk_percent(self) -> float:
         """
-        Adaptive risk sizing based on challenge progress and recent results.
+        Adaptive risk sizing based on balance milestones and recent results.
 
-        Normal trading: 0.5% per trade
-        After 1 loss: 0.25% (half size)
-        60%+ to target: 0.25% (protect gains)
-        80%+ to target: 0.15% (cruise to finish)
+        COMPOUND MODE (milestone-driven):
+          Uses milestones from config to scale risk with account size.
+          After a loss: drops one milestone tier (not to unusable levels).
+          Minimum risk is floored so 0.01 lot is still openable.
+
+        PROP FIRM MODE (progress-driven):
+          60%+ to target: reduced risk
+          80%+ to target: cruise mode
+          After a loss: half size
         """
         if not self.challenge_mode:
             return self.risk_percent
 
+        # ── Compound mode: milestone-based scaling ──
+        if self.is_compound_mode and self.milestones:
+            bal = self.current_balance
+            base_risk = self.risk_percent  # fallback
+
+            # Find which milestone we're in
+            for ms in self.milestones:
+                if ms["from"] <= bal < ms["to"]:
+                    base_risk = ms["risk_percent"]
+                    break
+            else:
+                # Above all milestones — use the last (most conservative)
+                if bal >= self.milestones[-1]["to"]:
+                    base_risk = self.milestones[-1]["risk_percent"]
+                # Below all milestones — use the first (most aggressive)
+                elif bal < self.milestones[0]["from"]:
+                    base_risk = self.milestones[0]["risk_percent"]
+
+            # After a loss: step down by ~30% but floor at a usable level
+            # Floor: ensure risk_amount >= $0.50 (enough for 0.01 lot with ~50 pip SL)
+            if self.consecutive_losses >= 1:
+                base_risk = base_risk * 0.7
+            if self.consecutive_losses >= 2:
+                base_risk = base_risk * 0.5
+
+            # Absolute floor: enough to open minimum lot
+            min_risk_amount = 0.50  # USD
+            min_risk_pct = (min_risk_amount / max(bal, 1.0)) * 100
+            base_risk = max(base_risk, min_risk_pct)
+
+            # Hard ceiling from config
+            return min(base_risk, self.max_risk_percent)
+
+        # ── Prop firm mode: progress-based scaling ──
         progress = self.get_target_progress_pct()
 
-        # Near finish line: cruise mode
         if progress >= 80:
             return max(0.15, self.reduced_risk_percent * 0.6)
-        # Past 60%: tighten up
         if progress >= self.reduce_size_at_pct:
             return self.reduced_risk_percent
-
-        # After a loss: reduce next trade
         if self.consecutive_losses >= 1:
             return max(0.25, self.risk_percent * 0.5)
 
@@ -423,26 +473,60 @@ class BaseAgentForex:
         """
         Central safety check - evaluate ALL stop conditions.
         Returns (should_stop: bool, reason: str).
+
+        Compound mode is significantly more permissive than prop firm mode
+        because there are no firm drawdown rules to breach — only self-imposed
+        risk management to survive variance.
         """
         if self.session_stopped:
             return True, "Session already stopped by earlier rule"
 
+        # ── Hard limits (both modes) ──
+        if self.check_max_drawdown():
+            self.session_stopped = True
+            return True, "CRITICAL: MAX DRAWDOWN BREACHED - STOP ALL TRADING"
+
         if self.check_daily_loss_limit():
             self.session_stopped = True
             return True, (
-                f"Personal daily loss cap hit: "
+                f"Daily loss cap hit: "
                 f"${abs(self.daily_pnl):,.0f} >= "
                 f"${self.personal_daily_loss_cap:,.0f}")
 
+        # ── Compound mode: permissive limits ──
+        if self.is_compound_mode:
+            # Allow more consecutive losses (reduced size, not full stop)
+            if self.consecutive_losses >= self.stop_after_consecutive_losses:
+                self.session_stopped = True
+                return True, (
+                    f"Consecutive losses: {self.consecutive_losses} "
+                    f"(limit: {self.stop_after_consecutive_losses}) - "
+                    f"cool off, next session trades at reduced size")
+
+            if self.trades_today >= self.max_trades_per_day:
+                return True, f"Max trades per day reached: {self.trades_today}"
+
+            # Monthly cap is much higher in compound mode
+            monthly_cap = self.behavioral.get("monthly_trade_cap", 60)
+            if self.monthly_trades >= monthly_cap:
+                return True, (
+                    f"Monthly trade cap: {self.monthly_trades}/{monthly_cap}")
+
+            # No performance-based stop in early compound phases — too few
+            # trades to have meaningful statistics
+            if self.current_balance > 2500 and self.total_trades >= 10:
+                should_reduce, reason = self.should_reduce_exposure()
+                if should_reduce and self.trades_today > 0:
+                    return True, f"Metrics warning: {reason}"
+
+            return False, ""
+
+        # ── Prop firm mode: conservative limits ──
         if self.check_firm_daily_loss_limit():
             self.session_stopped = True
             return True, (
                 f"WARNING: Approaching firm daily loss limit (70%): "
                 f"${abs(self.daily_pnl):,.0f}")
-
-        if self.check_max_drawdown():
-            self.session_stopped = True
-            return True, "CRITICAL: FIRM MAX DRAWDOWN BREACHED - STOP ALL TRADING"
 
         if self.check_near_max_drawdown():
             self.session_stopped = True
@@ -468,7 +552,6 @@ class BaseAgentForex:
                 f"Monthly trade hard cap: {self.monthly_trades}/20 - "
                 f"overtrading reduces payout probability")
 
-        # Performance-based reduction
         should_reduce, reason = self.should_reduce_exposure()
         if should_reduce and self.trades_today > 0:
             return True, f"Metrics warning: {reason}"
@@ -541,14 +624,21 @@ class BaseAgentForex:
         })
 
     def start_new_trading_day(self) -> None:
-        """Reset daily counters at the start of each trading day."""
+        """Reset daily counters at the start of each trading day.
+
+        In compound mode, consecutive losses reset each day so the agent
+        trades again (at auto-reduced size). In prop firm mode, the streak
+        persists until a win resets it.
+        """
         self.daily_starting_balance = self.current_balance
         self.daily_pnl = 0.0
         self.trades_today = 0
         self.losses_today = 0
-        self.consecutive_losses = 0
         self.session_stopped = False
         self.total_trading_days += 1
+
+        if self.is_compound_mode:
+            self.consecutive_losses = 0
 
         # Monthly trade counter reset
         now = datetime.utcnow()
@@ -765,6 +855,12 @@ class BaseAgentForex:
             "weekend_holding_allowed": self.weekend_holding_allowed,
             "losses_today": self.losses_today,
             "monthly_trades": self.monthly_trades,
+            "is_compound_mode": self.is_compound_mode,
+            "account_currency": self.challenge_config.get("account_currency", "USD"),
+            "stop_after_consecutive_losses": self.stop_after_consecutive_losses,
+            "milestones": self.milestones,
+            "current_milestone": self._get_current_milestone(bal),
+            "max_risk_pct": self.max_risk_percent,
             "performance": self.get_performance_metrics(),
         }
 
