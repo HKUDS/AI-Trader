@@ -1,16 +1,19 @@
 import asyncio
 import json
 import os
+import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 from pathlib import Path as _Path
 from dotenv import load_dotenv
 
+# Ensure project root is on sys.path so submodules resolve on all platforms
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 load_dotenv()
 
-from prompts.agent_prompt import all_nasdaq_100_symbols
-# Import tools and prompts
-from tools.general_tools import get_config_value, write_config_value
+# tools.general_tools is imported lazily inside main() to avoid
+# failures on sparse-checkout setups that only have forex files.
 
 # Agent class mapping table - for dynamic import and instantiation
 AGENT_REGISTRY = {
@@ -33,6 +36,10 @@ AGENT_REGISTRY = {
     "BaseAgentCrypto": {
         "module": "agent.base_agent_crypto.base_agent_crypto",
         "class": "BaseAgentCrypto"
+    },
+    "BaseAgentForex": {
+        "module": "agent.base_agent_forex.base_agent_forex",
+        "class": "BaseAgentForex"
     }
 }
 
@@ -130,8 +137,12 @@ async def main(config_path=None):
         market = "cn"
     elif agent_type == "BaseAgentCrypto":
         market = "crypto"
+    elif agent_type == "BaseAgentForex":
+        market = "forex"
 
-    if market == "crypto":
+    if market == "forex":
+        print(f"🌍 Market type: Forex (MT4/MT5, 24/5 trading)")
+    elif market == "crypto":
         print(f"🌍 Market type: Cryptocurrency (24/7 trading)")
     elif market == "cn":
         print(f"🌍 Market type: A-shares (China)")
@@ -212,7 +223,8 @@ async def main(config_path=None):
             
         # Initialize runtime configuration
         # Use the shared config file from RUNTIME_ENV_PATH in .env
-        
+        from tools.general_tools import get_config_value, write_config_value
+
         project_root = _Path(__file__).resolve().parent
         
         # Get log path configuration
@@ -239,8 +251,10 @@ async def main(config_path=None):
         print(f"✅ Runtime config initialized: SIGNATURE={signature}, MARKET={market}")
 
         # Select symbols based on agent type and market
-        # Crypto agents don't use stock_symbols parameter
-        if agent_type == "BaseAgentCrypto":
+        # Forex and Crypto agents don't use stock_symbols parameter
+        if agent_type == "BaseAgentForex":
+            stock_symbols = None  # Forex agent uses its own forex_symbols
+        elif agent_type == "BaseAgentCrypto":
             stock_symbols = None  # Crypto agent uses its own crypto_symbols
         elif agent_type == "BaseAgentAStock" or agent_type == "BaseAgentAStock_Hour":
             stock_symbols = None  # Let BaseAgentAStock use its default SSE 50
@@ -249,12 +263,35 @@ async def main(config_path=None):
 
             stock_symbols = all_sse_50_symbols
         else:
+            from prompts.agent_prompt import all_nasdaq_100_symbols
             stock_symbols = all_nasdaq_100_symbols
 
         try:
             # Dynamically create Agent instance
-            # Crypto agents have different parameter requirements
-            if agent_type == "BaseAgentCrypto":
+            # Different agent types have different parameter requirements
+            if agent_type == "BaseAgentForex":
+                # Forex agent with full challenge config and MT4/MT5 support
+                challenge_config = config.get("challenge_config", {})
+                mt4_mt5_config = config.get("mt4_mt5_config", {})
+                live_loop_cfg = config.get("live_loop_config", {})
+                agent = AgentClass(
+                    signature=signature,
+                    basemodel=basemodel,
+                    forex_symbols=config.get("trading_pairs"),
+                    log_path=log_path,
+                    max_steps=max_steps,
+                    max_retries=max_retries,
+                    base_delay=base_delay,
+                    initial_cash=initial_cash,
+                    init_date=INIT_DATE,
+                    openai_base_url=openai_base_url,
+                    openai_api_key=openai_api_key,
+                    challenge_config=challenge_config,
+                    mt4_mt5_config=mt4_mt5_config,
+                    trading_sessions=live_loop_cfg.get("trading_sessions"),
+                    loop_interval_seconds=live_loop_cfg.get("interval_seconds", 300),
+                )
+            elif agent_type == "BaseAgentCrypto":
                 agent = AgentClass(
                     signature=signature,
                     basemodel=basemodel,
@@ -287,13 +324,24 @@ async def main(config_path=None):
             # Initialize MCP connection and AI model
             await agent.initialize()
             print("✅ Initialization successful")
-            # Run all trading days in date range
-            await agent.run_date_range(INIT_DATE, END_DATE)
+
+            # Check if live loop mode is enabled (forex only)
+            live_loop_config = config.get("live_loop_config", {})
+            if agent_type == "BaseAgentForex" and live_loop_config.get("enabled", False):
+                print("🔴 LIVE LOOP MODE ENABLED")
+                print(f"   Interval: {live_loop_config.get('interval_seconds', 300)}s")
+                print(f"   Sessions: {live_loop_config.get('trading_sessions', ['london_ny_overlap'])}")
+                await agent.run_live_loop()
+            else:
+                # Run all trading days in date range
+                await agent.run_date_range(INIT_DATE, END_DATE)
 
             # Display final position summary
             summary = agent.get_position_summary()
             # Get currency symbol from agent's actual market (more accurate)
-            if agent.market == "crypto":
+            if agent.market == "forex":
+                currency_symbol = "$"
+            elif agent.market == "crypto":
                 currency_symbol = "USDT"
             elif agent.market == "cn":
                 currency_symbol = "¥"

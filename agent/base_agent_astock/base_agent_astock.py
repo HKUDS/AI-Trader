@@ -18,68 +18,10 @@ from langchain.agents import create_agent
 from langchain_core.messages import AIMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_openai import ChatOpenAI
-
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
 
-
-class DeepSeekChatOpenAI(ChatOpenAI):
-    """
-    Custom ChatOpenAI wrapper for DeepSeek API compatibility.
-    Handles the case where DeepSeek returns tool_calls.args as JSON strings instead of dicts.
-    """
-
-    def _create_message_dicts(self, messages: list, stop: Optional[list] = None) -> list:
-        """Override to handle response parsing"""
-        message_dicts = super()._create_message_dicts(messages, stop)
-        return message_dicts
-
-    def _generate(self, messages: list, stop: Optional[list] = None, **kwargs):
-        """Override generation to fix tool_calls format in responses"""
-        # Call parent's generate method
-        result = super()._generate(messages, stop, **kwargs)
-
-        # Fix tool_calls format in the generated messages
-        for generation in result.generations:
-            for gen in generation:
-                if hasattr(gen, "message") and hasattr(gen.message, "additional_kwargs"):
-                    tool_calls = gen.message.additional_kwargs.get("tool_calls")
-                    if tool_calls:
-                        for tool_call in tool_calls:
-                            if "function" in tool_call and "arguments" in tool_call["function"]:
-                                args = tool_call["function"]["arguments"]
-                                # If arguments is a string, parse it
-                                if isinstance(args, str):
-                                    try:
-                                        tool_call["function"]["arguments"] = json.loads(args)
-                                    except json.JSONDecodeError:
-                                        pass  # Keep as string if parsing fails
-
-        return result
-
-    async def _agenerate(self, messages: list, stop: Optional[list] = None, **kwargs):
-        """Override async generation to fix tool_calls format in responses"""
-        # Call parent's async generate method
-        result = await super()._agenerate(messages, stop, **kwargs)
-
-        # Fix tool_calls format in the generated messages
-        for generation in result.generations:
-            for gen in generation:
-                if hasattr(gen, "message") and hasattr(gen.message, "additional_kwargs"):
-                    tool_calls = gen.message.additional_kwargs.get("tool_calls")
-                    if tool_calls:
-                        for tool_call in tool_calls:
-                            if "function" in tool_call and "arguments" in tool_call["function"]:
-                                args = tool_call["function"]["arguments"]
-                                # If arguments is a string, parse it
-                                if isinstance(args, str):
-                                    try:
-                                        tool_call["function"]["arguments"] = json.loads(args)
-                                    except json.JSONDecodeError:
-                                        pass  # Keep as string if parsing fails
-
-        return result
+from agent.model_factory import create_llm_model, is_anthropic_model
 
 
 from prompts.agent_prompt_astock import (STOP_SIGNAL,
@@ -221,7 +163,10 @@ class BaseAgentAStock:
         else:
             self.openai_base_url = openai_base_url
         if openai_api_key == None:
-            self.openai_api_key = os.getenv("OPENAI_API_KEY")
+            if is_anthropic_model(basemodel):
+                self.openai_api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("OPENAI_API_KEY")
+            else:
+                self.openai_api_key = os.getenv("OPENAI_API_KEY")
         else:
             self.openai_api_key = openai_api_key
 
@@ -260,12 +205,17 @@ class BaseAgentAStock:
         """Initialize MCP client and AI model"""
         print(f"🚀 Initializing A-shares agent: {self.signature}")
 
-        # Validate OpenAI configuration
+        # Validate API configuration
         if not self.openai_api_key:
-            raise ValueError(
-                "❌ OpenAI API key not set. Please configure OPENAI_API_KEY in environment or config file."
-            )
-        if not self.openai_base_url:
+            if is_anthropic_model(self.basemodel):
+                raise ValueError(
+                    "❌ Anthropic API key not set. Please configure ANTHROPIC_API_KEY in .env file."
+                )
+            else:
+                raise ValueError(
+                    "❌ API key not set. Please configure OPENAI_API_KEY (or ANTHROPIC_API_KEY for Claude) in .env file."
+                )
+        if not self.openai_base_url and not is_anthropic_model(self.basemodel):
             print("⚠️  OpenAI base URL not set, using default")
 
         try:
@@ -287,29 +237,16 @@ class BaseAgentAStock:
             )
 
         try:
-            # Create AI model - use custom DeepSeekChatOpenAI for DeepSeek models
-            # to handle tool_calls.args format differences (JSON string vs dict)
-            if "deepseek" in self.basemodel.lower():
-                self.model = DeepSeekChatOpenAI(
-                    model=self.basemodel,
-                    base_url=self.openai_base_url,
-                    api_key=self.openai_api_key,
-                    max_retries=3,
-                    timeout=30,
-                )
-            else:
-                self.model = ChatOpenAI(
-                    model=self.basemodel,
-                    base_url=self.openai_base_url,
-                    api_key=self.openai_api_key,
-                    max_retries=3,
-                    timeout=30,
-                )
+            # Create AI model using model factory (auto-detects Anthropic, DeepSeek, OpenAI)
+            self.model = create_llm_model(
+                basemodel=self.basemodel,
+                openai_base_url=self.openai_base_url,
+                openai_api_key=self.openai_api_key,
+                max_retries=3,
+                timeout=30,
+            )
         except Exception as e:
             raise RuntimeError(f"❌ Failed to initialize AI model: {e}")
-
-        # Note: agent will be created in run_trading_session() based on specific date
-        # because system_prompt needs the current date and price information
 
         print(f"✅ A-shares agent {self.signature} initialization completed")
 

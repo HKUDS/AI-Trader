@@ -1,0 +1,120 @@
+{
+    "agent_type": "BaseAgentForex",
+    "market": "forex",
+    "instance": "option_b",
+
+    "date_range": {
+        "init_date": "2026-03-01",
+        "end_date": "2026-12-31"
+    },
+
+    "challenge_config": {
+        "enabled": true,
+        "challenge_type": "compound",
+
+        "firm_rules": {
+            "compound": {
+                "description": "Option B: IC Markets personal account - compound £50 to £50,000",
+                "profit_target_percent": 99900.0,
+                "firm_max_daily_loss_percent": 20.0,
+                "firm_max_total_drawdown_percent": 50.0,
+                "drawdown_type": "fixed",
+                "min_trading_days": 0,
+                "time_limit_days": null,
+                "phases": 1,
+                "leverage": "1:500",
+                "news_trading_allowed": true,
+                "weekend_holding_allowed": false,
+                "account_type": "personal",
+                "broker": "IC Markets"
+            }
+        },
+
+        "milestones": {
+            "_comment": "Aggressive early, tapering as account grows to protect compounded gains",
+            "phase_1": { "from": 0, "to": 500, "risk_percent": 3.0, "description": "Micro lot — aggressive build phase" },
+            "phase_2": { "from": 500, "to": 2500, "risk_percent": 2.5, "description": "Building momentum" },
+            "phase_3": { "from": 2500, "to": 10000, "risk_percent": 2.0, "description": "Scaling up" },
+            "phase_4": { "from": 10000, "to": 25000, "risk_percent": 1.5, "description": "Protecting gains" },
+            "phase_5": { "from": 25000, "to": 50000, "risk_percent": 1.0, "description": "Conservative finish" }
+        },
+
+        "personal_rules": {
+            "_comment": "Aggressive compounding with milestone-driven risk — £50 to £50,000",
+            "risk_percent_per_trade": 3.0,
+            "max_risk_percent_per_trade": 5.0,
+            "personal_daily_loss_cap_ratio": 0.5,
+            "max_trades_per_day": 5,
+            "max_concurrent_trades": 1,
+            "stop_trading_after_consecutive_losses": 3,
+            "stop_trading_after_daily_loss_trades": 4,
+            "reduce_size_at_target_percent": 60,
+            "reduced_risk_percent": 1.5,
+            "min_risk_reward_ratio": 1.5,
+            "max_spread_pips": 2.0,
+            "avoid_news_window_minutes": 15,
+            "require_sl_on_every_trade": true,
+            "require_tp_on_every_trade": true,
+            "max_sl_pips": 30,
+            "min_sl_pips": 5,
+            "move_sl_to_breakeven_at_rr": 1.0,
+            "trading_sessions": ["london", "london_ny_overlap", "new_york"],
+            "preferred_session": "london_ny_overlap"
+        },
+
+        "account_size": 49.58,
+        "account_currency": "GBP",
+        "target_balance": 50000.0,
+
+        "behavioral_rules": {
+            "after_loss_action": "reduce_size_continue_trading",
+            "after_consecutive_losses": "cooldown_then_reduced_size",
+            "no_revenge_trading": true,
+            "no_strategy_switching": true,
+            "journal_every_trade": true,
+            "scale_risk_with_milestones": true,
+            "monthly_trade_cap": 60,
+            "allow_trading_after_loss_same_day": true
+        }
+    },
+
+    "trading_pairs": [
+        "EURUSD", "GBPUSD", "USDJPY"
+    ],
+
+    "models": [
+        {
+            "name": "claude-sonnet-4-6",
+            "basemodel": "anthropic/claude-sonnet-4-6",
+            "signature": "option-b-icmarkets",
+            "enabled": true
+        }
+    ],
+
+    "agent_config": {
+        "max_steps": 50,
+        "max_retries": 3,
+        "base_delay": 2.0,
+        "initial_cash": 49.58,
+        "verbose": true
+    },
+
+    "mt4_mt5_config": {
+        "backend": "mt5_native",
+        "login": "${MT5_LOGIN_IC}",
+        "password": "${MT5_PASSWORD_IC}",
+        "server": "${MT5_SERVER_IC}",
+        "mt5_path": "${MT5_PATH_IC}",
+        "timeout": 10000
+    },
+
+    "live_loop_config": {
+        "enabled": true,
+        "interval_seconds": 300,
+        "trading_sessions": ["london", "london_ny_overlap", "new_york"]
+    },
+
+    "log_config": {
+        "log_path": "./data/agent_data_forex"
+    }
+}

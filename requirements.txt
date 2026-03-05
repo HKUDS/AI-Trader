@@ -1,5 +1,6 @@
 langchain==1.0.2
 langchain-openai==1.0.1
+langchain-anthropic>=0.3.0
 langchain-mcp-adapters>=0.1.0
 fastmcp==2.12.5
 

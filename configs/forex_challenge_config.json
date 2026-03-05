@@ -1,0 +1,181 @@
+{
+    "agent_type": "BaseAgentForex",
+    "market": "forex",
+
+    "date_range": {
+        "init_date": "2026-01-01",
+        "end_date": "2026-12-31"
+    },
+
+    "challenge_config": {
+        "enabled": true,
+
+        "challenge_type": "express",
+
+        "firm_rules": {
+            "express": {
+                "description": "FundedNext Express: Tight drawdown, higher profit target",
+                "account_sizes": [6000, 15000, 25000, 50000, 100000, 200000],
+                "profit_target_percent": 12.5,
+                "firm_max_daily_loss_percent": 2.5,
+                "firm_max_total_drawdown_percent": 5.0,
+                "drawdown_type": "fixed",
+                "min_trading_days": 10,
+                "time_limit_days": null,
+                "phases": 1,
+                "leverage": "1:100",
+                "news_trading_allowed": true,
+                "weekend_holding_allowed": false,
+                "account_type": "swap",
+                "performance_reward_pct": 95,
+                "fee_refundable": true,
+                "consistency_rule": false
+            },
+            "stellar_1step": {
+                "description": "FundedNext Stellar 1-Step: Single phase, tighter drawdown",
+                "account_sizes": [6000, 15000, 25000, 50000, 100000, 200000],
+                "profit_target_percent": 10.0,
+                "firm_max_daily_loss_percent": 3.0,
+                "firm_max_total_drawdown_percent": 6.0,
+                "drawdown_type": "trailing_relative",
+                "min_trading_days": 2,
+                "time_limit_days": null,
+                "phases": 1,
+                "leverage": "1:30",
+                "news_trading_allowed": true,
+                "weekend_holding_allowed": false,
+                "performance_reward_pct": 95,
+                "first_withdrawal_days": 14,
+                "fee_refundable": true,
+                "consistency_rule": false
+            },
+            "stellar_2step": {
+                "description": "FundedNext Stellar 2-Step: Two phases, more breathing room",
+                "account_sizes": [6000, 15000, 25000, 50000, 100000, 200000],
+                "phase_1_target_percent": 8.0,
+                "phase_2_target_percent": 5.0,
+                "firm_max_daily_loss_percent": 5.0,
+                "firm_max_total_drawdown_percent": 10.0,
+                "drawdown_type": "fixed",
+                "min_trading_days_per_phase": 5,
+                "time_limit_days": null,
+                "phases": 2,
+                "leverage": "1:100",
+                "news_trading_allowed": true,
+                "weekend_holding_allowed": false,
+                "performance_reward_pct": 95,
+                "challenge_performance_reward_pct": 15,
+                "first_withdrawal_days": 21,
+                "fee_refundable": true,
+                "consistency_rule": false
+            },
+            "stellar_instant": {
+                "description": "FundedNext Stellar Instant: No evaluation, instant funding, trailing drawdown",
+                "account_sizes": [2000, 5000, 10000, 20000],
+                "profit_target_percent": null,
+                "firm_max_daily_loss_percent": null,
+                "firm_max_total_drawdown_percent": 6.0,
+                "drawdown_type": "trailing",
+                "min_trading_days": 0,
+                "time_limit_days": null,
+                "phases": 0,
+                "leverage": "1:30",
+                "news_trading_allowed": true,
+                "weekend_holding_allowed": true,
+                "performance_reward_pct": 80,
+                "on_demand_reward": true,
+                "first_withdrawal_days": 14,
+                "fee_refundable": false,
+                "consistency_rule": false,
+                "reset_applicable": true
+            }
+        },
+
+        "personal_rules": {
+            "_comment": "Our own guardrails - deliberately tighter than the firm's limits to survive variance",
+            "risk_percent_per_trade": 2.0,
+            "max_risk_percent_per_trade": 5.0,
+            "personal_daily_loss_cap_ratio": 0.5,
+            "max_trades_per_day": 3,
+            "max_concurrent_trades": 1,
+            "stop_trading_after_consecutive_losses": 2,
+            "stop_trading_after_daily_loss_trades": 2,
+            "reduce_size_at_target_percent": 60,
+            "reduced_risk_percent": 1.0,
+            "min_risk_reward_ratio": 1.5,
+            "max_spread_pips": 2.0,
+            "avoid_news_window_minutes": 30,
+            "require_sl_on_every_trade": true,
+            "require_tp_on_every_trade": true,
+            "max_sl_pips": 30,
+            "min_sl_pips": 5,
+            "move_sl_to_breakeven_at_rr": 1.0,
+            "trading_sessions": ["london_ny_overlap", "london"],
+            "preferred_session": "london_ny_overlap"
+        },
+
+        "account_size": 47.33,
+
+        "behavioral_rules": {
+            "after_loss_action": "reduce_next_trade_size_or_stop",
+            "after_two_consecutive_losses": "stop_trading_for_session",
+            "after_reaching_60pct_target": "tighten_entries_only_A_setups",
+            "after_reaching_80pct_target": "cut_risk_to_minimum",
+            "no_revenge_trading": true,
+            "no_strategy_switching": true,
+            "journal_every_trade": true
+        }
+    },
+
+    "trading_pairs": [
+        "EURUSD", "GBPUSD", "USDJPY", "USDCHF",
+        "AUDUSD", "NZDUSD", "USDCAD"
+    ],
+
+    "models": [
+        {
+            "name": "claude-opus-4-6",
+            "basemodel": "anthropic/claude-opus-4-6",
+            "signature": "claude-opus-forex-challenge",
+            "enabled": true
+        },
+        {
+            "name": "gpt-4.1",
+            "basemodel": "gpt-4.1",
+            "signature": "gpt-4.1-forex-challenge",
+            "enabled": false
+        },
+        {
+            "name": "deepseek-v3.1",
+            "basemodel": "deepseek/deepseek-chat-v3.1",
+            "signature": "deepseek-v3.1-forex-challenge",
+            "enabled": false
+        }
+    ],
+
+    "agent_config": {
+        "max_steps": 50,
+        "max_retries": 3,
+        "base_delay": 2.0,
+        "initial_cash": 47.33,
+        "verbose": true
+    },
+
+    "mt4_mt5_config": {
+        "backend": "mt5_native",
+        "login": "${MT5_LOGIN}",
+        "password": "${MT5_PASSWORD}",
+        "server": "${MT5_SERVER}",
+        "timeout": 10000
+    },
+
+    "live_loop_config": {
+        "enabled": false,
+        "interval_seconds": 300,
+        "trading_sessions": ["london_ny_overlap"]
+    },
+
+    "log_config": {
+        "log_path": "./data/agent_data_forex"
+    }
+}
