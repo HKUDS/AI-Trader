@@ -931,10 +931,15 @@ class BaseAgentForex:
         )
 
         user_query = [{"role": "user", "content": (
-            f"Analyze current forex market conditions for session {session_id}. "
-            f"Check prices, spreads, and news. Only trade if there is a "
-            f"high-probability setup that meets ALL your trading plan criteria. "
-            f"If nothing qualifies, output {STOP_SIGNAL} and wait."
+            f"Execute your trading plan for session {session_id}. "
+            f"Step 1: get_account_summary() and get_open_trades(). "
+            f"Step 2: get_forex_price() for each pair to find the best setup. "
+            f"Step 3: If ANY pair has a tradeable setup (clear direction + structure "
+            f"level + spread under limit), calculate_lot_size() and execute the trade. "
+            f"You are a TRADER — your job is to find and take setups, not to find "
+            f"reasons to skip them. A setup does not need to be perfect, it needs "
+            f"to meet your criteria. If you checked all pairs and genuinely none "
+            f"qualify, output {STOP_SIGNAL}."
         )}]
         message = user_query.copy()
         self._log_message(log_file, user_query)
