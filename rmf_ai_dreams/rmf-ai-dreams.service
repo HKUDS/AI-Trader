@@ -1,0 +1,17 @@
+[Unit]
+Description=RMF AI Dreams - Autonomous Execution Intelligence
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/vercel/sandbox/rmf_ai_dreams
+ExecStartPre=/usr/bin/docker compose down
+ExecStart=/usr/bin/docker compose up --build
+ExecStop=/usr/bin/docker compose down
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

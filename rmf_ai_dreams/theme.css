@@ -1,0 +1,407 @@
+/* RMF AI Dreams - Ultimate Cyberpunk Neon Theme 2026 */
+/* Pure Dark Futuristic - Electric Pink, Violet, Holographic Cyan */
+
+:root {
+    --bg-black: #000000;
+    --neon-pink: #FF00AA;
+    --neon-purple: #AA00FF;
+    --neon-cyan: #00FFFF;
+    --glass-bg: rgba(20, 20, 30, 0.6);
+    --glass-border: rgba(255, 0, 170, 0.3);
+    --text-primary: #FFFFFF;
+    --text-secondary: #B8B8FF;
+    --success-glow: #00FF88;
+    --danger-glow: #FF0055;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@300;400;500;600;700&display=swap');
+
+* {
+    font-family: 'Rajdhani', sans-serif;
+}
+
+h1, h2, h3, .neon-title {
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+}
+
+body {
+    background: linear-gradient(135deg, #000000 0%, #0a0015 50%, #000000 100%);
+    color: var(--text-primary);
+    overflow-x: hidden;
+}
+
+.stApp {
+    background: radial-gradient(ellipse at top, rgba(170, 0, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom, rgba(255, 0, 170, 0.08) 0%, transparent 50%),
+                #000000;
+}
+
+/* Sidebar Neon Styling */
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, rgba(10, 0, 20, 0.95) 0%, rgba(0, 0, 0, 0.98) 100%);
+    border-right: 2px solid var(--neon-purple);
+    box-shadow: 0 0 30px rgba(170, 0, 255, 0.4);
+}
+
+[data-testid="stSidebar"] > div:first-child {
+    background: transparent;
+}
+
+/* Glowing Headers */
+h1 {
+    color: var(--neon-pink);
+    text-shadow: 0 0 10px var(--neon-pink),
+                 0 0 20px var(--neon-pink),
+                 0 0 40px var(--neon-purple);
+    animation: pulseGlow 2s ease-in-out infinite;
+}
+
+h2, h3 {
+    color: var(--neon-cyan);
+    text-shadow: 0 0 8px var(--neon-cyan),
+                 0 0 15px var(--neon-purple);
+}
+
+@keyframes pulseGlow {
+    0%, 100% {
+        text-shadow: 0 0 10px var(--neon-pink),
+                     0 0 20px var(--neon-pink),
+                     0 0 40px var(--neon-purple);
+    }
+    50% {
+        text-shadow: 0 0 15px var(--neon-pink),
+                     0 0 30px var(--neon-pink),
+                     0 0 60px var(--neon-purple),
+                     0 0 80px var(--neon-cyan);
+    }
+}
+
+/* Glass Cards with Neon Borders */
+.element-container, [data-testid="stExpander"], .stAlert {
+    background: var(--glass-bg) !important;
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(255, 0, 170, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    transition: all 0.3s ease;
+}
+
+.element-container:hover {
+    border-color: var(--neon-pink);
+    box-shadow: 0 0 25px rgba(255, 0, 170, 0.5),
+                0 0 50px rgba(170, 0, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+/* Neon Buttons */
+.stButton > button {
+    background: linear-gradient(135deg, var(--neon-purple) 0%, var(--neon-pink) 100%);
+    color: white;
+    border: 2px solid var(--neon-pink);
+    border-radius: 8px;
+    padding: 12px 28px;
+    font-weight: 700;
+    font-size: 16px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    box-shadow: 0 0 15px rgba(255, 0, 170, 0.6),
+                0 0 30px rgba(170, 0, 255, 0.4);
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.stButton > button:hover {
+    background: linear-gradient(135deg, var(--neon-pink) 0%, var(--neon-purple) 100%);
+    box-shadow: 0 0 25px rgba(255, 0, 170, 0.9),
+                0 0 50px rgba(170, 0, 255, 0.7),
+                0 0 75px var(--neon-cyan);
+    transform: scale(1.05);
+}
+
+.stButton > button:active {
+    transform: scale(0.98);
+}
+
+/* Success/Approve Button */
+.approve-btn {
+    background: linear-gradient(135deg, #00FF88 0%, #00CCAA 100%) !important;
+    border-color: #00FF88 !important;
+    box-shadow: 0 0 15px rgba(0, 255, 136, 0.6) !important;
+}
+
+.approve-btn:hover {
+    box-shadow: 0 0 30px rgba(0, 255, 136, 0.9),
+                0 0 50px rgba(0, 255, 170, 0.6) !important;
+}
+
+/* Danger/Stop Button */
+.danger-btn {
+    background: linear-gradient(135deg, #FF0055 0%, #CC0044 100%) !important;
+    border-color: #FF0055 !important;
+    box-shadow: 0 0 15px rgba(255, 0, 85, 0.6) !important;
+}
+
+/* Input Fields - Neon Focus */
+.stTextInput > div > div > input,
+.stTextArea > div > div > textarea,
+.stSelectbox > div > div > select {
+    background: rgba(10, 10, 20, 0.8);
+    border: 2px solid rgba(170, 0, 255, 0.4);
+    border-radius: 8px;
+    color: var(--text-primary);
+    padding: 12px;
+    font-size: 15px;
+    transition: all 0.3s ease;
+}
+
+.stTextInput > div > div > input:focus,
+.stTextArea > div > div > textarea:focus {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.5),
+                inset 0 0 10px rgba(0, 255, 255, 0.1);
+    outline: none;
+}
+
+/* Progress Bar - Neon Gradient */
+.stProgress > div > div > div {
+    background: linear-gradient(90deg, var(--neon-purple) 0%, var(--neon-pink) 50%, var(--neon-cyan) 100%);
+    box-shadow: 0 0 10px var(--neon-pink);
+    animation: progressPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes progressPulse {
+    0%, 100% {
+        box-shadow: 0 0 10px var(--neon-pink);
+    }
+    50% {
+        box-shadow: 0 0 20px var(--neon-pink),
+                    0 0 30px var(--neon-cyan);
+    }
+}
+
+/* Spinner/Loading - Neon Glow */
+.stSpinner > div {
+    border-top-color: var(--neon-pink) !important;
+    border-right-color: var(--neon-purple) !important;
+    filter: drop-shadow(0 0 10px var(--neon-pink));
+}
+
+/* Tabs - Futuristic */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 8px;
+    background: transparent;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background: rgba(20, 20, 30, 0.5);
+    border: 1px solid rgba(170, 0, 255, 0.3);
+    border-radius: 8px 8px 0 0;
+    color: var(--text-secondary);
+    font-weight: 600;
+    padding: 10px 20px;
+    transition: all 0.3s ease;
+}
+
+.stTabs [data-baseweb="tab"]:hover {
+    background: rgba(170, 0, 255, 0.2);
+    border-color: var(--neon-purple);
+    color: var(--neon-cyan);
+}
+
+.stTabs [aria-selected="true"] {
+    background: linear-gradient(135deg, rgba(170, 0, 255, 0.3) 0%, rgba(255, 0, 170, 0.3) 100%);
+    border-color: var(--neon-pink);
+    color: var(--neon-pink);
+    box-shadow: 0 0 15px rgba(255, 0, 170, 0.4);
+}
+
+/* Expander - Neon Accordion */
+[data-testid="stExpander"] summary {
+    background: rgba(170, 0, 255, 0.1);
+    border-left: 4px solid var(--neon-purple);
+    padding: 12px;
+    font-weight: 600;
+    color: var(--neon-cyan);
+    transition: all 0.3s ease;
+}
+
+[data-testid="stExpander"] summary:hover {
+    background: rgba(255, 0, 170, 0.15);
+    border-left-color: var(--neon-pink);
+    box-shadow: 0 0 15px rgba(255, 0, 170, 0.3);
+}
+
+/* Alert Boxes */
+.stAlert {
+    border-left: 4px solid var(--neon-cyan);
+    background: rgba(0, 255, 255, 0.05);
+}
+
+/* Code Blocks - Cyberpunk */
+code, pre {
+    background: rgba(10, 0, 20, 0.8) !important;
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    border-radius: 6px;
+    color: var(--neon-cyan);
+    font-family: 'Courier New', monospace;
+}
+
+/* Data Tables - Dark Neon */
+.stDataFrame {
+    background: rgba(10, 10, 20, 0.9);
+    border: 1px solid var(--neon-purple);
+    border-radius: 8px;
+}
+
+.stDataFrame th {
+    background: linear-gradient(135deg, rgba(170, 0, 255, 0.3), rgba(255, 0, 170, 0.3));
+    color: var(--neon-cyan);
+    font-weight: 700;
+}
+
+.stDataFrame td {
+    border-color: rgba(170, 0, 255, 0.2);
+    color: var(--text-primary);
+}
+
+/* Scrollbar - Neon */
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(10, 10, 20, 0.8);
+}
+
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, var(--neon-purple), var(--neon-pink));
+    border-radius: 10px;
+    box-shadow: 0 0 10px var(--neon-pink);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, var(--neon-pink), var(--neon-cyan));
+    box-shadow: 0 0 15px var(--neon-cyan);
+}
+
+/* Glitch Effect on Hover (Optional for headers) */
+.glitch {
+    position: relative;
+}
+
+.glitch:hover::before,
+.glitch:hover::after {
+    content: attr(data-text);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+}
+
+.glitch:hover::before {
+    animation: glitch-1 0.3s infinite;
+    color: var(--neon-cyan);
+    z-index: -1;
+}
+
+.glitch:hover::after {
+    animation: glitch-2 0.3s infinite;
+    color: var(--neon-pink);
+    z-index: -2;
+}
+
+@keyframes glitch-1 {
+    0%, 100% { transform: translate(0); }
+    33% { transform: translate(-2px, 2px); }
+    66% { transform: translate(2px, -2px); }
+}
+
+@keyframes glitch-2 {
+    0%, 100% { transform: translate(0); }
+    33% { transform: translate(2px, -2px); }
+    66% { transform: translate(-2px, 2px); }
+}
+
+/* Custom Status Badges */
+.status-thinking {
+    background: linear-gradient(90deg, var(--neon-purple), var(--neon-cyan));
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    box-shadow: 0 0 10px var(--neon-purple);
+}
+
+.status-executing {
+    background: linear-gradient(90deg, var(--neon-pink), var(--neon-purple));
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    box-shadow: 0 0 10px var(--neon-pink);
+    animation: pulseGlow 1s ease-in-out infinite;
+}
+
+.status-done {
+    background: linear-gradient(90deg, #00FF88, #00CCAA);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    box-shadow: 0 0 10px var(--success-glow);
+}
+
+/* Holographic Gradient Background for Cards */
+.holo-card {
+    background: linear-gradient(135deg,
+        rgba(170, 0, 255, 0.1) 0%,
+        rgba(255, 0, 170, 0.1) 25%,
+        rgba(0, 255, 255, 0.1) 50%,
+        rgba(255, 0, 170, 0.1) 75%,
+        rgba(170, 0, 255, 0.1) 100%);
+    border: 1px solid rgba(255, 0, 170, 0.4);
+    border-radius: 12px;
+    padding: 20px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 8px 32px rgba(255, 0, 170, 0.2);
+}
+
+/* Footer/Attribution */
+footer {
+    color: var(--text-secondary);
+    text-align: center;
+    padding: 20px;
+    font-size: 13px;
+    border-top: 1px solid rgba(170, 0, 255, 0.3);
+}
+
+footer a {
+    color: var(--neon-cyan);
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+footer a:hover {
+    color: var(--neon-pink);
+    text-shadow: 0 0 10px var(--neon-pink);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    h1 {
+        font-size: 28px;
+    }
+
+    .stButton > button {
+        padding: 10px 20px;
+        font-size: 14px;
+    }
+}

@@ -1,0 +1,37 @@
+app = "rmf-ai-dreams"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile.production"
+
+[http_service]
+  internal_port = 8501
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+[[services]]
+  protocol = "tcp"
+  internal_port = 8501
+  processes = ["app"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
