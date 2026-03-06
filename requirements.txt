@@ -3,6 +3,9 @@ langchain-openai==1.0.1
 langchain-mcp-adapters>=0.1.0
 fastmcp==2.12.5
 
+# BlockRun.AI - pay-per-request LLM gateway (x402 micropayments)
+blockrun-llm>=0.1.0
+
 # A_stock
 tushare
 efinance

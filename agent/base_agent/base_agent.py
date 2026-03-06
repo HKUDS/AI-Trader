@@ -19,6 +19,7 @@ from langchain_core.messages import AIMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
+from agent.blockrun_chat import BlockRunChat
 
 # Best-effort import for a console/stdout callback handler across LangChain versions
 try:  # langchain <=0.1 style
@@ -379,7 +380,17 @@ class BaseAgent:
         try:
             # Create AI model - use custom DeepSeekChatOpenAI for DeepSeek models
             # to handle tool_calls.args format differences (JSON string vs dict)
-            if "deepseek" in self.basemodel.lower():
+            # Use BlockRunChat for blockrun/ prefixed models (x402 micropayments)
+            if self.basemodel.lower().startswith("blockrun/"):
+                # Extract the actual model name (e.g., "blockrun/openai/gpt-4o" -> "openai/gpt-4o")
+                blockrun_model = self.basemodel[len("blockrun/"):]
+                self.model = BlockRunChat(
+                    model=blockrun_model,
+                    max_tokens=4096,
+                    temperature=0.7,
+                    timeout=120.0,
+                )
+            elif "deepseek" in self.basemodel.lower():
                 self.model = DeepSeekChatOpenAI(
                     model=self.basemodel,
                     base_url=self.openai_base_url,
