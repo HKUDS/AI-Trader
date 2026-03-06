@@ -1,0 +1,18 @@
+# Quant Backtest - Requirements
+# All free, open-source packages
+
+# Core dependencies (required)
+streamlit>=1.28.0
+
+# Data visualization (free)
+plotly>=5.18.0
+
+# Data fetching (free, no API key needed)
+yfinance>=0.2.31
+pandas>=2.0.0
+
+# Optional but recommended
+numpy>=1.24.0
+
+# Note: All packages are free and open-source
+# No paid APIs or subscriptions required
