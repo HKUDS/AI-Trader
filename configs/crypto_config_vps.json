@@ -1,0 +1,99 @@
+{
+  "agent_type": "BaseAgentCrypto",
+  "market": "crypto",
+  "environment": "vps",
+  "description": "VPS 24/7 production configuration (Oracle Cloud / DigitalOcean / AWS)",
+  
+  "date_range": {
+    "init_date": "2025-01-01 00:00:00",
+    "end_date": "2025-12-31 23:59:59"
+  },
+  
+  "models": [
+    {
+      "name": "gpt-4o-github",
+      "basemodel": "gpt-4o",
+      "signature": "gpt-4o-github-vps",
+      "api_provider": "github_models",
+      "openai_base_url": "https://models.inference.ai.azure.com",
+      "openai_api_key": null,
+      "enabled": true,
+      "priority": 1
+    },
+    {
+      "name": "claude-3.7-sonnet",
+      "basemodel": "anthropic/claude-3.7-sonnet",
+      "signature": "claude-3.7-sonnet-vps",
+      "api_provider": "anthropic",
+      "openai_base_url": null,
+      "openai_api_key": null,
+      "enabled": true,
+      "priority": 2
+    },
+    {
+      "name": "gpt-4o-openai",
+      "basemodel": "openai/gpt-4o",
+      "signature": "gpt-4o-openai-vps",
+      "api_provider": "openai",
+      "openai_base_url": "https://api.openai.com/v1",
+      "openai_api_key": null,
+      "enabled": true,
+      "priority": 3
+    }
+  ],
+  
+  "agent_config": {
+    "initial_cash": 10000.0,
+    "trading_interval": "30s",
+    "max_steps": 50,
+    "max_retries": 5,
+    "base_delay": 0.5
+  },
+  
+  "crypto_config": {
+    "exchanges": ["bybit", "binance", "coinbase", "kraken"],
+    "primary_exchange": "bybit",
+    "asset_type": "derivatives",
+    "sort_by": "24h_change_desc",
+    "top_symbols": 50,
+    "testnet": false,
+    "leverage": 3,
+    "min_volume_usd": 10000000,
+    "use_websocket": true
+  },
+  
+  "log_config": {
+    "log_path": "/var/ai-trader/data/agent_data_crypto",
+    "log_level": "INFO",
+    "save_intermediate_steps": false,
+    "rotate_logs": true,
+    "max_log_size_mb": 100
+  },
+  
+  "risk_management": {
+    "max_position_size_pct": 20,
+    "max_total_exposure_pct": 80,
+    "stop_loss_pct": 2,
+    "take_profit_pct": 6,
+    "trailing_stop": true,
+    "dynamic_position_sizing": true,
+    "max_daily_loss_pct": 10,
+    "emergency_stop_loss_pct": 20
+  },
+  
+  "performance_monitoring": {
+    "enabled": true,
+    "alert_email": "feherg78@example.com",
+    "alert_on_large_loss": true,
+    "alert_threshold_pct": 5,
+    "daily_report": true,
+    "webhook_url": null
+  },
+  
+  "cost_tracking": {
+    "enabled": true,
+    "daily_budget_usd": 10,
+    "monthly_budget_usd": 200,
+    "alert_at_80_percent": true
+  }
+}

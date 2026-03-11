@@ -1,0 +1,59 @@
+{
+  "agent_type": "BaseAgentCrypto",
+  "market": "crypto",
+  "environment": "local",
+  "description": "Local development configuration for crypto trading (TESTNET ONLY)",
+  
+  "date_range": {
+    "init_date": "2025-01-01 00:00:00",
+    "end_date": "2025-01-31 23:59:59",
+    "comment": "Historical backtest period"
+  },
+  
+  "models": [
+    {
+      "name": "gpt-4o-github",
+      "basemodel": "gpt-4o",
+      "signature": "gpt-4o-github-local",
+      "api_provider": "github_models",
+      "openai_base_url": "https://models.inference.ai.azure.com",
+      "openai_api_key": null,
+      "enabled": true,
+      "priority": 1,
+      "comment": "FREE GitHub Models API - No cost!"
+    }
+  ],
+  
+  "agent_config": {
+    "initial_cash": 10000.0,
+    "trading_interval": "1m",
+    "max_steps": 30,
+    "max_retries": 3,
+    "base_delay": 1.0
+  },
+  
+  "crypto_config": {
+    "exchanges": ["bybit", "binance"],
+    "primary_exchange": "bybit",
+    "asset_type": "derivatives",
+    "sort_by": "24h_change_desc",
+    "top_symbols": 20,
+    "testnet": true,
+    "leverage": 1,
+    "min_volume_usd": 1000000
+  },
+  
+  "log_config": {
+    "log_path": "./data/agent_data_crypto",
+    "log_level": "DEBUG",
+    "save_intermediate_steps": true
+  },
+  
+  "risk_management": {
+    "max_position_size_pct": 10,
+    "max_total_exposure_pct": 50,
+    "stop_loss_pct": 5,
+    "take_profit_pct": 10,
+    "trailing_stop": false
+  }
+}

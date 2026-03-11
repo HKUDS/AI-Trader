@@ -1,111 +1,50 @@
 """
-BaseAgentCrypto class - Base class for cryptocurrency trading agents
-Encapsulates core functionality including MCP tool management, AI agent creation, and trading execution
+BaseAgentCrypto - Advanced Cryptocurrency Trading Agent
+
+Features:
+- 24/7 trading (no market close)
+- Multi-exchange support (ByBit, Binance, Coinbase, Kraken)
+- Derivatives trading (USDT perpetual futures)
+- 30s to 1h intervals
+- Symbol sorting by 24h change
+- Multi-provider AI support
 """
 
 import asyncio
 import json
 import os
-# Import project tools
-import sys
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional, Any
+import sys
 
-from dotenv import load_dotenv
-from langchain.agents import create_agent
-from langchain_core.messages import AIMessage
-from langchain_core.utils.function_calling import convert_to_openai_tool
-from langchain_mcp_adapters.client import MultiServerMCPClient
+# Add parent directory to path for imports
+sys.path.append(str(Path(__file__).parent.parent.parent))
+
 from langchain_openai import ChatOpenAI
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_mcp import MCPToolkit
+from dotenv import load_dotenv
 
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, project_root)
-
-
-class DeepSeekChatOpenAI(ChatOpenAI):
-    """
-    Custom ChatOpenAI wrapper for DeepSeek API compatibility.
-    Handles the case where DeepSeek returns tool_calls.args as JSON strings instead of dicts.
-    """
-
-    def _create_message_dicts(self, messages: list, stop: Optional[list] = None) -> list:
-        """Override to handle request parsing - convert JSON string arguments to dicts"""
-        message_dicts = super()._create_message_dicts(messages, stop)
-
-        # Fix tool_calls format in the message dicts for requests
-        for message_dict in message_dicts:
-            if "tool_calls" in message_dict:
-                for tool_call in message_dict["tool_calls"]:
-                    if "function" in tool_call and "arguments" in tool_call["function"]:
-                        args = tool_call["function"]["arguments"]
-                        # If arguments is a string, parse it
-                        if isinstance(args, str):
-                            try:
-                                tool_call["function"]["arguments"] = json.loads(args)
-                            except json.JSONDecodeError:
-                                pass  # Keep as string if parsing fails
-
-        return message_dicts
-
-    def _generate(self, messages: list, stop: Optional[list] = None, **kwargs):
-        """Override generation to fix tool_calls format in responses"""
-        # Call parent's generate method
-        result = super()._generate(messages, stop, **kwargs)
-
-        # Fix tool_calls format in the generated messages
-        for generation in result.generations:
-            for gen in generation:
-                if hasattr(gen, "message") and hasattr(gen.message, "additional_kwargs"):
-                    tool_calls = gen.message.additional_kwargs.get("tool_calls")
-                    if tool_calls:
-                        for tool_call in tool_calls:
-                            if "function" in tool_call and "arguments" in tool_call["function"]:
-                                args = tool_call["function"]["arguments"]
-                                # If arguments is a string, parse it
-                                if isinstance(args, str):
-                                    try:
-                                        tool_call["function"]["arguments"] = json.loads(args)
-                                    except json.JSONDecodeError:
-                                        pass  # Keep as string if parsing fails
-
-        return result
-
-    async def _agenerate(self, messages: list, stop: Optional[list] = None, **kwargs):
-        """Override async generation to fix tool_calls format in responses"""
-        # Call parent's async generate method
-        result = await super()._agenerate(messages, stop, **kwargs)
-
-        # Fix tool_calls format in the generated messages
-        for generation in result.generations:
-            for gen in generation:
-                if hasattr(gen, "message") and hasattr(gen.message, "additional_kwargs"):
-                    tool_calls = gen.message.additional_kwargs.get("tool_calls")
-                    if tool_calls:
-                        for tool_call in tool_calls:
-                            if "function" in tool_call and "arguments" in tool_call["function"]:
-                                args = tool_call["function"]["arguments"]
-                                # If arguments is a string, parse it
-                                if isinstance(args, str):
-                                    try:
-                                        tool_call["function"]["arguments"] = json.loads(args)
-                                    except json.JSONDecodeError:
-                                        pass  # Keep as string if parsing fails
-
-        return result
-
-
-from prompts.agent_prompt_crypto import STOP_SIGNAL, get_agent_system_prompt_crypto
-from tools.general_tools import (extract_conversation, extract_tool_messages,
-                                 get_config_value, write_config_value)
-from tools.price_tools import add_no_trade_record
-
-# Load environment variables
 load_dotenv()
+
+# Import tools and prompts
+from tools.general_tools import get_config_value, write_config_value
+from prompts.agent_prompt_crypto import get_crypto_trading_prompt
 
 
 class BaseAgentCrypto:
     """
+    Cryptocurrency Trading Agent
+    
+    Supports:
+    - Multiple exchanges (ByBit primary)
+    - Derivatives/Perpetual futures
+    - 24/7 trading
+    - Dynamic symbol selection by 24h change
+    - Multi-timeframe analysis (30s - 1h)
+  
     Base class for cryptocurrency trading agents
 
     Main functionalities:
