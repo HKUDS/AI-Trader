@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "0.8.20",
+    "module": "commonjs",
+    "strict": true,
+    "esModuleInterop": true,
+    "outDir": "./dist",
+    "rootDir": "./contracts"
+  },
+  "include": ["./contracts/**/*"],
+  "exclude": ["node_modules"]
+}

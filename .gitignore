@@ -1,121 +1,125 @@
-logs/
-data/*.json
-data/*.jsonl
-# data/agent_data/
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg
-*.egg-info/
-dist/
-build/
-.env
-
-runtime_env.json
-
-*.log
-mcp_services*.log
-test_run*.log
-# Environment variables
-AI-Trader-Astock_daily/
+# ====================
+# Dependencies
+# ====================
+node_modules/
+.venv/
+venv/
+env/
 .env
 .env.local
 .env.*.local
 
+# ====================
+# Build outputs
+# ====================
+dist/
+build/
+artifacts/
+cache/
+typechain-types/
+
+# ====================
+# Hardhat
+# ====================
+cache/
+artifacts/
+deployments/
+*.log
+
+# ====================
+# IDE
+# ====================
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ====================
+# OS
+# ====================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# ====================
+# Logs
+# ====================
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ====================
 # Python
+# ====================
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual environments
-venv/
-ENV/
-env/
-.venv
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Logs
-logs/
-*.log
-
-# Runtime files
-.runtime_env.json
-
-# Test and temporary files
-test.py
-delete.py
-refresh_data.sh
-
-# Config files (optional - uncomment if needed)
-configs/day_config.json
-configs/hour_config.json
-configs/test_config.json
-configs/test_day_config.json
-configs/astock.json
-configs/astock_hour.json
-configs/test_*.json
-
-# Data directories (optional - uncomment if needed)
-data/agent_data/test*/
-data/agent_data/*test*/
-data/merged_daily.jsonl
-data/merged_hour.jsonl
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# pytest
+.python-version
 .pytest_cache/
 .coverage
+*.egg-info/
+MANIFEST
+
+# ====================
+# Testing
+# ====================
+coverage/
 htmlcov/
+.tox/
+.nox/
+.hypothesis/
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# ====================
+# Contract deployment
+# ====================
+addresses.json
+!contracts/abi/*.json
 
-# Documentation
+# ====================
+# Sensitive files
+# ====================
+.secrets/
+.env.secrets
+server/.env
+*.pem
+*.key
+*.crt
+private*.key
+mnemonic*.txt
+
+# ====================
+# Closed source (private implementation)
+# ====================
+# closesource/
+
+# ====================
+# Misc
+# ====================
+*.tsbuildinfo
+.eslintcache
+.stylelintcache
+.temp/
+.tmp/
+
+# ====================
+# Documentation (internal only)
+# ====================
+APPENDICES.md
+AUDIT_REPORT.md
+AUDIT_REPORT_NEW.md
 CLAUDE.md
-plan.md
-*_plan.md
-design.md
-deprecated/
-*_SUCCESS.md
-test_*.py
-*.backup
-/data/*_test_agent/
-*__test*
-*_test.json
-*_backup_*

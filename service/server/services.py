@@ -1,0 +1,244 @@
+"""
+Services Module
+
+业务逻辑服务层
+"""
+
+import json
+from datetime import datetime
+from typing import Optional, Dict, Any, List
+from database import get_db_connection
+
+
+# ==================== Agent Services ====================
+
+def _get_agent_by_token(token: str) -> Optional[Dict]:
+    """Get agent by token."""
+    if not token:
+        return None
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM agents WHERE token = ?", (token,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def _get_user_by_token(token: str) -> Optional[Dict]:
+    """Get user by token."""
+    if not token:
+        return None
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT u.*, t.token as session_token
+        FROM users u
+        JOIN user_tokens t ON t.user_id = u.id
+        WHERE t.token = ? AND t.expires_at > datetime('now')
+    """, (token,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def _create_user_session(user_id: int) -> str:
+    """Create a new session for user."""
+    import secrets
+    from datetime import datetime, timedelta
+
+    token = secrets.token_urlsafe(32)
+    expires_at = (datetime.now() + timedelta(days=7)).isoformat()
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO user_tokens (user_id, token, expires_at)
+        VALUES (?, ?, ?)
+    """, (user_id, token, expires_at))
+    conn.commit()
+    conn.close()
+
+    return token
+
+
+def _add_agent_points(agent_id: int, points: int, reason: str = "reward") -> bool:
+    """Add points to an agent's account. Returns True if successful."""
+    if points <= 0:
+        return False
+
+    # Retry logic for database locking
+    max_retries = 3
+    for attempt in range(max_retries):
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE agents SET points = points + ? WHERE id = ?
+            """, (points, agent_id))
+            conn.commit()
+            return True
+        except Exception as e:
+            if "database is locked" in str(e) and attempt < max_retries - 1:
+                import time
+                time.sleep(0.5 * (attempt + 1))  # Exponential backoff
+                continue
+            print(f"[ERROR] Failed to add points to agent {agent_id}: {e}")
+            return False
+        finally:
+            conn.close()
+    return False
+
+
+def _get_agent_points(agent_id: int) -> int:
+    """Get agent's points balance."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT points FROM agents WHERE id = ?", (agent_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row["points"] if row else 0
+
+
+def _get_next_signal_id() -> int:
+    """Get next signal ID."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT MAX(signal_id) as max_id FROM signals")
+    row = cursor.fetchone()
+    conn.close()
+    return (row["max_id"] or 0) + 1
+
+
+# ==================== Position Services ====================
+
+def _update_position_from_signal(agent_id: int, symbol: str, market: str, action: str, quantity: float, price: float, executed_at: str, leader_id: int = None, cursor=None):
+    """
+    Update position based on trading signal.
+    - buy: increase long position
+    - sell: decrease/close long position
+    - short: increase short position
+    - cover: decrease/close short position
+    leader_id: if set, this position is copied from another agent
+    cursor: if provided, use this cursor instead of creating a new connection
+    """
+    # If no cursor provided, create a new connection
+    own_connection = False
+    if cursor is None:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        own_connection = True
+
+    # Get current position for this symbol
+    cursor.execute("""
+        SELECT id, quantity, entry_price
+        FROM positions
+        WHERE agent_id = ? AND symbol = ? AND market = ?
+    """, (agent_id, symbol, market))
+    row = cursor.fetchone()
+
+    current_qty = row["quantity"] if row else 0
+    position_id = row["id"] if row else None
+
+    action_lower = action.lower()
+
+    if action_lower == "buy":
+        # Increase long position
+        if current_qty > 0:
+            # Average in price
+            new_qty = current_qty + quantity
+            new_entry_price = ((current_qty * row["entry_price"]) + (quantity * price)) / new_qty
+            cursor.execute("""
+                UPDATE positions SET quantity = ?, entry_price = ?, opened_at = ?
+                WHERE id = ?
+            """, (new_qty, new_entry_price, executed_at, position_id))
+            print(f"[Position] {symbol}: increased long position to {new_qty}")
+        else:
+            # Create new long position
+            if leader_id:
+                cursor.execute("""
+                    INSERT INTO positions (agent_id, symbol, market, side, quantity, entry_price, opened_at, leader_id)
+                    VALUES (?, ?, ?, 'long', ?, ?, ?, ?)
+                """, (agent_id, symbol, market, quantity, price, executed_at, leader_id))
+                print(f"[Position] {symbol}: created copied long position {quantity} from leader {leader_id}")
+            else:
+                cursor.execute("""
+                    INSERT INTO positions (agent_id, symbol, market, side, quantity, entry_price, opened_at)
+                    VALUES (?, ?, ?, 'long', ?, ?, ?)
+                """, (agent_id, symbol, market, quantity, price, executed_at))
+                print(f"[Position] {symbol}: created long position {quantity}")
+
+    elif action_lower == "sell":
+        # Decrease/close long position
+        new_qty = current_qty - quantity
+        if new_qty <= 0:
+            # Close position
+            cursor.execute("DELETE FROM positions WHERE id = ?", (position_id,))
+            print(f"[Position] {symbol}: closed long position")
+        else:
+            # Partial close
+            cursor.execute("""
+                UPDATE positions SET quantity = ? WHERE id = ?
+            """, (new_qty, position_id))
+            print(f"[Position] {symbol}: decreased long position to {new_qty}")
+
+    elif action_lower == "short":
+        # Increase short position
+        if current_qty < 0:
+            # Add to existing short
+            new_qty = current_qty - quantity
+            cursor.execute("""
+                UPDATE positions SET quantity = ?, opened_at = ?
+                WHERE id = ?
+            """, (new_qty, executed_at, position_id))
+            print(f"[Position] {symbol}: increased short position to {new_qty}")
+        else:
+            # Create new short position (negative quantity for short)
+            if leader_id:
+                cursor.execute("""
+                    INSERT INTO positions (agent_id, symbol, market, side, quantity, entry_price, opened_at, leader_id)
+                    VALUES (?, ?, ?, 'short', ?, ?, ?, ?)
+                """, (agent_id, symbol, market, -quantity, price, executed_at, leader_id))
+                print(f"[Position] {symbol}: created copied short position {quantity} from leader {leader_id}")
+            else:
+                cursor.execute("""
+                    INSERT INTO positions (agent_id, symbol, market, side, quantity, entry_price, opened_at)
+                    VALUES (?, ?, ?, 'short', ?, ?, ?)
+                """, (agent_id, symbol, market, -quantity, price, executed_at))
+                print(f"[Position] {symbol}: created short position {quantity}")
+
+    elif action_lower == "cover":
+        # Decrease/close short position
+        if current_qty < 0:
+            new_qty = current_qty + quantity
+            if new_qty >= 0:
+                cursor.execute("DELETE FROM positions WHERE id = ?", (position_id,))
+                print(f"[Position] {symbol}: closed short position")
+            else:
+                cursor.execute("""
+                    UPDATE positions SET quantity = ? WHERE id = ?
+                """, (new_qty, position_id))
+                print(f"[Position] {symbol}: decreased short position to {new_qty}")
+
+    # Only commit and close if we created our own connection
+    if own_connection:
+        conn.commit()
+        conn.close()
+
+
+# ==================== Signal Services ====================
+
+async def _broadcast_signal_to_followers(leader_id: int, signal_data: dict) -> int:
+    """Broadcast signal to all followers."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT follower_id FROM subscriptions
+        WHERE leader_id = ? AND status = 'active'
+    """, (leader_id,))
+    followers = cursor.fetchall()
+    conn.close()
+
+    # In a real implementation, this would send WebSocket notifications
+    # For now, we just return the count
+    return len(followers)
