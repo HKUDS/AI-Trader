@@ -14,11 +14,24 @@ from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
+from langchain_core.globals import set_verbose, set_debug
 from langchain_core.messages import AIMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_openai import ChatOpenAI
 from utils.date_utils import parse_date
+
+# Best-effort import for a console/stdout callback handler across LangChain versions
+try:  # langchain <=0.1 style
+    from langchain.callbacks.stdout import StdOutCallbackHandler as _ConsoleHandler  # type: ignore
+except Exception:  # langchain 0.2+/core split variants
+    try:
+        from langchain.callbacks import StdOutCallbackHandler as _ConsoleHandler  # type: ignore
+    except Exception:
+        try:
+            from langchain_core.callbacks.stdout import StdOutCallbackHandler as _ConsoleHandler  # type: ignore
+        except Exception:
+            _ConsoleHandler = None  # Fallback if handler not available
 
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, project_root)
@@ -223,6 +236,7 @@ class BaseAgent:
         initial_cash: float = 10000.0,
         init_date: str = "2025-10-13",
         market: str = "us",
+        verbose: bool = False
     ):
         """
         Initialize BaseAgent
@@ -241,6 +255,7 @@ class BaseAgent:
             initial_cash: Initial cash amount
             init_date: Initialization date
             market: Market type, "us" for US stocks or "cn" for A-shares
+            verbose: Enable verbose output for LangChain agent
         """
         self.signature = signature
         self.basemodel = basemodel
@@ -264,6 +279,7 @@ class BaseAgent:
         self.base_delay = base_delay
         self.initial_cash = initial_cash
         self.init_date = init_date
+        self.verbose = verbose
 
         # Set MCP configuration
         self.mcp_config = mcp_config or self._get_default_mcp_config()
@@ -316,6 +332,16 @@ class BaseAgent:
         """Initialize MCP client and AI model"""
         print(f"🚀 Initializing agent: {self.signature}")
 
+        # Set LangChain verbose mode if enabled
+        if self.verbose:
+            # Enable both verbose and debug for richer event logs
+            set_verbose(True)
+            try:
+                set_debug(True)
+            except Exception:
+                pass
+            print("🔍 LangChain verbose mode enabled (with debug)")
+
         # Validate OpenAI configuration
         if not self.openai_api_key:
             raise ValueError(
@@ -335,6 +361,15 @@ class BaseAgent:
                 print(f"   MCP configuration: {self.mcp_config}")
             else:
                 print(f"✅ Loaded {len(self.tools)} MCP tools")
+                if self.verbose:
+                    try:
+                        tool_names = []
+                        for t in self.tools:
+                            name = getattr(t, "name", None) or getattr(t, "__name__", "<unknown>")
+                            tool_names.append(name)
+                        print(f"🔧 Tools: {', '.join(tool_names)}")
+                    except Exception:
+                        pass
         except Exception as e:
             raise RuntimeError(
                 f"❌ Failed to initialize MCP client: {e}\n"
@@ -390,6 +425,8 @@ class BaseAgent:
         """Agent invocation with retry"""
         for attempt in range(1, self.max_retries + 1):
             try:
+                if self.verbose:
+                    print(f"🤖 Calling LLM API ({self.basemodel})...")
                 return await self.agent.ainvoke({"messages": message}, {"recursion_limit": 100})
             except Exception as e:
                 if attempt == self.max_retries:
@@ -416,6 +453,19 @@ class BaseAgent:
             tools=self.tools,
             system_prompt=get_agent_system_prompt(today_date, self.signature, self.market, self.stock_symbols),
         )
+        # If verbose, try to attach console callbacks to the agent itself
+        if self.verbose and _ConsoleHandler is not None:
+            try:
+                handler = _ConsoleHandler()
+                self.agent = self.agent.with_config({
+                    "callbacks": [handler],
+                    "tags": [self.signature, today_date],
+                    "run_name": f"{self.signature}-session"
+                })
+            except Exception:
+                pass
+        elif self.verbose and _ConsoleHandler is None:
+            print("⚠️ Verbose requested but no StdOut/Console callback handler found in current LangChain version.")
 
         # Initial user query
         user_query = [{"role": "user", "content": f"Please analyze and update today's ({today_date}) positions."}]
@@ -538,14 +588,14 @@ class BaseAgent:
                     if max_date is None:
                         max_date = current_date
                     else:
-                        current_date_obj = parse_date(current_date)
-                        max_date_obj = parse_date(max_date)
+                        current_date_obj = datetime.strptime(current_date.split(' ')[0], "%Y-%m-%d")
+                        max_date_obj = datetime.strptime(max_date.split(' ')[0], "%Y-%m-%d")
                         if current_date_obj > max_date_obj:
                             max_date = current_date
 
         # Check if new dates need to be processed
-        max_date_obj = parse_date(max_date)
-        end_date_obj = parse_date(end_date)
+        max_date_obj = datetime.strptime(max_date.split(' ')[0], "%Y-%m-%d")
+        end_date_obj = datetime.strptime(end_date.split(' ')[0], "%Y-%m-%d")
 
         if end_date_obj <= max_date_obj:
             return []

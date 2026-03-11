@@ -10,6 +10,11 @@ cd "$PROJECT_ROOT"
 
 cd data/A_stock
 
-python get_daily_price_a_stock.py  # 运行A股价格数据获取（日度）
-python merge_a_stock_jsonl.py  # 合并A股数据文件
+# for alphavantage
+python get_daily_price_alphavantage.py
+python merge_jsonl_alphavantage.py
+# # for tushare
+# python get_daily_price_tushare.py
+# python merge_jsonl_tushare.py
+
 cd ..

@@ -245,6 +245,51 @@ body {
     opacity: 1;
 }
 
+/* Granularity Control */
+.granularity-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    transition: opacity 0.3s ease, width 0.3s ease;
+}
+
+.granularity-wrapper.hidden {
+    display: none;
+}
+
+.granularity-divider {
+    width: 1px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 0 6px;
+}
+
+.granularity-btn {
+    padding: 4px 8px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: var(--font-mono);
+    letter-spacing: 0.5px;
+}
+
+.granularity-btn:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.granularity-btn.active {
+    color: var(--accent-cyan);
+    background: rgba(0, 255, 204, 0.1);
+    border-color: rgba(0, 255, 204, 0.2);
+    box-shadow: 0 0 10px rgba(0, 255, 204, 0.1);
+}
+
 /* GitHub Link - Premium Design */
 .github-link {
     display: flex;
@@ -2195,9 +2240,302 @@ body {
     }
 }
 
+/* Live Update Animations */
+
+/* Glowing point pulse animation for chart endpoints */
+@keyframes chart-point-pulse {
+    0%, 100% {
+        box-shadow: 0 0 10px currentColor,
+        0 0 20px currentColor,
+        0 0 30px currentColor;
+        transform: scale(1);
+    }
+    50% {
+        box-shadow: 0 0 15px currentColor,
+        0 0 30px currentColor,
+        0 0 45px currentColor,
+        0 0 60px currentColor;
+        transform: scale(1.15);
+    }
+}
+
+@keyframes chart-point-ripple {
+    0% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(2.5);
+        opacity: 0;
+    }
+}
+
+/* Leaderboard live update animation */
+@keyframes leaderboard-pulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(0, 212, 255, 0);
+    }
+    50% {
+        box-shadow: 0 0 0 4px rgba(0, 212, 255, 0.2),
+        0 0 12px 2px rgba(0, 212, 255, 0.1);
+    }
+}
+
+@keyframes leaderboard-glow {
+    0%, 100% {
+        background: var(--secondary-bg);
+    }
+    50% {
+        background: linear-gradient(90deg,
+        var(--secondary-bg) 0%,
+        rgba(0, 212, 255, 0.05) 50%,
+        var(--secondary-bg) 100%);
+    }
+}
+
+.leaderboard-item {
+    animation: leaderboard-glow 3s ease-in-out infinite;
+}
+
+.leaderboard-item:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.leaderboard-item:nth-child(2) {
+    animation-delay: 0.3s;
+}
+
+.leaderboard-item:nth-child(3) {
+    animation-delay: 0.6s;
+}
+
+.leaderboard-item:nth-child(4) {
+    animation-delay: 0.9s;
+}
+
+.leaderboard-item:nth-child(5) {
+    animation-delay: 1.2s;
+}
+
+.leaderboard-item:nth-child(n+6) {
+    animation-delay: 1.5s;
+}
+
+/* Leaderboard icon pulse */
+.leaderboard-icon {
+    position: relative;
+}
+
+.leaderboard-icon::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    border-radius: 10px;
+    background: radial-gradient(circle, var(--accent-blue) 0%, transparent 70%);
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    animation: icon-ping 3s cubic-bezier(0, 0, 0.2, 1) infinite;
+    pointer-events: none;
+}
+
+.leaderboard-icon:nth-child(1)::after {
+    animation-delay: 0s;
+}
+
+.leaderboard-icon:nth-child(2)::after {
+    animation-delay: 0.3s;
+}
+
+@keyframes icon-ping {
+    0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.8;
+    }
+    50%, 100% {
+        transform: translate(-50%, -50%) scale(1.5);
+        opacity: 0;
+    }
+}
+
+/* Action card live update animation */
+.action-card {
+    position: relative;
+    animation: action-card-slide-in 0.4s ease-out;
+}
+
+@keyframes action-card-slide-in {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.action-card::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 3px;
+    height: 100%;
+    background: linear-gradient(180deg,
+    transparent 0%,
+    var(--accent-blue) 20%,
+    var(--accent-cyan) 50%,
+    var(--accent-blue) 80%,
+    transparent 100%);
+    opacity: 0;
+    animation: action-card-edge-glow 2.5s ease-in-out infinite;
+}
+
+@keyframes action-card-edge-glow {
+    0%, 100% {
+        opacity: 0;
+        transform: translateY(-100%);
+    }
+    50% {
+        opacity: 0.6;
+        transform: translateY(100%);
+    }
+}
+
+.action-card:nth-child(1)::before {
+    animation-delay: 0s;
+}
+
+.action-card:nth-child(2)::before {
+    animation-delay: 0.4s;
+}
+
+.action-card:nth-child(3)::before {
+    animation-delay: 0.8s;
+}
+
+.action-card:nth-child(4)::before {
+    animation-delay: 1.2s;
+}
+
+.action-card:nth-child(n+5)::before {
+    animation-delay: 1.6s;
+}
+
+/* Action agent icon ripple effect */
+.action-agent-icon {
+    position: relative;
+    overflow: visible;
+}
+
+.action-agent-icon::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    border: 2px solid var(--accent-cyan);
+    border-radius: 8px;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    animation: action-icon-ripple 2.5s ease-out infinite;
+}
+
+@keyframes action-icon-ripple {
+    0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 0.6;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(1.8);
+        opacity: 0;
+    }
+}
+
+/* Live indicator dot */
+.live-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background: var(--success);
+    border-radius: 50%;
+    margin-left: 0.5rem;
+    position: relative;
+    animation: live-blink 2s ease-in-out infinite;
+}
+
+.live-indicator::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100%;
+    height: 100%;
+    background: var(--success);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    animation: live-ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+@keyframes live-blink {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
+@keyframes live-ping {
+    0% {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(-50%, -50%) scale(3);
+        opacity: 0;
+    }
+}
+
+/* Transaction type badge pulse */
+.action-type {
+    position: relative;
+    animation: badge-subtle-glow 3s ease-in-out infinite;
+}
+
+.action-type.buy {
+    animation-name: badge-buy-glow;
+}
+
+.action-type.sell {
+    animation-name: badge-sell-glow;
+}
+
+@keyframes badge-buy-glow {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(72, 187, 120, 0);
+    }
+    50% {
+        box-shadow: 0 0 8px 2px rgba(72, 187, 120, 0.3);
+    }
+}
+
+@keyframes badge-sell-glow {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(245, 101, 101, 0);
+    }
+    50% {
+        box-shadow: 0 0 8px 2px rgba(245, 101, 101, 0.3);
+    }
+}
+
 /* Print styles */
 @media print {
     #chartjs-tooltip {
-        display: none \!important;
+        display: none !important;
     }
 }

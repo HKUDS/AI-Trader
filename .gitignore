@@ -1,7 +1,7 @@
 logs/
 data/*.json
 data/*.jsonl
-data/agent_data/
+# data/agent_data/
 __pycache__/
 *.pyc
 *.pyo
@@ -84,6 +84,8 @@ configs/hour_config.json
 configs/test_config.json
 configs/test_day_config.json
 configs/astock.json
+configs/astock_hour.json
+configs/test_*.json
 
 # Data directories (optional - uncomment if needed)
 data/agent_data/test*/
@@ -104,3 +106,16 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
+# Documentation
+CLAUDE.md
+plan.md
+*_plan.md
+design.md
+deprecated/
+*_SUCCESS.md
+test_*.py
+*.backup
+/data/*_test_agent/
+*__test*
+*_test.json
+*_backup_*

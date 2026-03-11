@@ -8,20 +8,28 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def _resolve_runtime_env_path() -> str:
-    """Resolve runtime env path. If RUNTIME_ENV_PATH is unset, fall back to
-    per-signature default at data/agent_data/{SIGNATURE}/.runtime_env.json.
+    """Resolve runtime env path from RUNTIME_ENV_PATH in .env file.
+    
+    Simple strategy:
+    1. Read RUNTIME_ENV_PATH from environment (.env file)
+    2. If relative path, resolve from project root
+    3. Return the path (will be created by write_config_value if needed)
     """
     path = os.environ.get("RUNTIME_ENV_PATH")
+    
     if not path:
-        signature = os.environ.get("SIGNATURE")
-        if signature:
-            base_dir = Path(__file__).resolve().parents[1]
-            default_path = base_dir / "data" / "agent_data" / signature / ".runtime_env.json"
-            # Ensure parent exists but do not create file here
-            default_path.parent.mkdir(parents=True, exist_ok=True)
-            path = str(default_path)
-            os.environ["RUNTIME_ENV_PATH"] = path
-    return path or ""
+        # Fallback to default if not set
+        path = "data/.runtime_env.json"
+    
+    # If relative path, resolve from project root
+    if not os.path.isabs(path):
+        base_dir = Path(__file__).resolve().parents[1]
+        path = str(base_dir / path)
+    
+    # Ensure directory exists
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    
+    return path
 
 
 def _load_runtime_env() -> dict:
