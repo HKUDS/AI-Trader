@@ -123,3 +123,5 @@ APPENDICES.md
 AUDIT_REPORT.md
 AUDIT_REPORT_NEW.md
 CLAUDE.md
+/service/data/
+/service/server/data/

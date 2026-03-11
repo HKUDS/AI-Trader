@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react'
+import { useState, useEffect, useMemo, createContext, useContext } from 'react'
 import { BrowserRouter, Routes, Route, Link, useLocation, Navigate, useNavigate } from 'react-router-dom'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { Language, getT } from './i18n'
@@ -25,6 +25,96 @@ const API_BASE = '/api'
 
 // Refresh interval from environment variable (default: 5 minutes)
 const REFRESH_INTERVAL = parseInt(import.meta.env.VITE_REFRESH_INTERVAL || '300000', 10)
+const FIVE_MINUTES_MS = 5 * 60 * 1000
+const ONE_DAY_MS = 24 * 60 * 60 * 1000
+
+type LeaderboardChartRange = 'all' | '24h'
+
+function parseRecordedAt(recordedAt: string) {
+  const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(recordedAt) ? recordedAt : `${recordedAt}Z`
+  const parsed = new Date(normalized)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function formatLeaderboardLabel(date: Date, chartRange: LeaderboardChartRange, language: Language) {
+  if (chartRange === '24h') {
+    return date.toLocaleTimeString(language === 'zh' ? 'zh-CN' : 'en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    })
+  }
+
+  return date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', {
+    month: 'short',
+    day: 'numeric'
+  })
+}
+
+function buildLeaderboardChartData(profitHistory: any[], chartRange: LeaderboardChartRange, language: Language) {
+  const topAgents = profitHistory.slice(0, 5).map((agent: any) => ({
+    ...agent,
+    history: (agent.history || [])
+      .map((entry: any) => {
+        const date = parseRecordedAt(entry.recorded_at)
+        if (!date) return null
+        return { ...entry, date }
+      })
+      .filter((entry: any) => entry !== null)
+      .sort((a: any, b: any) => a.date.getTime() - b.date.getTime())
+  })).filter((agent: any) => agent.history.length > 0)
+
+  if (topAgents.length === 0) {
+    return []
+  }
+
+  const allTimestamps = topAgents.flatMap((agent: any) => agent.history.map((entry: any) => entry.date.getTime()))
+  const earliestTimestamp = Math.min(...allTimestamps)
+  const now = new Date()
+  const bucketEnds: number[] = []
+
+  if (chartRange === '24h') {
+    const endTimestamp = Math.floor(now.getTime() / FIVE_MINUTES_MS) * FIVE_MINUTES_MS
+    const startTimestamp = endTimestamp - ONE_DAY_MS
+    for (let timestamp = startTimestamp; timestamp <= endTimestamp; timestamp += FIVE_MINUTES_MS) {
+      bucketEnds.push(timestamp)
+    }
+  } else {
+    const startDay = new Date(earliestTimestamp)
+    startDay.setHours(0, 0, 0, 0)
+
+    const endDay = new Date(now)
+    endDay.setHours(0, 0, 0, 0)
+
+    for (let timestamp = startDay.getTime(); timestamp <= endDay.getTime(); timestamp += ONE_DAY_MS) {
+      bucketEnds.push(timestamp + ONE_DAY_MS - 1)
+    }
+  }
+
+  return bucketEnds.map((bucketEndTimestamp) => {
+    const bucketEndDate = new Date(bucketEndTimestamp)
+    const point: Record<string, any> = {
+      time: formatLeaderboardLabel(bucketEndDate, chartRange, language)
+    }
+
+    topAgents.forEach((agent: any) => {
+      let latestProfit: number | null = null
+      for (const entry of agent.history) {
+        if (entry.date.getTime() <= bucketEndTimestamp) {
+          latestProfit = entry.profit
+        } else {
+          break
+        }
+      }
+
+      if (latestProfit !== null) {
+        point[agent.name] = latestProfit
+      }
+    })
+
+    return point
+  }).filter((point) => Object.keys(point).length > 1)
+}
 
 // Market types (only US Stock and Crypto are supported currently)
 const MARKETS = [
@@ -95,14 +185,14 @@ function Sidebar({ token, agentInfo, onLogout }: { token: string | null, agentIn
   const [showToken, setShowToken] = useState(false)
 
   const navItems = [
-    { path: '/', icon: '📊', label: t.nav.signals },
-    { path: '/leaderboard', icon: '🏆', label: language === 'zh' ? '排行榜' : 'Leaderboard' },
-    { path: '/copytrading', icon: '📋', label: language === 'zh' ? '跟单' : 'Copy Trading' },
-    { path: '/strategies', icon: '📈', label: t.nav.strategies },
-    { path: '/discussions', icon: '💬', label: t.nav.discussions },
-    { path: '/positions', icon: '💼', label: t.nav.positions },
-    { path: '/trade', icon: '💰', label: t.nav.trade },
-    { path: '/exchange', icon: '🎁', label: t.nav.exchange },
+    { path: '/', icon: '📊', label: t.nav.signals, requiresAuth: false },
+    { path: '/leaderboard', icon: '🏆', label: language === 'zh' ? '排行榜' : 'Leaderboard', requiresAuth: false },
+    { path: '/copytrading', icon: '📋', label: language === 'zh' ? '跟单' : 'Copy Trading', requiresAuth: true },
+    { path: '/strategies', icon: '📈', label: t.nav.strategies, requiresAuth: false },
+    { path: '/discussions', icon: '💬', label: t.nav.discussions, requiresAuth: false },
+    { path: '/positions', icon: '💼', label: t.nav.positions, requiresAuth: false },
+    { path: '/trade', icon: '💰', label: t.nav.trade, requiresAuth: true },
+    { path: '/exchange', icon: '🎁', label: t.nav.exchange, requiresAuth: true },
   ]
 
   return (
@@ -119,9 +209,17 @@ function Sidebar({ token, agentInfo, onLogout }: { token: string | null, agentIn
             key={item.path}
             to={item.path}
             className={`nav-link ${location.pathname === item.path ? 'active' : ''}`}
+            title={!token && item.requiresAuth ? (language === 'zh' ? '登录后可用' : 'Login required') : undefined}
           >
             <span className="nav-icon">{item.icon}</span>
-            <span>{item.label}</span>
+            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '8px' }}>
+              <span>{item.label}</span>
+              {!token && item.requiresAuth && (
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                  {language === 'zh' ? '需登录' : 'Login'}
+                </span>
+              )}
+            </span>
           </Link>
         ))}
       </nav>
@@ -193,9 +291,24 @@ function Sidebar({ token, agentInfo, onLogout }: { token: string | null, agentIn
             </button>
           </div>
         ) : (
-          <Link to="/login" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
-            {language === 'zh' ? '登录 / 注册' : 'Login / Register'}
-          </Link>
+          <div style={{ padding: '16px', background: 'var(--bg-tertiary)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: '6px' }}>
+                {language === 'zh' ? '游客模式' : 'Guest Mode'}
+              </div>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                {language === 'zh'
+                  ? '现在可以直接查看交易市场、排行榜、策略和讨论。登录后可交易、跟单和兑换积分。'
+                  : 'You can browse markets, leaderboard, strategies, and discussions now. Login to trade, copy, and exchange points.'}
+              </div>
+            </div>
+            <Link to="/login" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
+              {language === 'zh' ? '登录 / 注册' : 'Login / Register'}
+            </Link>
+            <Link to="/" className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center' }}>
+              {language === 'zh' ? '先看看市场' : 'Browse Market'}
+            </Link>
+          </div>
         )}
       </div>
     </div>
@@ -360,7 +473,7 @@ function SignalCard({ signal, onRefresh }: { signal: any, onRefresh?: () => void
 }
 
 // Signals Feed Page - Two-level structure (Grouped by Agent)
-function SignalsFeed() {
+function SignalsFeed({ token }: { token?: string | null }) {
   const [agents, setAgents] = useState<any[]>([])
   const [selectedAgent, setSelectedAgent] = useState<any>(null)
   const [agentSignals, setAgentSignals] = useState<any[]>([])
@@ -494,6 +607,19 @@ function SignalsFeed() {
           <p className="header-subtitle">{language === 'zh' ? '浏览交易操作信号' : 'Browse trading operation signals'}</p>
         </div>
       </div>
+
+      {!token && (
+        <div className="card" style={{ marginBottom: '20px', padding: '16px' }}>
+          <div style={{ fontWeight: 600, marginBottom: '6px' }}>
+            {language === 'zh' ? '游客浏览已开启' : 'Guest Browsing Enabled'}
+          </div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6 }}>
+            {language === 'zh'
+              ? '你现在可以查看市场信号、持仓和交易员资料。登录后可下单、跟单并参与互动。'
+              : 'You can now browse market signals, positions, and trader profiles. Login to trade, copy traders, and interact.'}
+          </div>
+        </div>
+      )}
 
       <div className="market-tabs">
         {MARKETS.map((m) => (
@@ -1045,11 +1171,10 @@ function CopyTradingPage({ token }: { token: string }) {
 }
 
 // Leaderboard Page - Top 10 Traders (no market distinction)
-function LeaderboardPage({ token: _token }: { token: string }) {
+function LeaderboardPage({ token }: { token?: string | null }) {
   const [profitHistory, setProfitHistory] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [chartMode, setChartMode] = useState<'minute' | 'daily'>('minute')
-  const [timeRange, setTimeRange] = useState<number>(60) // minutes for minute mode, days for daily mode
+  const [chartRange, setChartRange] = useState<LeaderboardChartRange>('all')
   const { language } = useLanguage()
   const navigate = useNavigate()
 
@@ -1076,6 +1201,11 @@ function LeaderboardPage({ token: _token }: { token: string }) {
     navigate(`/?agent=${agent.agent_id}`)
   }
 
+  const chartData = useMemo(
+    () => buildLeaderboardChartData(profitHistory, chartRange, language),
+    [profitHistory, chartRange, language]
+  )
+
   if (loading) {
     return <div className="loading"><div className="spinner"></div></div>
   }
@@ -1092,159 +1222,65 @@ function LeaderboardPage({ token: _token }: { token: string }) {
         </div>
       </div>
 
+      {!token && (
+        <div className="card" style={{ marginBottom: '20px', padding: '16px' }}>
+          <div style={{ fontWeight: 600, marginBottom: '6px' }}>
+            {language === 'zh' ? '游客也可查看排行榜' : 'Leaderboard Open to Guests'}
+          </div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6 }}>
+            {language === 'zh'
+              ? '当前可直接查看收益曲线和 Top 交易员表现。登录后可进一步交易、跟单与管理账户。'
+              : 'You can view profit curves and top trader performance without logging in. Login to trade, copy traders, and manage your account.'}
+          </div>
+        </div>
+      )}
+
       {/* Profit Chart */}
-      {profitHistory.length > 0 && profitHistory[0].history && profitHistory[0].history.length > 0 && (
+      {chartData.length > 0 && (
         <div className="card" style={{ marginBottom: '20px', padding: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', flexWrap: 'wrap', gap: '12px' }}>
             <h3 style={{ fontSize: '16px', margin: 0 }}>
               {language === 'zh' ? '收益曲线' : 'Profit Chart'}
             </h3>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              {/* Mode Toggle */}
               <button
-                onClick={() => { setChartMode('minute'); setTimeRange(60); }}
+                onClick={() => setChartRange('all')}
                 style={{
                   padding: '4px 12px',
                   borderRadius: '4px',
                   border: 'none',
-                  background: chartMode === 'minute' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
-                  color: chartMode === 'minute' ? '#fff' : 'var(--text-secondary)',
+                  background: chartRange === 'all' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                  color: chartRange === 'all' ? '#fff' : 'var(--text-secondary)',
                   cursor: 'pointer',
                   fontSize: '12px'
                 }}
               >
-                {language === 'zh' ? '分钟级' : 'Minute'}
+                {language === 'zh' ? '全部数据' : 'All Data'}
               </button>
               <button
-                onClick={() => { setChartMode('daily'); setTimeRange(30); }}
+                onClick={() => setChartRange('24h')}
                 style={{
                   padding: '4px 12px',
                   borderRadius: '4px',
                   border: 'none',
-                  background: chartMode === 'daily' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
-                  color: chartMode === 'daily' ? '#fff' : 'var(--text-secondary)',
+                  background: chartRange === '24h' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+                  color: chartRange === '24h' ? '#fff' : 'var(--text-secondary)',
                   cursor: 'pointer',
                   fontSize: '12px'
                 }}
               >
-                {language === 'zh' ? '每日级' : 'Daily'}
+                {language === 'zh' ? '24小时' : '24 Hours'}
               </button>
-              {/* Time Slider */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: '8px' }}>
-                <input
-                  key={chartMode} // Force re-render when mode changes
-                  type="range"
-                  min={chartMode === 'minute' ? 10 : 7}
-                  max={chartMode === 'minute' ? 1440 : 90}
-                  value={timeRange}
-                  onChange={(e) => setTimeRange(Number(e.target.value))}
-                  style={{ width: '120px', cursor: 'pointer' }}
-                />
-                <span style={{ color: 'var(--text-secondary)', fontSize: '12px', minWidth: '50px' }}>
-                  {chartMode === 'minute'
-                    ? (timeRange < 60 ? `${timeRange}m` : `${(timeRange/60).toFixed(1)}h`)
-                    : `${timeRange}d`
-                  }
-                </span>
-              </div>
             </div>
           </div>
           <div style={{ width: '100%', minHeight: 250, height: 250 }}>
             <ResponsiveContainer>
               <LineChart
-                data={(function() {
-                  const now = new Date()
-                  const isMinuteMode = chartMode === 'minute'
-                  const cutoffMs = isMinuteMode
-                    ? now.getTime() - timeRange * 60 * 1000
-                    : now.getTime() - timeRange * 24 * 60 * 60 * 1000
-                  const cutoff = new Date(cutoffMs)
-
-                  if (isMinuteMode) {
-                    // Minute mode: show all data points within range
-                    const allTimestamps = new Set<string>()
-                    profitHistory.forEach((agent: any) => {
-                      if (!agent.history) return
-                      agent.history.forEach((h: any) => {
-                        const hDate = new Date(h.recorded_at)
-                        if (hDate >= cutoff) {
-                          allTimestamps.add(h.recorded_at)
-                        }
-                      })
-                    })
-
-                    const sortedTimestamps = Array.from(allTimestamps).sort()
-
-                    return sortedTimestamps.map((timestamp: string) => {
-                      const point: any = {}
-                      const date = new Date(timestamp)
-                      point.time = date.toLocaleTimeString(language === 'zh' ? 'zh-CN' : 'en-US', { hour: '2-digit', minute: '2-digit' })
-
-                      profitHistory.forEach((agent: any) => {
-                        if (!agent.history) return
-                        let closestEntry = null
-                        for (const h of agent.history) {
-                          const hDate = new Date(h.recorded_at)
-                          if (hDate.getTime() <= date.getTime()) {
-                            closestEntry = h
-                          } else {
-                            break
-                          }
-                        }
-                        if (closestEntry) {
-                          point[agent.name] = closestEntry.profit
-                        }
-                      })
-                      return point
-                    })
-                  } else {
-                    // Daily mode: get all unique days within range
-                    const allDays = new Set<string>()
-
-                    profitHistory.forEach((agent: any) => {
-                      if (!agent.history) return
-                      agent.history.forEach((h: any) => {
-                        const hDate = new Date(h.recorded_at)
-                        if (hDate >= cutoff) {
-                          allDays.add(hDate.toISOString().split('T')[0])
-                        }
-                      })
-                    })
-
-                    const sortedDays = Array.from(allDays).sort()
-
-                    return sortedDays.map((day: string) => {
-                      const point: any = {}
-                      const date = new Date(day)
-                      point.time = date.toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US', { month: 'short', day: 'numeric' })
-
-                      // For each agent, find the last record on or before this day
-                      profitHistory.forEach((agent: any) => {
-                        if (!agent.history) return
-                        let closestEntry = null
-                        let closestDate = null
-                        for (const h of agent.history) {
-                          const hDate = new Date(h.recorded_at)
-                          const hDay = hDate.toISOString().split('T')[0]
-                          if (hDay <= day) {
-                            if (!closestDate || hDate > closestDate) {
-                              closestEntry = h
-                              closestDate = hDate
-                            }
-                          }
-                        }
-                        if (closestEntry) {
-                          point[agent.name] = closestEntry.profit
-                        }
-                      })
-                      return point
-                    })
-                  }
-                })()}
+                data={chartData}
                 margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-tertiary)" />
-                <XAxis dataKey="time" stroke="var(--text-secondary)" tick={{ fontSize: 10 }} />
+                <XAxis dataKey="time" stroke="var(--text-secondary)" tick={{ fontSize: 10 }} minTickGap={24} />
                 <YAxis stroke="var(--text-secondary)" tick={{ fontSize: 12 }} tickFormatter={(value: any) => `$${(Number(value)/1000).toFixed(0)}k`} />
                 <Tooltip
                   contentStyle={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--bg-tertiary)', borderRadius: '8px' }}
@@ -2625,8 +2661,8 @@ function App() {
               </div>
 
               <Routes>
-              <Route path="/" element={token ? <SignalsFeed /> : <Navigate to="/login" replace />} />
-              <Route path="/leaderboard" element={token ? <LeaderboardPage token={token} /> : <Navigate to="/login" replace />} />
+              <Route path="/" element={<SignalsFeed token={token} />} />
+              <Route path="/leaderboard" element={<LeaderboardPage token={token} />} />
               <Route path="/copytrading" element={token ? <CopyTradingPage token={token} /> : <Navigate to="/login" replace />} />
               <Route path="/strategies" element={<StrategiesPage />} />
               <Route path="/discussions" element={<DiscussionsPage />} />
