@@ -440,9 +440,23 @@ class BaseAgentAStock:
         # Create initial positions
         init_position = {symbol: 0 for symbol in self.stock_symbols}
         init_position["CASH"] = self.initial_cash
+        # Normalize init_date to zero-padded HH if time exists
+        init_date_str = self.init_date
+        if " " in init_date_str:
+            try:
+                # If already proper format, keep it
+                datetime.strptime(init_date_str, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                try:
+                    date_part, time_part = init_date_str.split(" ", 1)
+                    hh, mm, ss = time_part.split(":")
+                    init_date_str = f"{date_part} {hh.zfill(2)}:{mm}:{ss}"
+                except Exception:
+                    # Fallback: keep original if unexpected
+                    pass
 
         with open(self.position_file, "w") as f:  # Use "w" mode to ensure creating new file
-            f.write(json.dumps({"date": self.init_date, "id": 0, "positions": init_position}) + "\n")
+            f.write(json.dumps({"date": init_date_str, "id": 0, "positions": init_position}) + "\n")
 
         print(f"✅ A-shares agent {self.signature} registration completed")
         print(f"📁 Position file: {self.position_file}")

@@ -1,6 +1,8 @@
 import glob
 import json
 import os
+import csv
+from pathlib import Path
 
 sse_50_codes = [
     "600519.SHH",
@@ -55,18 +57,47 @@ sse_50_codes = [
     "600048.SHH"
 ]
 
+# 读取股票名称映射
+def load_stock_name_mapping():
+    """从 sse_50_weight.csv 加载股票代码到名称的映射"""
+    current_dir = os.path.dirname(__file__)
+    csv_path = os.path.join(current_dir, "A_stock_data", "sse_50_weight.csv")
+    
+    name_mapping = {}
+    try:
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                con_code = row.get('con_code', '')
+                stock_name = row.get('stock_name', '')
+                if con_code and stock_name:
+                    name_mapping[con_code] = stock_name
+    except FileNotFoundError:
+        print(f"⚠️  Warning: {csv_path} not found, stock names will not be added")
+    
+    return name_mapping
+
+# 加载股票名称映射
+stock_name_map = load_stock_name_mapping()
+
+
 # 合并所有以 daily_price 开头的 json，逐文件一行写入 merged.jsonl
 current_dir = os.path.dirname(__file__)
 pattern = os.path.join(current_dir, "A_stock_data/daily_price*.json")
 files = sorted(glob.glob(pattern))
 
+
 output_file = os.path.join(current_dir, "merged.jsonl")
+
+processed_count = 0
+skipped_count = 0
 
 with open(output_file, "w", encoding="utf-8") as fout:
     for fp in files:
         basename = os.path.basename(fp)
         # 仅当文件名包含任一纳指100成分符号时才写入
         if not any(symbol in basename for symbol in sse_50_codes):
+            skipped_count += 1
             continue
         with open(fp, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -104,8 +135,26 @@ with open(output_file, "w", encoding="utf-8") as fout:
                     symbol = symbol.replace(".SHH", ".SH")
                     # print("symbol: ", symbol)
                     meta["2. Symbol"] = symbol
-        except Exception:
+                    
+                    # 添加股票名称 (2.1. Name)
+                    stock_name = stock_name_map.get(symbol, "未知")
+                    if symbol in stock_name_map:
+                        meta["2.1. Name"] = stock_name
+                    
+                    # 强制修改时区为 Asia/Shanghai
+                    meta["5. Time Zone"] = "Asia/Shanghai"
+                    
+                    processed_count += 1
+        except Exception as e:
             # 若结构异常则原样写入
+            print(f"  ⚠️  {basename} - 处理异常: {e}")
             pass
 
         fout.write(json.dumps(data, ensure_ascii=False) + "\n")
+
+print(f"✅ 合并完成!")
+print(f"📊 统计信息:")
+print(f"   - 成功处理: {processed_count} 个文件")
+print(f"   - 跳过文件: {skipped_count} 个文件")
+print(f"   - 输出文件: {output_file}")
+

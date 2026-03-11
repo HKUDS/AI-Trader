@@ -125,6 +125,9 @@ async function init() {
 
     // Load initial data
     await loadDataAndRefresh();
+    
+    // Initialize UI state
+    updateMarketUI();
 }
 
 // Update statistics cards
@@ -233,23 +236,29 @@ function createChart() {
             sampleData: chartData.slice(0, 3)
         });
 
+        // Detect if we have hourly data (many data points with time component)
+        const isHourlyData = sortedDates.length > 50 && sortedDates[0].includes(':');
+
         const datasetObj = {
             label: dataLoader.getAgentDisplayName(agentName),
             data: chartData,
             borderColor: color,
-            backgroundColor: isBenchmark ? 'transparent' : createGradient(ctx, color),
+            backgroundColor: isBenchmark ? 'transparent' : createGradient(ctx, color), // Keep gradient for all
             borderWidth: borderWidth,
             borderDash: borderDash,
-            tension: 0.42, // Smooth curves for financial charts
+            tension: isHourlyData ? 0.45 : 0.4, // More smoothing for dense hourly data
             pointRadius: 0,
             pointHoverRadius: 7,
             pointHoverBackgroundColor: color,
             pointHoverBorderColor: '#fff',
             pointHoverBorderWidth: 3,
-            fill: !isBenchmark, // No fill for benchmarks
+            fill: !isBenchmark, // Fill for all non-benchmark agents
+            spanGaps: true, // Draw continuous lines even with missing data points
+            segment: {
+                borderColor: color,
+            },
             agentName: agentName,
-            agentIcon: dataLoader.getAgentIcon(agentName),
-            cubicInterpolationMode: 'monotone' // Smooth, monotonic interpolation
+            agentIcon: dataLoader.getAgentIcon(agentName)
         };
 
         console.log(`[DATASET OBJECT ${index}] borderColor: ${datasetObj.borderColor}, pointHoverBackgroundColor: ${datasetObj.pointHoverBackgroundColor}`);
@@ -691,6 +700,39 @@ function exportData() {
     window.URL.revokeObjectURL(url);
 }
 
+// Update UI based on current market state
+function updateMarketUI() {
+    const currentMarket = dataLoader.getMarket();
+    const usBtn = document.getElementById('usMarketBtn');
+    const cnBtn = document.getElementById('cnMarketBtn');
+    const granularityWrapper = document.getElementById('granularityWrapper');
+    const dailyBtn = document.getElementById('dailyBtn');
+    const hourlyBtn = document.getElementById('hourlyBtn');
+
+    // Reset all active states
+    if (usBtn) usBtn.classList.remove('active');
+    if (cnBtn) cnBtn.classList.remove('active');
+    if (dailyBtn) dailyBtn.classList.remove('active');
+    if (hourlyBtn) hourlyBtn.classList.remove('active');
+
+    if (currentMarket === 'us') {
+        if (usBtn) usBtn.classList.add('active');
+        if (granularityWrapper) granularityWrapper.classList.add('hidden');
+    } else {
+        // Both 'cn' and 'cn_hour' keep the main CN button active
+        if (cnBtn) cnBtn.classList.add('active');
+        if (granularityWrapper) granularityWrapper.classList.remove('hidden');
+        
+        if (currentMarket === 'cn_hour') {
+            if (hourlyBtn) hourlyBtn.classList.add('active');
+        } else {
+            if (dailyBtn) dailyBtn.classList.add('active');
+        }
+    }
+    
+    updateMarketSubtitle();
+}
+
 // Set up event listeners
 function setupEventListeners() {
     document.getElementById('toggle-log').addEventListener('click', toggleScale);
@@ -699,22 +741,48 @@ function setupEventListeners() {
     // Market switching
     const usMarketBtn = document.getElementById('usMarketBtn');
     const cnMarketBtn = document.getElementById('cnMarketBtn');
+    
+    // Granularity switching
+    const dailyBtn = document.getElementById('dailyBtn');
+    const hourlyBtn = document.getElementById('hourlyBtn');
 
-    if (usMarketBtn && cnMarketBtn) {
+    if (usMarketBtn) {
         usMarketBtn.addEventListener('click', async () => {
             if (dataLoader.getMarket() !== 'us') {
                 dataLoader.setMarket('us');
-                usMarketBtn.classList.add('active');
-                cnMarketBtn.classList.remove('active');
+                updateMarketUI();
                 await loadDataAndRefresh();
             }
         });
+    }
 
+    if (cnMarketBtn) {
         cnMarketBtn.addEventListener('click', async () => {
+            const current = dataLoader.getMarket();
+            // If not currently in any CN mode, switch to default CN (Hourly)
+            if (current !== 'cn' && current !== 'cn_hour') {
+                dataLoader.setMarket('cn_hour');
+                updateMarketUI();
+                await loadDataAndRefresh();
+            }
+        });
+    }
+
+    if (dailyBtn) {
+        dailyBtn.addEventListener('click', async () => {
             if (dataLoader.getMarket() !== 'cn') {
                 dataLoader.setMarket('cn');
-                cnMarketBtn.classList.add('active');
-                usMarketBtn.classList.remove('active');
+                updateMarketUI();
+                await loadDataAndRefresh();
+            }
+        });
+    }
+
+    if (hourlyBtn) {
+        hourlyBtn.addEventListener('click', async () => {
+            if (dataLoader.getMarket() !== 'cn_hour') {
+                dataLoader.setMarket('cn_hour');
+                updateMarketUI();
                 await loadDataAndRefresh();
             }
         });
