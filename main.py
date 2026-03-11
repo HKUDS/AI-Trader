@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from pathlib import Path as _Path
 from dotenv import load_dotenv
-
+from utils.date_utils import parse_date
 load_dotenv()
 
 from prompts.agent_prompt import all_nasdaq_100_symbols
