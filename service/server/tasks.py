@@ -84,9 +84,9 @@ async def update_position_prices():
 
                 async with semaphore:
                     # Run synchronous function in thread pool
-                    # Use UTC time since Alpha Vantage returns UTC
+                    # Use UTC time for consistent pricing timestamps
                     now = datetime.now(timezone.utc)
-                    executed_at = now.strftime("%Y-%m-%dT%H:%M:%S")
+                    executed_at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
                     price = await asyncio.to_thread(
                         get_price_from_market, symbol, executed_at, market
                     )
@@ -187,7 +187,7 @@ async def record_profit_history():
                 print(f"[Profit History] Agent {agent_id}: cash={cash}, pos_value={position_value}, profit={profit}")
 
                 # Record history
-                now = datetime.now(timezone.utc).isoformat()
+                now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
                 cursor.execute("""
                     INSERT INTO profit_history (agent_id, total_value, cash, position_value, profit, recorded_at)
                     VALUES (?, ?, ?, ?, ?, ?)

@@ -21,12 +21,17 @@ PRICE_API_RATE_LIMIT = 1.0  # seconds between requests
 def check_price_api_rate_limit(agent_id: int) -> bool:
     """Check if agent can query price API. Returns True if allowed."""
     global price_api_last_request
-    now = datetime.now().timestamp()
+    now = datetime.now(timezone.utc).timestamp()
     last = price_api_last_request.get(agent_id, 0)
     if now - last >= PRICE_API_RATE_LIMIT:
         price_api_last_request[agent_id] = now
         return True
     return False
+
+
+def _utc_now_iso_z() -> str:
+    """Return current time as ISO 8601 UTC with Z suffix."""
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 from config import CORS_ORIGINS, SIGNAL_PUBLISH_REWARD, SIGNAL_ADOPT_REWARD
 from database import get_db_connection
@@ -205,7 +210,7 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health_check():
-        return {"status": "ok", "timestamp": datetime.now().isoformat()}
+        return {"status": "ok", "timestamp": _utc_now_iso_z()}
 
     # ==================== WebSocket Notifications ====================
 
@@ -425,7 +430,7 @@ def create_app() -> FastAPI:
             """, (token, agent_id))
 
             # Create initial positions if provided
-            now = datetime.now().isoformat()
+            now = _utc_now_iso_z()
             if data.positions:
                 for pos in data.positions:
                     cursor.execute("""
@@ -535,7 +540,7 @@ def create_app() -> FastAPI:
         agent_id = agent["id"]
         agent_name = agent["name"]
         signal_id = _get_next_signal_id()
-        now = datetime.now().isoformat()
+        now = _utc_now_iso_z()
 
         # Store the actual action (buy/sell/short/cover)
         side = data.action
@@ -694,7 +699,7 @@ def create_app() -> FastAPI:
                         INSERT INTO signals
                         (signal_id, agent_id, message_type, market, signal_type, symbol, side, entry_price, quantity, content, timestamp, created_at, executed_at)
                         VALUES (?, ?, 'operation', ?, 'realtime', ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (follower_signal_id, follower_id, data.market, data.symbol, side, price, data.quantity, copy_content, int(datetime.now().timestamp()), now, executed_at))
+                    """, (follower_signal_id, follower_id, data.market, data.symbol, side, price, data.quantity, copy_content, int(datetime.now(timezone.utc).timestamp()), now, executed_at))
 
                     # Deduct/add cash for follower (with fee) - in same transaction
                     if side in ['buy', 'short']:
@@ -757,7 +762,7 @@ def create_app() -> FastAPI:
         agent_id = agent["id"]
         agent_name = agent["name"]
         signal_id = _get_next_signal_id()
-        now = datetime.now().isoformat()
+        now = _utc_now_iso_z()
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -765,7 +770,7 @@ def create_app() -> FastAPI:
             INSERT INTO signals
             (signal_id, agent_id, message_type, market, signal_type, title, content, symbols, tags, timestamp, created_at)
             VALUES (?, ?, 'strategy', ?, 'strategy', ?, ?, ?, ?, ?, ?)
-        """, (signal_id, agent_id, data.market, data.title, data.content, data.symbols, data.tags, int(datetime.now().timestamp()), now))
+        """, (signal_id, agent_id, data.market, data.title, data.content, data.symbols, data.tags, int(datetime.now(timezone.utc).timestamp()), now))
         conn.commit()
         conn.close()
 
@@ -784,7 +789,7 @@ def create_app() -> FastAPI:
 
         agent_id = agent["id"]
         signal_id = _get_next_signal_id()
-        now = datetime.now().isoformat()
+        now = _utc_now_iso_z()
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -792,7 +797,7 @@ def create_app() -> FastAPI:
             INSERT INTO signals
             (signal_id, agent_id, message_type, market, signal_type, symbol, title, content, timestamp, created_at)
             VALUES (?, ?, 'discussion', ?, 'discussion', ?, ?, ?, ?, ?)
-        """, (signal_id, agent_id, data.market, data.symbol, data.title, data.content, int(datetime.now().timestamp()), now))
+        """, (signal_id, agent_id, data.market, data.symbol, data.title, data.content, int(datetime.now(timezone.utc).timestamp()), now))
         conn.commit()
         conn.close()
 
@@ -1274,7 +1279,8 @@ def create_app() -> FastAPI:
         if not check_price_api_rate_limit(agent["id"]):
             raise HTTPException(status_code=429, detail="Rate limit exceeded. Please wait 1 second between requests.")
 
-        now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        # Always use UTC timestamp to avoid server-local timezone drift
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         price = get_price_from_market(symbol.upper(), now, market)
 
         if price:
@@ -1307,7 +1313,7 @@ def create_app() -> FastAPI:
 
         rows = cursor.fetchall()
         positions = []
-        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         for row in rows:
             symbol = row["symbol"]
@@ -1371,7 +1377,7 @@ def create_app() -> FastAPI:
 
         positions = []
         total_pnl = 0
-        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         for row in rows:
             symbol = row["symbol"]
@@ -1501,7 +1507,7 @@ def create_app() -> FastAPI:
         # Store code (expires in 5 minutes)
         verification_codes[data.email] = {
             "code": code,
-            "expires_at": datetime.now() + timedelta(minutes=5)
+            "expires_at": datetime.now(timezone.utc) + timedelta(minutes=5)
         }
 
         # In production, send email here
@@ -1517,7 +1523,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="No code sent")
 
         stored = verification_codes[data.email]
-        if stored["expires_at"] < datetime.now():
+        if stored["expires_at"] < datetime.now(timezone.utc):
             raise HTTPException(status_code=400, detail="Code expired")
 
         if stored["code"] != data.code:
