@@ -61,7 +61,7 @@ def is_us_market_open() -> bool:
 
 def is_market_open(market: str) -> bool:
     """Check if given market is currently open."""
-    if market == "crypto":
+    if market in ("crypto", "polymarket"):
         # Crypto is 24/7
         return True
     elif market == "us-stock":
@@ -119,8 +119,8 @@ def validate_executed_at(executed_at: str, market: str) -> tuple[bool, str]:
             if not (is_weekday and is_market_hours):
                 day_names = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
                 return False, f"US market is closed on {day_names[day]} at {dt_et.strftime('%H:%M')} ET. Trading hours: Mon-Fri 9:30-16:00 ET"
-        elif market == "crypto":
-            # Crypto is 24/7, always valid
+        elif market in ("crypto", "polymarket"):
+            # Crypto/Polymarket are 24/7, always valid (still require UTC input format)
             pass
 
         return True, ""
@@ -544,6 +544,8 @@ def create_app() -> FastAPI:
 
         # Store the actual action (buy/sell/short/cover)
         side = data.action
+        if data.market == "polymarket" and side.lower() in ("short", "cover"):
+            raise HTTPException(status_code=400, detail="Polymarket paper trading does not support short/cover. Use buy/sell of outcome tokens instead.")
 
         # Handle "now" - use current UTC time
         if data.executed_at.lower() == "now":

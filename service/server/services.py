@@ -141,6 +141,10 @@ def _update_position_from_signal(agent_id: int, symbol: str, market: str, action
 
     action_lower = action.lower()
 
+    # Polymarket is spot-like paper trading: no naked shorts.
+    if market == "polymarket" and action_lower in ("short", "cover"):
+        raise ValueError("Polymarket does not support short/cover; use buy/sell of outcome tokens instead")
+
     if action_lower == "buy":
         # Increase long position
         if current_qty > 0:

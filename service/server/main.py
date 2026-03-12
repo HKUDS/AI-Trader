@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 from database import init_database, get_db_connection
 from routes import create_app
-from tasks import update_position_prices, record_profit_history, _update_trending_cache
+from tasks import update_position_prices, record_profit_history, settle_polymarket_positions, _update_trending_cache
 
 # Initialize database
 init_database()
@@ -61,6 +61,9 @@ async def startup_event():
     # Start background task for recording profit history
     logger.info("Starting profit history recording task...")
     asyncio.create_task(record_profit_history())
+    # Start background task for Polymarket settlement
+    logger.info("Starting Polymarket settlement task...")
+    asyncio.create_task(settle_polymarket_positions())
     logger.info("All background tasks started")
 
 

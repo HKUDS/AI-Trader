@@ -203,3 +203,76 @@ async def record_profit_history():
         # Record at the same interval as position refresh (controlled by POSITION_REFRESH_INTERVAL)
         refresh_interval = int(os.getenv("POSITION_REFRESH_INTERVAL", "300"))
         await asyncio.sleep(refresh_interval)
+
+
+async def settle_polymarket_positions():
+    """
+    Background task to auto-settle resolved Polymarket positions.
+
+    When a Polymarket market resolves, Gamma exposes `resolved` and `settlementPrice`.
+    We treat the held outcome token as spot-like inventory:
+    - proceeds = quantity * settlementPrice
+    - credit proceeds to agent cash
+    - delete the position
+    """
+    from database import get_db_connection
+    from price_fetcher import _polymarket_resolve
+
+    # Wait a bit on startup before first settle pass
+    await asyncio.sleep(10)
+
+    while True:
+        try:
+            interval_s = int(os.getenv("POLYMARKET_SETTLE_INTERVAL", "60"))
+        except Exception:
+            interval_s = 60
+
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, agent_id, symbol, quantity, entry_price
+                FROM positions
+                WHERE market = 'polymarket'
+            """)
+            rows = cursor.fetchall()
+
+            settled = 0
+            skipped = 0
+
+            for row in rows:
+                pos_id = row["id"]
+                agent_id = row["agent_id"]
+                symbol = row["symbol"]
+                qty = row["quantity"] or 0
+
+                resolution = _polymarket_resolve(symbol)
+                if not resolution or not resolution.get("resolved"):
+                    skipped += 1
+                    continue
+
+                settlement_price = resolution.get("settlementPrice")
+                if settlement_price is None:
+                    skipped += 1
+                    continue
+
+                proceeds = float(f"{(abs(qty) * float(settlement_price)):.6f}")
+
+                # Apply settlement atomically
+                cursor.execute("UPDATE agents SET cash = cash + ? WHERE id = ?", (proceeds, agent_id))
+                cursor.execute("DELETE FROM positions WHERE id = ?", (pos_id,))
+                settled += 1
+
+            conn.commit()
+            conn.close()
+            if settled > 0:
+                print(f"[Polymarket Settler] settled={settled}, skipped={skipped}")
+
+        except Exception as e:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            print(f"[Polymarket Settler Error] {e}")
+
+        await asyncio.sleep(interval_s)
