@@ -122,7 +122,7 @@ const MARKETS = [
   { value: 'us-stock', label: 'US Stock', labelZh: '美股', supported: true },
   { value: 'crypto', label: 'Crypto (Testing)', labelZh: '加密货币（测试中）', supported: true },
   { value: 'a-stock', label: 'A-Share (Developing)', labelZh: 'A股（开发中）', supported: false },
-  { value: 'polymarket', label: 'Polymarket (Developing)', labelZh: '预测市场（开发中）', supported: false },
+  { value: 'polymarket', label: 'Polymarket (Testing)', labelZh: '预测市场（测试中）', supported: true },
   { value: 'forex', label: 'Forex (Developing)', labelZh: '外汇（开发中）', supported: false },
   { value: 'options', label: 'Options (Developing)', labelZh: '期权（开发中）', supported: false },
   { value: 'futures', label: 'Futures (Developing)', labelZh: '期货（开发中）', supported: false },
