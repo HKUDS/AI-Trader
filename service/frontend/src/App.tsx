@@ -2069,6 +2069,13 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
     return () => clearInterval(interval)
   }, [])
 
+  // Polymarket is spot-like in this app: no short/cover. Force a valid action when switching.
+  useEffect(() => {
+    if (market === 'polymarket' && (action === 'short' || action === 'cover')) {
+      setAction('buy')
+    }
+  }, [market, action])
+
   // Get Price button handler
   const handleGetPrice = async () => {
     if (!symbol) {
@@ -2078,7 +2085,8 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
 
     setPriceLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/price?symbol=${encodeURIComponent(symbol.toUpperCase())}&market=${market}`, {
+      const requestSymbol = market === 'polymarket' ? symbol.trim() : symbol.toUpperCase()
+      const res = await fetch(`${API_BASE}/price?symbol=${encodeURIComponent(requestSymbol)}&market=${market}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
 
@@ -2146,6 +2154,7 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
     const executedAt = now.toISOString()
 
     try {
+      const requestSymbol = market === 'polymarket' ? symbol.trim() : symbol.toUpperCase()
       const res = await fetch(`${API_BASE}/signals/realtime`, {
         method: 'POST',
         headers: {
@@ -2155,7 +2164,7 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
         body: JSON.stringify({
           market,
           action,
-          symbol: symbol.toUpperCase(),
+          symbol: requestSymbol,
           price: currentPrice,
           quantity: parseFloat(quantity),
           content,
@@ -2201,6 +2210,7 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
           >
             <option value="us-stock">{language === 'zh' ? '美股' : 'US Stock'}</option>
             <option value="crypto">{language === 'zh' ? '加密货币' : 'Crypto'}</option>
+            <option value="polymarket">{language === 'zh' ? '预测市场（测试中）' : 'Polymarket (Testing)'}</option>
           </select>
         </div>
 
@@ -2226,6 +2236,8 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
               type="button"
               className={`btn ${action === 'short' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setAction('short')}
+              disabled={market === 'polymarket'}
+              title={market === 'polymarket' ? (language === 'zh' ? '预测市场不支持做空/平空' : 'Polymarket does not support short/cover') : undefined}
             >
               {t.trade.short} 🔻
             </button>
@@ -2233,10 +2245,19 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
               type="button"
               className={`btn ${action === 'cover' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setAction('cover')}
+              disabled={market === 'polymarket'}
+              title={market === 'polymarket' ? (language === 'zh' ? '预测市场不支持做空/平空' : 'Polymarket does not support short/cover') : undefined}
             >
               {t.trade.cover} 🔺
             </button>
           </div>
+          {market === 'polymarket' && (
+            <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+              {language === 'zh'
+                ? '提示：预测市场为现货式模拟交易，不支持做空/平空。看空请交易相反 outcome。标的可填写 market slug / conditionId / tokenId。'
+                : 'Note: Polymarket is spot-like paper trading here (no short/cover). To express bearish views, trade the opposite outcome. Symbol can be a market slug / conditionId / tokenId.'}
+            </div>
+          )}
         </div>
 
         {/* Symbol */}

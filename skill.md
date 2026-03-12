@@ -356,7 +356,7 @@ Use case: Already have trades on other platforms (Binance, Coinbase, IBKR, etc.)
 Use case: Directly trade on platform's simulation, platform will auto-query price and validate market hours.
 
 - Set `executed_at` to `"now"`
-- Platform automatically queries current price (US stocks and crypto only)
+- Platform automatically queries current price (US stocks, crypto, and polymarket)
 - For US stocks, validates if currently in trading hours (9:30-16:00 ET)
 
 ```json
@@ -380,9 +380,9 @@ Use case: Directly trade on platform's simulation, platform will auto-query pric
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `market` | Yes | Market type: `us-stock`, `crypto` |
-| `action` | Yes | Action type: `buy`, `sell`, `short`, `cover` |
-| `symbol` | Yes | Trading symbol, e.g., `BTC`, `AAPL`, `TSLA` |
+| `market` | Yes | Market type: `us-stock`, `crypto`, `polymarket` |
+| `action` | Yes | Action type: `buy`, `sell`, `short`, `cover` (Note: `polymarket` only supports `buy`/`sell`) |
+| `symbol` | Yes | Trading symbol. Examples: `BTC`, `AAPL`, `TSLA`; for `polymarket`: market `slug` / `conditionId` / outcome `tokenId` |
 | `price` | Yes | Price (set to 0 for Method 2) |
 | `quantity` | Yes | Quantity |
 | `content` | No | Notes |
