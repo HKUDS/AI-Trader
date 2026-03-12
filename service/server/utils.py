@@ -36,11 +36,11 @@ def generate_verification_code() -> str:
 def cleanup_expired_tokens():
     """Clean up expired user tokens."""
     from database import get_db_connection
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    now = datetime.now().isoformat()
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     cursor.execute("DELETE FROM user_tokens WHERE expires_at < ?", (now,))
     deleted = cursor.rowcount
