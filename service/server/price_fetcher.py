@@ -8,7 +8,10 @@ Crypto: 从 Hyperliquid 获取价格（停止使用 Alpha Vantage crypto 端点�
 import os
 import requests
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Optional, Dict, Tuple
+import re
+import time
+import json
 
 # Alpha Vantage API configuration
 ALPHA_VANTAGE_API_KEY = os.environ.get("ALPHA_VANTAGE_API_KEY", "demo")
@@ -17,10 +20,21 @@ BASE_URL = "https://www.alphavantage.co/query"
 # Hyperliquid public info endpoint (no API key required for reads)
 HYPERLIQUID_API_URL = os.environ.get("HYPERLIQUID_API_URL", "https://api.hyperliquid.xyz/info").strip()
 
+# Polymarket public endpoints (no API key required for reads)
+POLYMARKET_GAMMA_BASE_URL = os.environ.get("POLYMARKET_GAMMA_BASE_URL", "https://gamma-api.polymarket.com").strip()
+POLYMARKET_CLOB_BASE_URL = os.environ.get("POLYMARKET_CLOB_BASE_URL", "https://clob.polymarket.com").strip()
+
 # 时区常量
 UTC = timezone.utc
 ET_OFFSET = timedelta(hours=-4)  # EDT is UTC-4
 ET_TZ = timezone(ET_OFFSET)
+
+_POLYMARKET_CONDITION_ID_RE = re.compile(r"^0x[a-fA-F0-9]{64}$")
+_POLYMARKET_TOKEN_ID_RE = re.compile(r"^\d+$")
+
+# In-memory cache for Polymarket reference -> (token_id, expiry_epoch_s)
+_polymarket_token_cache: Dict[str, Tuple[str, float]] = {}
+_POLYMARKET_TOKEN_CACHE_TTL_S = 300.0
 
 def _parse_executed_at_to_utc(executed_at: str) -> Optional[datetime]:
     """
@@ -76,6 +90,218 @@ def _hyperliquid_post(payload: dict) -> object:
     resp = requests.post(HYPERLIQUID_API_URL, json=payload, timeout=10)
     resp.raise_for_status()
     return resp.json()
+
+def _polymarket_get_json(url: str, params: Optional[dict] = None) -> object:
+    resp = requests.get(url, params=params, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def _polymarket_resolve_token_id(reference: str) -> Optional[str]:
+    """
+    Resolve a Polymarket reference into a concrete CLOB token_id.
+
+    Supported references (best-effort):
+    - tokenId: "123456" (preferred)
+    - conditionId: "0x..." (64-byte hex)
+    - slug: "will-btc-hit-100k-by-2026" (best-effort via Gamma /markets?slug=...)
+
+    Returns token_id string or None.
+    """
+    ref = (reference or "").strip()
+    if not ref:
+        return None
+
+    cached = _polymarket_token_cache.get(ref)
+    now = time.time()
+    if cached and cached[1] > now:
+        return cached[0]
+
+    # If already a token id, use directly.
+    if _POLYMARKET_TOKEN_ID_RE.match(ref):
+        _polymarket_token_cache[ref] = (ref, now + _POLYMARKET_TOKEN_CACHE_TTL_S)
+        return ref
+
+    if not POLYMARKET_GAMMA_BASE_URL:
+        return None
+
+    url = f"{POLYMARKET_GAMMA_BASE_URL.rstrip('/')}/markets"
+    params = {"limit": "1"}
+    if _POLYMARKET_CONDITION_ID_RE.match(ref):
+        params["conditionId"] = ref
+    else:
+        params["slug"] = ref
+
+    try:
+        raw = _polymarket_get_json(url, params=params)
+    except Exception:
+        return None
+
+    if not isinstance(raw, list) or not raw:
+        return None
+    market = raw[0]
+    if not isinstance(market, dict):
+        return None
+
+    def _parse_string_array(value) -> list:
+        if isinstance(value, list):
+            return [str(v) for v in value if isinstance(v, (str, int)) and str(v).strip()]
+        if isinstance(value, str) and value.strip().startswith("["):
+            try:
+                parsed = json.loads(value)
+                if isinstance(parsed, list):
+                    return [str(v) for v in parsed if isinstance(v, (str, int)) and str(v).strip()]
+            except Exception:
+                return []
+        return []
+
+    # Gamma sometimes exposes clobTokenIds as a JSON string; handle both.
+    token_ids = _parse_string_array(market.get("clobTokenIds"))
+    if not token_ids:
+        token_ids = _parse_string_array(market.get("clob_token_ids"))
+    token_id = None
+    if token_ids:
+        token_id = token_ids[0].strip()
+
+    if token_id and _POLYMARKET_TOKEN_ID_RE.match(token_id):
+        _polymarket_token_cache[ref] = (token_id, now + _POLYMARKET_TOKEN_CACHE_TTL_S)
+        return token_id
+
+    return None
+
+
+def _get_polymarket_mid_price(reference: str) -> Optional[float]:
+    """
+    Fetch a mid price for a Polymarket outcome token.
+    Price is derived from best bid/ask in the CLOB orderbook.
+    """
+    if not POLYMARKET_CLOB_BASE_URL:
+        return None
+
+    token_id = _polymarket_resolve_token_id(reference)
+    if not token_id:
+        return None
+
+    url = f"{POLYMARKET_CLOB_BASE_URL.rstrip('/')}/book"
+    data = None
+    try:
+        data = _polymarket_get_json(url, params={"token_id": token_id})
+    except Exception:
+        data = None
+
+    if isinstance(data, dict):
+        bids = data.get("bids") if isinstance(data.get("bids"), list) else []
+        asks = data.get("asks") if isinstance(data.get("asks"), list) else []
+
+        def _best_px(levels: list) -> Optional[float]:
+            if not levels:
+                return None
+            first = levels[0]
+            if isinstance(first, dict) and "price" in first:
+                try:
+                    return float(first["price"])
+                except Exception:
+                    return None
+            return None
+
+        best_bid = _best_px(bids)
+        best_ask = _best_px(asks)
+        if best_bid is not None or best_ask is not None:
+            if best_bid is not None and best_ask is not None:
+                return float(f"{((best_bid + best_ask) / 2):.6f}")
+            return float(f"{(best_bid if best_bid is not None else best_ask):.6f}")
+
+    # Fallback: use Gamma market fields when CLOB orderbook is missing.
+    market_info = _polymarket_resolve(reference)
+    if not market_info:
+        return None
+    # When unresolved, Gamma may still expose an indicative price; settlementPrice is only meaningful after resolve.
+    # We re-fetch the full market record to get lastTradePrice/outcomePrice/outcomePrices when available.
+    try:
+        url = f"{POLYMARKET_GAMMA_BASE_URL.rstrip('/')}/markets"
+        params = {"limit": "1"}
+        ref = reference.strip()
+        if _POLYMARKET_CONDITION_ID_RE.match(ref):
+            params["conditionId"] = ref
+        elif _POLYMARKET_TOKEN_ID_RE.match(ref):
+            params["clob_token_ids"] = ref
+        else:
+            params["slug"] = ref
+        raw = _polymarket_get_json(url, params=params)
+        if isinstance(raw, list) and raw and isinstance(raw[0], dict):
+            m = raw[0]
+            for key in ("lastTradePrice", "outcomePrice"):
+                v = m.get(key)
+                if isinstance(v, (int, float)):
+                    return float(f"{float(v):.6f}")
+                if isinstance(v, str) and v.strip():
+                    try:
+                        return float(f"{float(v):.6f}")
+                    except Exception:
+                        pass
+            outcome_prices = m.get("outcomePrices")
+            if isinstance(outcome_prices, str) and outcome_prices.strip().startswith("["):
+                try:
+                    parsed = json.loads(outcome_prices)
+                    if isinstance(parsed, list) and parsed:
+                        return float(f"{float(parsed[0]):.6f}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+    return None
+
+
+def _polymarket_resolve(reference: str) -> Optional[dict]:
+    """
+    Resolve a Polymarket market via Gamma.
+    Returns dict: { resolved: bool, outcome: Optional[str], settlementPrice: Optional[float] } or None.
+    """
+    if not POLYMARKET_GAMMA_BASE_URL:
+        return None
+
+    ref = (reference or "").strip()
+    if not ref:
+        return None
+
+    url = f"{POLYMARKET_GAMMA_BASE_URL.rstrip('/')}/markets"
+    params = {"limit": "1"}
+    if _POLYMARKET_CONDITION_ID_RE.match(ref):
+        params["conditionId"] = ref
+    elif _POLYMARKET_TOKEN_ID_RE.match(ref):
+        params["clob_token_ids"] = ref
+    else:
+        params["slug"] = ref
+
+    try:
+        raw = _polymarket_get_json(url, params=params)
+    except Exception:
+        return None
+
+    if not isinstance(raw, list) or not raw:
+        return None
+    market = raw[0]
+    if not isinstance(market, dict):
+        return None
+
+    resolved_flag = bool(market.get("resolved"))
+    outcome = market.get("outcome") if isinstance(market.get("outcome"), str) else None
+    settlement_raw = market.get("settlementPrice")
+    settlement_price = None
+    if isinstance(settlement_raw, (int, float)):
+        settlement_price = float(settlement_raw)
+    elif isinstance(settlement_raw, str) and settlement_raw.strip():
+        try:
+            settlement_price = float(settlement_raw)
+        except Exception:
+            settlement_price = None
+
+    return {
+        "resolved": resolved_flag,
+        "outcome": outcome,
+        "settlementPrice": settlement_price,
+    }
 
 
 def _get_hyperliquid_mid_price(symbol: str) -> Optional[float]:
@@ -180,6 +406,10 @@ def get_price_from_market(symbol: str, executed_at: str, market: str) -> Optiona
             # Crypto pricing now uses Hyperliquid public endpoints.
             # Try historical candle (when executed_at is provided), then fall back to mid price.
             price = _get_hyperliquid_candle_close(symbol, executed_at) or _get_hyperliquid_mid_price(symbol)
+        elif market == "polymarket":
+            # Polymarket pricing uses public Gamma + CLOB endpoints.
+            # We use the current orderbook mid price (paper trading).
+            price = _get_polymarket_mid_price(symbol)
         else:
             if not ALPHA_VANTAGE_API_KEY or ALPHA_VANTAGE_API_KEY == "demo":
                 print("Warning: ALPHA_VANTAGE_API_KEY not set, using agent-provided price")
