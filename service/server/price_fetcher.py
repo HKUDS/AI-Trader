@@ -32,6 +32,17 @@ ET_TZ = timezone(ET_OFFSET)
 _POLYMARKET_CONDITION_ID_RE = re.compile(r"^0x[a-fA-F0-9]{64}$")
 _POLYMARKET_TOKEN_ID_RE = re.compile(r"^\d+$")
 
+# Polymarket outcome prices are probabilities in [0, 1]. Reject values outside to avoid
+# token_id/condition_id or other API noise being interpreted as price (e.g. 1.5e+73).
+def _polymarket_price_valid(price: float) -> bool:
+    if price is None or not isinstance(price, (int, float)):
+        return False
+    try:
+        p = float(price)
+        return 0 <= p <= 1
+    except (TypeError, ValueError):
+        return False
+
 # In-memory cache for Polymarket reference -> (token_id, expiry_epoch_s)
 _polymarket_token_cache: Dict[str, Tuple[str, float]] = {}
 _POLYMARKET_TOKEN_CACHE_TTL_S = 300.0
@@ -207,9 +218,11 @@ def _get_polymarket_mid_price(reference: str) -> Optional[float]:
         best_bid = _best_px(bids)
         best_ask = _best_px(asks)
         if best_bid is not None or best_ask is not None:
-            if best_bid is not None and best_ask is not None:
-                return float(f"{((best_bid + best_ask) / 2):.6f}")
-            return float(f"{(best_bid if best_bid is not None else best_ask):.6f}")
+            mid = (best_bid + best_ask) / 2 if (best_bid is not None and best_ask is not None) else (best_bid if best_bid is not None else best_ask)
+            mid = float(f"{mid:.6f}")
+            if _polymarket_price_valid(mid):
+                return mid
+            return None
 
     # Fallback: use Gamma market fields when CLOB orderbook is missing.
     market_info = _polymarket_resolve(reference)
@@ -233,10 +246,14 @@ def _get_polymarket_mid_price(reference: str) -> Optional[float]:
             for key in ("lastTradePrice", "outcomePrice"):
                 v = m.get(key)
                 if isinstance(v, (int, float)):
-                    return float(f"{float(v):.6f}")
+                    p = float(f"{float(v):.6f}")
+                    if _polymarket_price_valid(p):
+                        return p
                 if isinstance(v, str) and v.strip():
                     try:
-                        return float(f"{float(v):.6f}")
+                        p = float(f"{float(v):.6f}")
+                        if _polymarket_price_valid(p):
+                            return p
                     except Exception:
                         pass
             outcome_prices = m.get("outcomePrices")
@@ -244,7 +261,9 @@ def _get_polymarket_mid_price(reference: str) -> Optional[float]:
                 try:
                     parsed = json.loads(outcome_prices)
                     if isinstance(parsed, list) and parsed:
-                        return float(f"{float(parsed[0]):.6f}")
+                        p = float(f"{float(parsed[0]):.6f}")
+                        if _polymarket_price_valid(p):
+                            return p
                 except Exception:
                     pass
     except Exception:
@@ -296,6 +315,8 @@ def _polymarket_resolve(reference: str) -> Optional[dict]:
             settlement_price = float(settlement_raw)
         except Exception:
             settlement_price = None
+    if settlement_price is not None and not _polymarket_price_valid(settlement_price):
+        settlement_price = None
 
     return {
         "resolved": resolved_flag,

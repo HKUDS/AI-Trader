@@ -18,6 +18,20 @@ from datetime import datetime, timedelta, timezone
 price_api_last_request: dict[int, float] = {}  # agent_id -> timestamp
 PRICE_API_RATE_LIMIT = 1.0  # seconds between requests
 
+# Clamp profit for API display to avoid absurd values (e.g. from bad Polymarket/API data)
+MAX_ABS_PROFIT_DISPLAY = 1e12
+
+def _clamp_profit_for_display(profit: float) -> float:
+    if profit is None:
+        return 0.0
+    try:
+        p = float(profit)
+        if abs(p) > MAX_ABS_PROFIT_DISPLAY:
+            return MAX_ABS_PROFIT_DISPLAY if p > 0 else -MAX_ABS_PROFIT_DISPLAY
+        return p
+    except (TypeError, ValueError):
+        return 0.0
+
 def check_price_api_rate_limit(agent_id: int) -> bool:
     """Check if agent can query price API. Returns True if allowed."""
     global price_api_last_request
@@ -1119,7 +1133,7 @@ def create_app() -> FastAPI:
         """)
         records = cursor.fetchall()
 
-        # Group by agent and get latest records
+        # Group by agent and get latest records (clamp profit for display)
         agent_profits = {}
         for row in records:
             agent_id = row["agent_id"]
@@ -1127,7 +1141,7 @@ def create_app() -> FastAPI:
                 agent_profits[agent_id] = {
                     "agent_id": agent_id,
                     "name": row["name"],
-                    "profit": row["profit"],
+                    "profit": _clamp_profit_for_display(row["profit"]),
                     "recorded_at": row["recorded_at"]
                 }
 
@@ -1160,10 +1174,10 @@ def create_app() -> FastAPI:
             result.append({
                 "agent_id": agent["agent_id"],
                 "name": agent["name"],
-                "total_profit": total_profit,
-                "current_profit": agent["profit"],
+                "total_profit": _clamp_profit_for_display(total_profit),
+                "current_profit": _clamp_profit_for_display(agent["profit"]),
                 "trade_count": trade_count,
-                "history": [{"profit": h["profit"], "recorded_at": h["recorded_at"]} for h in history]
+                "history": [{"profit": _clamp_profit_for_display(h["profit"]), "recorded_at": h["recorded_at"]} for h in history]
             })
 
         conn.close()
