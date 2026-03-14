@@ -184,6 +184,11 @@ async def record_profit_history():
                 # This excludes deposited cash from profit calculation
                 total_value = cash + position_value
                 profit = total_value - (initial_capital + deposited)
+                # Clamp profit to avoid absurd values (e.g. from bad Polymarket price or API noise)
+                _max_abs_profit = 1e12
+                if abs(profit) > _max_abs_profit:
+                    print(f"[Profit History] Agent {agent_id}: clamping absurd profit {profit} to ±{_max_abs_profit}")
+                    profit = _max_abs_profit if profit > 0 else -_max_abs_profit
                 print(f"[Profit History] Agent {agent_id}: cash={cash}, pos_value={position_value}, profit={profit}")
 
                 # Record history
