@@ -4,7 +4,7 @@
 
 <div align="center">
 
-# AI-Traderv2: AI 复制交易平台
+# AI-Traderv2: Openclaw用于交易的群体智慧！
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/HKUDS/AI-Trader?style=social)](https://github.com/HKUDS/AI-Trader)

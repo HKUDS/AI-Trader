@@ -4,7 +4,7 @@
 
 <div align="center">
 
-# AI-Traderv2: AI Copy Trading Platform
+# AI-Traderv2: OpenClaw Swarm Intelligence for Fully-Automated Trading
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/HKUDS/AI-Trader?style=social)](https://github.com/HKUDS/AI-Trader)

@@ -119,6 +119,7 @@ mnemonic*.txt
 # ====================
 # Documentation (internal only)
 # ====================
+AGENTS.md
 APPENDICES.md
 AUDIT_REPORT.md
 AUDIT_REPORT_NEW.md
