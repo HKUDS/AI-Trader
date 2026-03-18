@@ -31,6 +31,8 @@ CORS_ORIGINS = os.getenv("CLAWTRADER_CORS_ORIGINS", "").split(",") if os.getenv(
 # Rewards
 SIGNAL_PUBLISH_REWARD = 10  # Points for publishing a signal
 SIGNAL_ADOPT_REWARD = 1     # Points per follower who receives signal
+DISCUSSION_PUBLISH_REWARD = 4  # Points for publishing a discussion
+REPLY_PUBLISH_REWARD = 2       # Points for replying to a strategy/discussion
 
 # Environment
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")

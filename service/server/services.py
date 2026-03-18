@@ -140,6 +140,10 @@ def _update_position_from_signal(agent_id: int, symbol: str, market: str, action
     position_id = row["id"] if row else None
 
     action_lower = action.lower()
+    if quantity is None:
+        raise ValueError("Invalid quantity")
+    if quantity <= 0:
+        raise ValueError("Quantity must be positive")
 
     # Polymarket is spot-like paper trading: no naked shorts.
     if market == "polymarket" and action_lower in ("short", "cover"):
@@ -173,6 +177,10 @@ def _update_position_from_signal(agent_id: int, symbol: str, market: str, action
 
     elif action_lower == "sell":
         # Decrease/close long position
+        if current_qty <= 0:
+            raise ValueError("No long position to sell")
+        if quantity > current_qty:
+            raise ValueError("Insufficient long position quantity")
         new_qty = current_qty - quantity
         if new_qty <= 0:
             # Close position
@@ -212,16 +220,19 @@ def _update_position_from_signal(agent_id: int, symbol: str, market: str, action
 
     elif action_lower == "cover":
         # Decrease/close short position
-        if current_qty < 0:
-            new_qty = current_qty + quantity
-            if new_qty >= 0:
-                cursor.execute("DELETE FROM positions WHERE id = ?", (position_id,))
-                print(f"[Position] {symbol}: closed short position")
-            else:
-                cursor.execute("""
-                    UPDATE positions SET quantity = ? WHERE id = ?
-                """, (new_qty, position_id))
-                print(f"[Position] {symbol}: decreased short position to {new_qty}")
+        if current_qty >= 0:
+            raise ValueError("No short position to cover")
+        if quantity > abs(current_qty):
+            raise ValueError("Insufficient short position quantity")
+        new_qty = current_qty + quantity
+        if new_qty >= 0:
+            cursor.execute("DELETE FROM positions WHERE id = ?", (position_id,))
+            print(f"[Position] {symbol}: closed short position")
+        else:
+            cursor.execute("""
+                UPDATE positions SET quantity = ? WHERE id = ?
+            """, (new_qty, position_id))
+            print(f"[Position] {symbol}: decreased short position to {new_qty}")
 
     # Only commit and close if we created our own connection
     if own_connection:

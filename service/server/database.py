@@ -301,11 +301,26 @@ def init_database():
     """)
 
     cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_profit_history_recorded_at
+        ON profit_history(recorded_at DESC)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_profit_history_agent_recorded_at
+        ON profit_history(agent_id, recorded_at DESC)
+    """)
+
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_positions_agent ON positions(agent_id)
     """)
 
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_signals_agent ON signals(agent_id)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_signals_agent_message_type
+        ON signals(agent_id, message_type)
     """)
 
     cursor.execute("""
