@@ -158,7 +158,7 @@ async def record_profit_history():
             agents = cursor.fetchall()
             print(f"[Profit History] Found {len(agents)} agents")
 
-            for agent in agents:
+            for idx, agent in enumerate(agents):
                 agent_id = agent["id"]
                 cash = agent["cash"] or 0
                 deposited = agent["deposited"] or 0
@@ -189,7 +189,7 @@ async def record_profit_history():
                 if abs(profit) > _max_abs_profit:
                     print(f"[Profit History] Agent {agent_id}: clamping absurd profit {profit} to ±{_max_abs_profit}")
                     profit = _max_abs_profit if profit > 0 else -_max_abs_profit
-                print(f"[Profit History] Agent {agent_id}: cash={cash}, pos_value={position_value}, profit={profit}")
+                # Avoid per-agent logging (too noisy, can starve the event loop under load)
 
                 # Record history
                 now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -197,6 +197,10 @@ async def record_profit_history():
                     INSERT INTO profit_history (agent_id, total_value, cash, position_value, profit, recorded_at)
                     VALUES (?, ?, ?, ?, ?, ?)
                 """, (agent_id, total_value, cash, position_value, profit, now))
+
+                # Yield to the event loop periodically so API remains responsive
+                if idx % 25 == 0:
+                    await asyncio.sleep(0)
 
             conn.commit()
             conn.close()

@@ -25,10 +25,15 @@ const API_BASE = '/api'
 
 // Refresh interval from environment variable (default: 5 minutes)
 const REFRESH_INTERVAL = parseInt(import.meta.env.VITE_REFRESH_INTERVAL || '300000', 10)
+const NOTIFICATION_POLL_INTERVAL = 60 * 1000
 const FIVE_MINUTES_MS = 5 * 60 * 1000
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 type LeaderboardChartRange = 'all' | '24h'
+
+function getLeaderboardDays(chartRange: LeaderboardChartRange) {
+  return chartRange === '24h' ? 1 : 7
+}
 
 function parseRecordedAt(recordedAt: string) {
   const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(recordedAt) ? recordedAt : `${recordedAt}Z`
@@ -138,6 +143,11 @@ function Toast({ message, type, onClose }: { message: string, type: 'success' | 
   return <div className={`toast ${type}`}>{message}</div>
 }
 
+type NotificationCounts = {
+  discussion: number
+  strategy: number
+}
+
 // Language Switcher
 function LanguageSwitcher() {
   const { language, setLanguage } = useLanguage()
@@ -179,7 +189,19 @@ function LanguageSwitcher() {
 }
 
 // Sidebar Component
-function Sidebar({ token, agentInfo, onLogout }: { token: string | null, agentInfo: any, onLogout: () => void }) {
+function Sidebar({
+  token,
+  agentInfo,
+  onLogout,
+  notificationCounts,
+  onMarkCategoryRead
+}: {
+  token: string | null
+  agentInfo: any
+  onLogout: () => void
+  notificationCounts: NotificationCounts
+  onMarkCategoryRead: (category: 'discussion' | 'strategy') => void
+}) {
   const location = useLocation()
   const { t, language } = useLanguage()
   const [showToken, setShowToken] = useState(false)
@@ -188,12 +210,19 @@ function Sidebar({ token, agentInfo, onLogout }: { token: string | null, agentIn
     { path: '/', icon: '📊', label: t.nav.signals, requiresAuth: false },
     { path: '/leaderboard', icon: '🏆', label: language === 'zh' ? '排行榜' : 'Leaderboard', requiresAuth: false },
     { path: '/copytrading', icon: '📋', label: language === 'zh' ? '跟单' : 'Copy Trading', requiresAuth: true },
-    { path: '/strategies', icon: '📈', label: t.nav.strategies, requiresAuth: false },
-    { path: '/discussions', icon: '💬', label: t.nav.discussions, requiresAuth: false },
+    { path: '/strategies', icon: '📈', label: t.nav.strategies, requiresAuth: false, badge: notificationCounts.strategy, category: 'strategy' as const },
+    { path: '/discussions', icon: '💬', label: t.nav.discussions, requiresAuth: false, badge: notificationCounts.discussion, category: 'discussion' as const },
     { path: '/positions', icon: '💼', label: t.nav.positions, requiresAuth: false },
     { path: '/trade', icon: '💰', label: t.nav.trade, requiresAuth: true },
     { path: '/exchange', icon: '🎁', label: t.nav.exchange, requiresAuth: true },
   ]
+
+  useEffect(() => {
+    const activeItem = navItems.find((item) => item.path === location.pathname)
+    if (activeItem?.category && (activeItem.badge || 0) > 0) {
+      onMarkCategoryRead(activeItem.category)
+    }
+  }, [location.pathname, notificationCounts.discussion, notificationCounts.strategy])
 
   return (
     <div className="sidebar">
@@ -210,10 +239,35 @@ function Sidebar({ token, agentInfo, onLogout }: { token: string | null, agentIn
             to={item.path}
             className={`nav-link ${location.pathname === item.path ? 'active' : ''}`}
             title={!token && item.requiresAuth ? (language === 'zh' ? '登录后可用' : 'Login required') : undefined}
+            onClick={() => {
+              if (item.category && (item.badge || 0) > 0) {
+                onMarkCategoryRead(item.category)
+              }
+            }}
           >
             <span className="nav-icon">{item.icon}</span>
             <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '8px' }}>
-              <span>{item.label}</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span>{item.label}</span>
+                {(item.badge || 0) > 0 && (
+                  <span style={{
+                    minWidth: '18px',
+                    height: '18px',
+                    padding: '0 6px',
+                    borderRadius: '999px',
+                    background: '#ef4444',
+                    color: '#fff',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    lineHeight: 1
+                  }}>
+                    {item.badge && item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                )}
+              </span>
               {!token && item.requiresAuth && (
                 <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                   {language === 'zh' ? '需登录' : 'Login'}
@@ -358,9 +412,13 @@ function SignalCard({ signal, onRefresh }: { signal: any, onRefresh?: () => void
         setReplyContent('')
         loadReplies()
         onRefresh?.()
+      } else {
+        const data = await res.json()
+        alert(data.detail || (language === 'zh' ? '回复发送失败' : 'Failed to send reply'))
       }
     } catch (e) {
       console.error(e)
+      alert(language === 'zh' ? '回复发送失败' : 'Failed to send reply')
     }
     setSubmitting(false)
   }
@@ -1184,11 +1242,12 @@ function LeaderboardPage({ token }: { token?: string | null }) {
       loadProfitHistory()
     }, REFRESH_INTERVAL)
     return () => clearInterval(interval)
-  }, [])
+  }, [chartRange])
 
   const loadProfitHistory = async () => {
     try {
-      const res = await fetch(`${API_BASE}/profit/history?limit=10`)
+      const days = getLeaderboardDays(chartRange)
+      const res = await fetch(`${API_BASE}/profit/history?limit=10&days=${days}`)
       const data = await res.json()
       setProfitHistory(data.top_agents || [])
     } catch (e) {
@@ -1545,17 +1604,22 @@ function StrategiesPage() {
 function DiscussionsPage() {
   const [token] = useState<string | null>(localStorage.getItem('claw_token'))
   const [discussions, setDiscussions] = useState<any[]>([])
+  const [recentNotifications, setRecentNotifications] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [formData, setFormData] = useState({ title: '', content: '', tags: '', market: 'us-stock' })
   const { t, language } = useLanguage()
   const location = useLocation()
+  const navigate = useNavigate()
 
   // Get signal ID from query parameter
   const signalIdFromQuery = new URLSearchParams(location.search).get('signal')
 
   useEffect(() => {
     loadDiscussions()
+    if (token) {
+      loadRecentNotifications()
+    }
   }, [])
 
   const loadDiscussions = async () => {
@@ -1575,6 +1639,24 @@ function DiscussionsPage() {
       setDiscussions([])
     }
     setLoading(false)
+  }
+
+  const loadRecentNotifications = async () => {
+    if (!token) return
+    try {
+      const res = await fetch(`${API_BASE}/claw/messages/recent?category=discussion&limit=8`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (!res.ok) {
+        setRecentNotifications([])
+        return
+      }
+      const data = await res.json()
+      setRecentNotifications(data.messages || [])
+    } catch (e) {
+      console.error(e)
+      setRecentNotifications([])
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1599,9 +1681,14 @@ function DiscussionsPage() {
         setFormData({ title: '', content: '', tags: '', market: 'us-stock' })
         setShowForm(false)
         loadDiscussions()
+        loadRecentNotifications()
+      } else {
+        const data = await res.json()
+        alert(data.detail || (language === 'zh' ? '发布讨论失败' : 'Failed to post discussion'))
       }
     } catch (e) {
       console.error(e)
+      alert(language === 'zh' ? '发布讨论失败' : 'Failed to post discussion')
     }
   }
 
@@ -1618,6 +1705,53 @@ function DiscussionsPage() {
           </button>
         )}
       </div>
+
+      {token && recentNotifications.length > 0 && (
+        <div className="card" style={{ marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+            <h3 className="card-title" style={{ marginBottom: 0 }}>
+              {language === 'zh' ? '最近通知' : 'Recent Notifications'}
+            </h3>
+            <button
+              className="btn btn-ghost"
+              style={{ padding: '6px 10px', fontSize: '12px' }}
+              onClick={loadRecentNotifications}
+            >
+              {language === 'zh' ? '刷新' : 'Refresh'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {recentNotifications.map((message: any) => {
+              const signalId = message.data?.signal_id
+              return (
+                <button
+                  key={message.id}
+                  type="button"
+                  onClick={() => signalId && navigate(`/discussions?signal=${signalId}`)}
+                  style={{
+                    textAlign: 'left',
+                    padding: '12px 14px',
+                    background: message.read ? 'var(--bg-tertiary)' : 'rgba(34, 197, 94, 0.08)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '10px',
+                    cursor: signalId ? 'pointer' : 'default'
+                  }}
+                >
+                  <div style={{ fontSize: '14px', fontWeight: 600, marginBottom: '4px' }}>
+                    {message.content}
+                  </div>
+                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    {message.data?.title || message.data?.symbol || (language === 'zh' ? '讨论更新' : 'Discussion update')}
+                  </div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    {message.created_at ? new Date(message.created_at).toLocaleString() : ''}
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="card">
@@ -2635,6 +2769,7 @@ function App() {
   const [token, setToken] = useState<string | null>(localStorage.getItem('claw_token'))
   const [agentInfo, setAgentInfo] = useState<any>(null)
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null)
+  const [notificationCounts, setNotificationCounts] = useState<NotificationCounts>({ discussion: 0, strategy: 0 })
 
   const t = getT(language)
 
@@ -2647,6 +2782,7 @@ function App() {
     localStorage.removeItem('claw_token')
     setToken(null)
     setAgentInfo(null)
+    setNotificationCounts({ discussion: 0, strategy: 0 })
   }
 
   useEffect(() => {
@@ -2669,11 +2805,85 @@ function App() {
     }
   }
 
+  const fetchUnreadSummary = async () => {
+    if (!token) return
+    try {
+      const res = await fetch(`${API_BASE}/claw/messages/unread-summary`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (!res.ok) return
+      const data = await res.json()
+      setNotificationCounts({
+        discussion: data.discussion_unread || 0,
+        strategy: data.strategy_unread || 0
+      })
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const markCategoryRead = async (category: 'discussion' | 'strategy') => {
+    if (!token) return
+    setNotificationCounts((prev) => ({ ...prev, [category]: 0 }))
+    try {
+      await fetch(`${API_BASE}/claw/messages/mark-read`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ categories: [category] })
+      })
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  useEffect(() => {
+    if (!token) return
+    fetchUnreadSummary()
+    const interval = setInterval(fetchUnreadSummary, NOTIFICATION_POLL_INTERVAL)
+    return () => clearInterval(interval)
+  }, [token])
+
+  useEffect(() => {
+    if (!agentInfo?.id) return
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${protocol}//${window.location.host}/ws/notify/${agentInfo.id}`
+    const ws = new WebSocket(wsUrl)
+
+    ws.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data)
+        if (payload?.type === 'discussion_started' || payload?.type === 'discussion_reply') {
+          setNotificationCounts((prev) => ({ ...prev, discussion: prev.discussion + 1 }))
+        } else if (payload?.type === 'strategy_published' || payload?.type === 'strategy_reply') {
+          setNotificationCounts((prev) => ({ ...prev, strategy: prev.strategy + 1 }))
+        }
+        if (payload?.content) {
+          setToast({ message: payload.content, type: 'success' })
+        }
+      } catch (e) {
+        console.error(e)
+      }
+    }
+
+    return () => {
+      ws.close()
+    }
+  }, [agentInfo?.id])
+
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t }}>
       <BrowserRouter>
         <div className="app-container">
-          <Sidebar token={token} agentInfo={agentInfo} onLogout={logout} />
+          <Sidebar
+            token={token}
+            agentInfo={agentInfo}
+            onLogout={logout}
+            notificationCounts={notificationCounts}
+            onMarkCategoryRead={markCategoryRead}
+          />
 
           <main className="main-content" style={{ display: 'flex', gap: '24px' }}>
             <div style={{ flex: 1 }}>
