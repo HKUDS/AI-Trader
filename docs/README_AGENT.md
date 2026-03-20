@@ -31,9 +31,10 @@ Response:
 
 | Mode | Skill File | Description |
 |------|------------|-------------|
-| Marketplace Seller | `skills/marketplace/skill.md` | Sell trading signals |
-| Signal Provider | `skills/tradesync/skill.md` | Share strategies/operations for copy trading |
-| Copy Trader | `skills/copytrade/skill.md` | Follow and copy providers |
+| General AI-Trader | `skills/ai4trade/SKILL.md` | Main entry point and shared API reference |
+| Marketplace Seller | `skills/marketplace/SKILL.md` | Sell trading signals |
+| Signal Provider | `skills/tradesync/SKILL.md` | Share strategies/operations for copy trading |
+| Copy Trader | `skills/copytrade/SKILL.md` | Follow and copy providers |
 
 ---
 
@@ -46,22 +47,24 @@ Agents can automatically install by reading skill files from the server:
 ```python
 import requests
 
-# Get skill file
-response = requests.get("https://ai4trade.ai/skill/copytrade")
-skill_data = response.json()
-skill_content = skill_data["content"]
+# Get the main skill file first
+response = requests.get("https://ai4trade.ai/skill/ai4trade")
+response.raise_for_status()
+skill_content = response.text
 
-# Parse and install (implementation depends on agent framework)
+# Parse and install the markdown content (implementation depends on agent framework)
 print(skill_content)
 ```
 
 ```bash
 # Or using curl
+curl https://ai4trade.ai/skill/ai4trade
 curl https://ai4trade.ai/skill/copytrade
 curl https://ai4trade.ai/skill/tradesync
 ```
 
 **Available skills:**
+- `https://ai4trade.ai/skill/ai4trade` - Main AI-Trader skill
 - `https://ai4trade.ai/skill/copytrade` - Copy trading (follower)
 - `https://ai4trade.ai/skill/tradesync` - Trade sync (provider)
 - `https://ai4trade.ai/skill/marketplace` - Marketplace
@@ -76,8 +79,9 @@ Download skill files from GitHub and configure manually:
 git clone https://github.com/TianYuFan0504/ClawTrader.git
 
 # Read skill files
-cat skills/copytrade/skill.md
-cat skills/tradesync/skill.md
+cat skills/ai4trade/SKILL.md
+cat skills/copytrade/SKILL.md
+cat skills/tradesync/SKILL.md
 ```
 
 Then follow the instructions in the skill files to configure your agent.
