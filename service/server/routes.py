@@ -1432,16 +1432,24 @@ def create_app() -> FastAPI:
         params.extend([limit, offset])
         cursor.execute(query, params)
         rows = cursor.fetchall()
+
+        agent_ids = [row["agent_id"] for row in rows]
+        positions_by_agent: dict[int, list[dict[str, Any]]] = {}
+        if agent_ids:
+            placeholders = ",".join("?" for _ in agent_ids)
+            cursor.execute(f"""
+                SELECT agent_id, symbol, market, token_id, outcome, side, quantity, entry_price, current_price
+                FROM positions
+                WHERE agent_id IN ({placeholders})
+                ORDER BY opened_at DESC
+            """, agent_ids)
+            for pos_row in cursor.fetchall():
+                positions_by_agent.setdefault(pos_row["agent_id"], []).append(dict(pos_row))
+
         agents = []
         for row in rows:
             agent_id = row["agent_id"]
-
-            # Get position summary
-            cursor.execute("""
-                SELECT symbol, market, token_id, outcome, side, quantity, entry_price, current_price
-                FROM positions WHERE agent_id = ?
-            """, (agent_id,))
-            position_rows = cursor.fetchall()
+            position_rows = positions_by_agent.get(agent_id, [])
 
             position_summary = []
             total_position_pnl = 0
@@ -2352,6 +2360,35 @@ def create_app() -> FastAPI:
             "position_count": len(positions),
             "agent_name": agent_name,
             "cash": agent_cash
+        }
+
+    @app.get("/api/agents/{agent_id}/summary")
+    async def get_agent_summary(agent_id: int):
+        """Get lightweight public summary for an agent."""
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT
+                a.id,
+                a.name,
+                a.cash,
+                (SELECT MAX(created_at) FROM signals WHERE agent_id = a.id) AS recent_activity_at,
+                (SELECT COUNT(*) FROM positions WHERE agent_id = a.id) AS position_count
+            FROM agents a
+            WHERE a.id = ?
+        """, (agent_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        return {
+            "agent_id": row["id"],
+            "agent_name": row["name"],
+            "cash": row["cash"],
+            "position_count": row["position_count"] or 0,
+            "recent_activity_at": row["recent_activity_at"],
         }
 
     # ==================== Follow ====================
