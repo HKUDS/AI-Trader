@@ -204,6 +204,8 @@ def init_database():
             market TEXT NOT NULL,  -- 'us-stock', 'a-stock', 'crypto', 'polymarket', etc.
             signal_type TEXT,  -- 'position', 'trade', 'realtime' (for operation type)
             symbol TEXT,
+            token_id TEXT,
+            outcome TEXT,
             symbols TEXT,  -- JSON array for multiple symbols
             side TEXT,  -- 'long', 'short'
             entry_price REAL,
@@ -254,6 +256,8 @@ def init_database():
             leader_id INTEGER,  -- null if self-opened
             symbol TEXT NOT NULL,
             market TEXT NOT NULL DEFAULT 'us-stock',
+            token_id TEXT,
+            outcome TEXT,
             side TEXT NOT NULL,
             quantity REAL NOT NULL,
             entry_price REAL NOT NULL,
@@ -264,11 +268,50 @@ def init_database():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS signal_sequence (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS polymarket_settlements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            position_id INTEGER NOT NULL,
+            agent_id INTEGER NOT NULL,
+            symbol TEXT NOT NULL,
+            token_id TEXT NOT NULL,
+            outcome TEXT,
+            quantity REAL NOT NULL,
+            entry_price REAL NOT NULL,
+            settlement_price REAL NOT NULL,
+            proceeds REAL NOT NULL,
+            market_slug TEXT,
+            resolved_outcome TEXT,
+            resolved_at TEXT,
+            settled_at TEXT DEFAULT (datetime('now')),
+            source_data TEXT,
+            FOREIGN KEY (position_id) REFERENCES positions(id),
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
+        )
+    """)
+
     # Add market column if it doesn't exist (for existing databases)
     try:
         cursor.execute("ALTER TABLE positions ADD COLUMN market TEXT NOT NULL DEFAULT 'us-stock'")
     except:
         pass  # Column already exists
+
+    try:
+        cursor.execute("ALTER TABLE positions ADD COLUMN token_id TEXT")
+    except:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE positions ADD COLUMN outcome TEXT")
+    except:
+        pass
 
     # Add cash column if it doesn't exist (for existing databases)
     try:
@@ -281,6 +324,16 @@ def init_database():
         cursor.execute("ALTER TABLE agents ADD COLUMN deposited REAL DEFAULT 0.0")
     except:
         pass  # Column already exists
+
+    try:
+        cursor.execute("ALTER TABLE signals ADD COLUMN token_id TEXT")
+    except:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE signals ADD COLUMN outcome TEXT")
+    except:
+        pass
 
     # Profit history table - tracks agent profit over time
     cursor.execute("""
@@ -315,6 +368,16 @@ def init_database():
     """)
 
     cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_positions_market_symbol
+        ON positions(market, symbol)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_positions_polymarket_token
+        ON positions(market, token_id)
+    """)
+
+    cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_signals_agent ON signals(agent_id)
     """)
 
@@ -329,6 +392,16 @@ def init_database():
 
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_signals_created_at ON signals(created_at)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_signals_polymarket_token
+        ON signals(market, token_id)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_polymarket_settlements_agent
+        ON polymarket_settlements(agent_id, settled_at DESC)
     """)
 
     conn.commit()
