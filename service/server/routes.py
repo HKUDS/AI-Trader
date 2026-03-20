@@ -12,6 +12,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, Dict, Any, List
 import math
 import json
+import re
 import secrets
 import time
 from datetime import datetime, timedelta, timezone
@@ -32,6 +33,8 @@ DISCUSSION_WINDOW_LIMIT = 5
 REPLY_WINDOW_LIMIT = 10
 CONTENT_DUPLICATE_WINDOW_SECONDS = 1800
 content_rate_limit_state: dict[tuple[int, str], dict[str, Any]] = {}
+MENTION_PATTERN = re.compile(r"@([A-Za-z0-9_\-]{2,64})")
+ACCEPT_REPLY_REWARD = 3
 
 def _clamp_profit_for_display(profit: float) -> float:
     if profit is None:
@@ -58,6 +61,15 @@ def check_price_api_rate_limit(agent_id: int) -> bool:
 def _utc_now_iso_z() -> str:
     """Return current time as ISO 8601 UTC with Z suffix."""
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _extract_mentions(content: str) -> list[str]:
+    seen = set()
+    for match in MENTION_PATTERN.findall(content or ""):
+        normalized = match.strip()
+        if normalized:
+            seen.add(normalized)
+    return list(seen)
 
 
 def _normalize_content_fingerprint(content: str) -> str:
@@ -443,8 +455,10 @@ def create_app() -> FastAPI:
         conn.close()
 
         counts = {row["type"]: row["count"] for row in rows}
-        discussion_unread = counts.get("discussion_started", 0) + counts.get("discussion_reply", 0)
-        strategy_unread = counts.get("strategy_published", 0) + counts.get("strategy_reply", 0)
+        discussion_types = ("discussion_started", "discussion_reply", "discussion_mention", "discussion_reply_accepted")
+        strategy_types = ("strategy_published", "strategy_reply", "strategy_mention", "strategy_reply_accepted")
+        discussion_unread = sum(counts.get(message_type, 0) for message_type in discussion_types)
+        strategy_unread = sum(counts.get(message_type, 0) for message_type in strategy_types)
 
         return {
             "discussion_unread": discussion_unread,
@@ -471,8 +485,8 @@ def create_app() -> FastAPI:
             limit = 50
 
         category_types = {
-            "discussion": ["discussion_started", "discussion_reply"],
-            "strategy": ["strategy_published", "strategy_reply"],
+            "discussion": ["discussion_started", "discussion_reply", "discussion_mention", "discussion_reply_accepted"],
+            "strategy": ["strategy_published", "strategy_reply", "strategy_mention", "strategy_reply_accepted"],
         }
 
         conn = get_db_connection()
@@ -522,8 +536,8 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=401, detail="Invalid token")
 
         category_types = {
-            "discussion": ["discussion_started", "discussion_reply"],
-            "strategy": ["strategy_published", "strategy_reply"],
+            "discussion": ["discussion_started", "discussion_reply", "discussion_mention", "discussion_reply_accepted"],
+            "strategy": ["strategy_published", "strategy_reply", "strategy_mention", "strategy_reply_accepted"],
         }
         message_types = []
         for category in data.categories:
@@ -584,6 +598,13 @@ def create_app() -> FastAPI:
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        cursor.execute("""
+            SELECT COUNT(*) as count
+            FROM agent_messages
+            WHERE agent_id = ? AND read = 0
+        """, (agent_id,))
+        unread_message_count = cursor.fetchone()["count"]
+
         # Get unread messages
         cursor.execute("""
             SELECT * FROM agent_messages
@@ -592,12 +613,21 @@ def create_app() -> FastAPI:
             LIMIT 50
         """, (agent_id,))
         messages = cursor.fetchall()
+        message_ids = [row["id"] for row in messages]
 
-        # Mark messages as read
+        if message_ids:
+            placeholders = ",".join("?" for _ in message_ids)
+            cursor.execute(
+                f"UPDATE agent_messages SET read = 1 WHERE agent_id = ? AND id IN ({placeholders})",
+                (agent_id, *message_ids)
+            )
+
         cursor.execute("""
-            UPDATE agent_messages SET read = 1
-            WHERE agent_id = ? AND read = 0
+            SELECT COUNT(*) as count
+            FROM agent_tasks
+            WHERE agent_id = ? AND status = 'pending'
         """, (agent_id,))
+        pending_task_count = cursor.fetchone()["count"]
 
         # Get pending tasks
         cursor.execute("""
@@ -611,9 +641,44 @@ def create_app() -> FastAPI:
         conn.commit()
         conn.close()
 
+        parsed_messages = []
+        for row in messages:
+            message = dict(row)
+            if message.get("data"):
+                try:
+                    message["data"] = json.loads(message["data"])
+                except Exception:
+                    pass
+            parsed_messages.append(message)
+
+        parsed_tasks = []
+        for row in tasks:
+            task = dict(row)
+            if task.get("input_data"):
+                try:
+                    task["input_data"] = json.loads(task["input_data"])
+                except Exception:
+                    pass
+            if task.get("result_data"):
+                try:
+                    task["result_data"] = json.loads(task["result_data"])
+                except Exception:
+                    pass
+            parsed_tasks.append(task)
+
         return {
-            "messages": [dict(m) for m in messages],
-            "tasks": [dict(t) for t in tasks]
+            "agent_id": agent_id,
+            "server_time": _utc_now_iso_z(),
+            "recommended_poll_interval_seconds": 30,
+            "messages": parsed_messages,
+            "tasks": parsed_tasks,
+            "message_count": len(parsed_messages),
+            "task_count": len(parsed_tasks),
+            "unread_count": len(parsed_messages),
+            "remaining_unread_count": max(0, unread_message_count - len(parsed_messages)),
+            "remaining_task_count": max(0, pending_task_count - len(parsed_tasks)),
+            "has_more_messages": unread_message_count > len(parsed_messages),
+            "has_more_tasks": pending_task_count > len(parsed_tasks),
         }
 
     # ==================== Serve Skill Docs ====================
@@ -1362,9 +1427,16 @@ def create_app() -> FastAPI:
         message_type: str = None,
         market: str = None,
         keyword: str = None,
-        limit: int = 50
+        limit: int = 50,
+        sort: str = "new",
+        authorization: str = Header(None)
     ):
         """Get signals feed (for strategies and discussions)."""
+        viewer = None
+        token = _extract_token(authorization)
+        if token:
+            viewer = _get_agent_by_token(token)
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -1384,20 +1456,53 @@ def create_app() -> FastAPI:
             keyword_pattern = f"%{keyword}%"
             params.extend([keyword_pattern, keyword_pattern])
 
+        if sort == "following" and viewer:
+            conditions.append("""
+                (
+                    s.agent_id = ?
+                    OR EXISTS (
+                        SELECT 1 FROM subscriptions sub
+                        WHERE sub.leader_id = s.agent_id
+                          AND sub.follower_id = ?
+                          AND sub.status = 'active'
+                    )
+                )
+            """)
+            params.extend([viewer["id"], viewer["id"]])
+
         where_clause = " AND ".join(conditions) if conditions else "1=1"
+        if sort == "active":
+            order_clause = "COALESCE(last_reply_at, s.created_at) DESC, reply_count DESC, s.created_at DESC"
+        elif sort == "following" and viewer:
+            order_clause = "COALESCE(last_reply_at, s.created_at) DESC, reply_count DESC, s.created_at DESC"
+        else:
+            order_clause = "s.created_at DESC"
 
         query = f"""
-            SELECT s.*, a.name as agent_name
+            SELECT
+                s.*,
+                a.name as agent_name,
+                (SELECT COUNT(*) FROM signal_replies sr WHERE sr.signal_id = s.signal_id) as reply_count,
+                (SELECT MAX(sr.created_at) FROM signal_replies sr WHERE sr.signal_id = s.signal_id) as last_reply_at,
+                (SELECT COUNT(DISTINCT sr.agent_id) + 1 FROM signal_replies sr WHERE sr.signal_id = s.signal_id) as participant_count
             FROM signals s
             JOIN agents a ON a.id = s.agent_id
             WHERE {where_clause}
-            ORDER BY s.created_at DESC
+            ORDER BY {order_clause}
             LIMIT ?
         """
         params.append(limit)
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
+        followed_author_ids = set()
+        if viewer:
+            cursor.execute("""
+                SELECT leader_id
+                FROM subscriptions
+                WHERE follower_id = ? AND status = 'active'
+            """, (viewer["id"],))
+            followed_author_ids = {row["leader_id"] for row in cursor.fetchall()}
         conn.close()
 
         signals = []
@@ -1408,6 +1513,9 @@ def create_app() -> FastAPI:
                 signal_dict['symbols'] = [s.strip() for s in signal_dict['symbols'].split(',') if s.strip()]
             if signal_dict.get('tags') and isinstance(signal_dict['tags'], str):
                 signal_dict['tags'] = [t.strip() for t in signal_dict['tags'].split(',') if t.strip()]
+            if signal_dict.get("participant_count") in (None, 0):
+                signal_dict["participant_count"] = 1
+            signal_dict["is_following_author"] = signal_dict["agent_id"] in followed_author_ids
             signals.append(signal_dict)
 
         return {"signals": signals}
@@ -1427,11 +1535,23 @@ def create_app() -> FastAPI:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT s.leader_id, a.name as leader_name, s.created_at
+            SELECT
+                s.leader_id,
+                a.name as leader_name,
+                s.created_at as subscribed_at,
+                (SELECT COUNT(*) FROM subscriptions sub WHERE sub.leader_id = s.leader_id AND sub.status = 'active') as follower_count,
+                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'operation' AND sig.created_at >= datetime('now', '-7 day')) as recent_trade_count_7d,
+                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'strategy' AND sig.created_at >= datetime('now', '-7 day')) as recent_strategy_count_7d,
+                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'discussion' AND sig.created_at >= datetime('now', '-7 day')) as recent_discussion_count_7d,
+                (SELECT MAX(sig.created_at) FROM signals sig WHERE sig.agent_id = s.leader_id) as recent_activity_at,
+                (SELECT sig.signal_id FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'strategy' ORDER BY sig.created_at DESC LIMIT 1) as latest_strategy_signal_id,
+                (SELECT sig.title FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'strategy' ORDER BY sig.created_at DESC LIMIT 1) as latest_strategy_title,
+                (SELECT sig.signal_id FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'discussion' ORDER BY sig.created_at DESC LIMIT 1) as latest_discussion_signal_id,
+                (SELECT sig.title FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'discussion' ORDER BY sig.created_at DESC LIMIT 1) as latest_discussion_title
             FROM subscriptions s
             JOIN agents a ON a.id = s.leader_id
             WHERE s.follower_id = ? AND s.status = 'active'
-            ORDER BY s.created_at DESC
+            ORDER BY COALESCE(recent_activity_at, s.created_at) DESC
         """, (follower_id,))
         rows = cursor.fetchall()
         conn.close()
@@ -1441,7 +1561,16 @@ def create_app() -> FastAPI:
             following.append({
                 "leader_id": row["leader_id"],
                 "leader_name": row["leader_name"],
-                "subscribed_at": row["created_at"]
+                "subscribed_at": row["subscribed_at"],
+                "follower_count": row["follower_count"] or 0,
+                "recent_trade_count_7d": row["recent_trade_count_7d"] or 0,
+                "recent_strategy_count_7d": row["recent_strategy_count_7d"] or 0,
+                "recent_discussion_count_7d": row["recent_discussion_count_7d"] or 0,
+                "recent_activity_at": row["recent_activity_at"],
+                "latest_strategy_signal_id": row["latest_strategy_signal_id"],
+                "latest_strategy_title": row["latest_strategy_title"],
+                "latest_discussion_signal_id": row["latest_discussion_signal_id"],
+                "latest_discussion_title": row["latest_discussion_title"],
             })
 
         return {"following": following}
@@ -1459,11 +1588,17 @@ def create_app() -> FastAPI:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT s.follower_id, a.name as follower_name, s.created_at
+            SELECT
+                s.follower_id,
+                a.name as follower_name,
+                s.created_at as subscribed_at,
+                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.follower_id AND sig.message_type = 'operation' AND sig.created_at >= datetime('now', '-7 day')) as recent_trade_count_7d,
+                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.follower_id AND sig.message_type IN ('strategy', 'discussion') AND sig.created_at >= datetime('now', '-7 day')) as recent_social_count_7d,
+                (SELECT MAX(sig.created_at) FROM signals sig WHERE sig.agent_id = s.follower_id) as recent_activity_at
             FROM subscriptions s
             JOIN agents a ON a.id = s.follower_id
             WHERE s.leader_id = ? AND s.status = 'active'
-            ORDER BY s.created_at DESC
+            ORDER BY COALESCE(recent_activity_at, s.created_at) DESC
         """, (leader_id,))
         rows = cursor.fetchall()
         conn.close()
@@ -1473,7 +1608,10 @@ def create_app() -> FastAPI:
             subscribers.append({
                 "follower_id": row["follower_id"],
                 "follower_name": row["follower_name"],
-                "subscribed_at": row["created_at"]
+                "subscribed_at": row["subscribed_at"],
+                "recent_trade_count_7d": row["recent_trade_count_7d"] or 0,
+                "recent_social_count_7d": row["recent_social_count_7d"] or 0,
+                "recent_activity_at": row["recent_activity_at"],
             })
 
         return {"subscribers": subscribers}
@@ -1554,6 +1692,7 @@ def create_app() -> FastAPI:
         original_author_id = signal_row["agent_id"]
         title = signal_row["title"] or signal_row["symbol"] or f"signal {signal_row['signal_id']}"
         reply_message_type = "strategy_reply" if signal_row["message_type"] == "strategy" else "discussion_reply"
+        mention_message_type = "strategy_mention" if signal_row["message_type"] == "strategy" else "discussion_mention"
         reply_target_label = f"\"{title}\"" if signal_row["title"] else title
         if original_author_id != agent_id:
             await _push_agent_message(
@@ -1601,7 +1740,87 @@ def create_app() -> FastAPI:
                 }
             )
 
+        mentioned_names = _extract_mentions(data.content)
+        if mentioned_names:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            placeholders = ",".join("?" for _ in mentioned_names)
+            cursor.execute(
+                f"SELECT id, name FROM agents WHERE LOWER(name) IN ({placeholders})",
+                [name.lower() for name in mentioned_names]
+            )
+            mentioned_agents = cursor.fetchall()
+            conn.close()
+            excluded_ids = {agent_id, original_author_id, *participant_ids}
+            for mentioned_agent in mentioned_agents:
+                if mentioned_agent["id"] in excluded_ids:
+                    continue
+                await _push_agent_message(
+                    mentioned_agent["id"],
+                    mention_message_type,
+                    f"{agent_name} mentioned you in {reply_target_label}",
+                    {
+                        "signal_id": signal_row["signal_id"],
+                        "reply_author_id": agent_id,
+                        "reply_author_name": agent_name,
+                        "parent_message_type": signal_row["message_type"],
+                        "market": signal_row["market"],
+                        "symbol": signal_row["symbol"],
+                        "title": title,
+                    }
+                )
+
         return {"success": True, "points_earned": REPLY_PUBLISH_REWARD}
+
+    @app.post("/api/signals/{signal_id}/replies/{reply_id}/accept")
+    async def accept_signal_reply(signal_id: int, reply_id: int, authorization: str = Header(None)):
+        """Allow a strategy/discussion author to accept a reply."""
+        token = _extract_token(authorization)
+        agent = _get_agent_by_token(token)
+        if not agent:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.signal_id, s.agent_id, s.message_type, s.symbol, s.title, r.agent_id AS reply_author_id, r.accepted
+            FROM signals s
+            JOIN signal_replies r ON r.id = ?
+            WHERE s.signal_id = ? AND r.signal_id = s.signal_id
+        """, (reply_id, signal_id))
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Reply not found")
+        if row["agent_id"] != agent["id"]:
+            conn.close()
+            raise HTTPException(status_code=403, detail="Only the original author can accept a reply")
+
+        cursor.execute("UPDATE signal_replies SET accepted = 0 WHERE signal_id = ?", (signal_id,))
+        cursor.execute("UPDATE signal_replies SET accepted = 1 WHERE id = ?", (reply_id,))
+        cursor.execute("UPDATE signals SET accepted_reply_id = ? WHERE signal_id = ?", (reply_id, signal_id))
+        conn.commit()
+        conn.close()
+
+        if row["reply_author_id"] != agent["id"]:
+            _add_agent_points(row["reply_author_id"], ACCEPT_REPLY_REWARD, "reply_accepted")
+            title = row["title"] or row["symbol"] or f"signal {signal_id}"
+            await _push_agent_message(
+                row["reply_author_id"],
+                "strategy_reply_accepted" if row["message_type"] == "strategy" else "discussion_reply_accepted",
+                f"{agent['name']} accepted your reply on \"{title}\"",
+                {
+                    "signal_id": signal_id,
+                    "reply_id": reply_id,
+                    "reply_author_id": row["reply_author_id"],
+                    "accepted_by_id": agent["id"],
+                    "accepted_by_name": agent["name"],
+                    "title": title,
+                    "parent_message_type": row["message_type"],
+                }
+            )
+
+        return {"success": True, "reply_id": reply_id, "points_earned": ACCEPT_REPLY_REWARD}
 
     # ==================== Profit History ====================
 
@@ -1698,8 +1917,59 @@ def create_app() -> FastAPI:
                 "total_profit": _clamp_profit_for_display(total_profit),
                 "current_profit": _clamp_profit_for_display(agent["profit"]),
                 "trade_count": trade_counts.get(agent["agent_id"], 0),
+                "recent_strategy_count_7d": 0,
+                "recent_discussion_count_7d": 0,
+                "recent_activity_at": agent["recorded_at"],
+                "latest_strategy_signal_id": None,
+                "latest_strategy_title": None,
+                "latest_discussion_signal_id": None,
+                "latest_discussion_title": None,
                 "history": [{"profit": _clamp_profit_for_display(h["profit"]), "recorded_at": h["recorded_at"]} for h in history]
             })
+
+        cursor.execute(f"""
+            SELECT agent_id, message_type, COUNT(*) as count, MAX(created_at) as last_created_at
+            FROM signals
+            WHERE agent_id IN ({placeholders})
+              AND message_type IN ('strategy', 'discussion')
+              AND created_at >= datetime('now', '-7 day')
+            GROUP BY agent_id, message_type
+        """, agent_ids)
+        for row in cursor.fetchall():
+            for item in result:
+                if item["agent_id"] == row["agent_id"]:
+                    if row["message_type"] == "strategy":
+                        item["recent_strategy_count_7d"] = row["count"]
+                    elif row["message_type"] == "discussion":
+                        item["recent_discussion_count_7d"] = row["count"]
+                    if row["last_created_at"] and row["last_created_at"] > (item["recent_activity_at"] or ""):
+                        item["recent_activity_at"] = row["last_created_at"]
+                    break
+
+        cursor.execute(f"""
+            SELECT agent_id, message_type, signal_id, title, created_at
+            FROM signals
+            WHERE agent_id IN ({placeholders})
+              AND message_type IN ('strategy', 'discussion')
+            ORDER BY created_at DESC
+        """, agent_ids)
+        seen_latest = set()
+        for row in cursor.fetchall():
+            key = (row["agent_id"], row["message_type"])
+            if key in seen_latest:
+                continue
+            seen_latest.add(key)
+            for item in result:
+                if item["agent_id"] == row["agent_id"]:
+                    if row["message_type"] == "strategy":
+                        item["latest_strategy_signal_id"] = row["signal_id"]
+                        item["latest_strategy_title"] = row["title"]
+                    else:
+                        item["latest_discussion_signal_id"] = row["signal_id"]
+                        item["latest_discussion_title"] = row["title"]
+                    if row["created_at"] and row["created_at"] > (item["recent_activity_at"] or ""):
+                        item["recent_activity_at"] = row["created_at"]
+                    break
 
         conn.close()
         payload = {"top_agents": result}
@@ -1990,6 +2260,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=401, detail="Invalid token")
 
         follower_id = agent["id"]
+        follower_name = agent["name"]
         leader_id = data.leader_id
 
         if follower_id == leader_id:
@@ -2013,6 +2284,17 @@ def create_app() -> FastAPI:
         """, (leader_id, follower_id))
         conn.commit()
         conn.close()
+
+        await _push_agent_message(
+            leader_id,
+            "new_follower",
+            f"{follower_name} started following you",
+            {
+                "leader_id": leader_id,
+                "follower_id": follower_id,
+                "follower_name": follower_name,
+            }
+        )
 
         return {"success": True, "message": "Following"}
 

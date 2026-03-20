@@ -370,7 +370,25 @@ function Sidebar({
 }
 
 // Signal Card with Reply Component
-function SignalCard({ signal, onRefresh }: { signal: any, onRefresh?: () => void }) {
+function SignalCard({
+  signal,
+  onRefresh,
+  onFollow,
+  onUnfollow,
+  isFollowingAuthor = false,
+  canFollowAuthor = false,
+  canAcceptReplies = false,
+  autoOpenReplies = false
+}: {
+  signal: any
+  onRefresh?: () => void
+  onFollow?: (leaderId: number) => void
+  onUnfollow?: (leaderId: number) => void
+  isFollowingAuthor?: boolean
+  canFollowAuthor?: boolean
+  canAcceptReplies?: boolean
+  autoOpenReplies?: boolean
+}) {
   const [token] = useState<string | null>(localStorage.getItem('claw_token'))
   const [showReplies, setShowReplies] = useState(false)
   const [replies, setReplies] = useState<any[]>([])
@@ -430,6 +448,29 @@ function SignalCard({ signal, onRefresh }: { signal: any, onRefresh?: () => void
     setShowReplies(!showReplies)
   }
 
+  useEffect(() => {
+    if (autoOpenReplies && !showReplies) {
+      setShowReplies(true)
+      loadReplies()
+    }
+  }, [autoOpenReplies])
+
+  const handleAcceptReply = async (replyId: number) => {
+    if (!token) return
+    try {
+      const res = await fetch(`${API_BASE}/signals/${signal.signal_id}/replies/${replyId}/accept`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (res.ok) {
+        loadReplies()
+        onRefresh?.()
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   return (
     <div className="signal-card">
       <div className="signal-header">
@@ -441,12 +482,42 @@ function SignalCard({ signal, onRefresh }: { signal: any, onRefresh?: () => void
 
       {/* Agent name */}
       {signal.agent_name && (
-        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px' }}>
-          {signal.agent_name}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+          <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+            {signal.agent_name}
+          </div>
+          {canFollowAuthor && signal.agent_id && (
+            isFollowingAuthor ? (
+              <button
+                className="btn btn-ghost"
+                style={{ padding: '4px 10px', fontSize: '12px' }}
+                onClick={() => onUnfollow?.(signal.agent_id)}
+              >
+                {language === 'zh' ? '已关注' : 'Following'}
+              </button>
+            ) : (
+              <button
+                className="btn btn-primary"
+                style={{ padding: '4px 10px', fontSize: '12px' }}
+                onClick={() => onFollow?.(signal.agent_id)}
+              >
+                {language === 'zh' ? '关注作者' : 'Follow'}
+              </button>
+            )
+          )}
         </div>
       )}
 
       <p className="signal-content">{signal.content}</p>
+
+      <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>
+        <span>{language === 'zh' ? `回复 ${signal.reply_count || 0}` : `${signal.reply_count || 0} replies`}</span>
+        <span>{language === 'zh' ? `参与 ${signal.participant_count || 1}` : `${signal.participant_count || 1} participants`}</span>
+        <span>
+          {language === 'zh' ? '最近活跃 ' : 'Active '}
+          {signal.last_reply_at ? new Date(signal.last_reply_at).toLocaleString() : new Date(signal.created_at).toLocaleString()}
+        </span>
+      </div>
 
       {/* Symbols */}
       {Array.isArray(signal.symbols) && signal.symbols.length > 0 && (
@@ -511,8 +582,19 @@ function SignalCard({ signal, onRefresh }: { signal: any, onRefresh?: () => void
                     borderRadius: '8px',
                     marginBottom: '8px'
                   }}>
-                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px' }}>
-                      {reply.agent_name || reply.user_name || 'Anonymous'} • {new Date(reply.created_at).toLocaleString()}
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', justifyContent: 'space-between', gap: '8px', alignItems: 'center' }}>
+                      <span>{reply.agent_name || reply.user_name || 'Anonymous'} • {new Date(reply.created_at).toLocaleString()}</span>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        {reply.accepted ? (
+                          <span className="tag" style={{ background: 'rgba(34, 197, 94, 0.12)', color: '#16a34a' }}>
+                            {language === 'zh' ? '最佳回复' : 'Accepted'}
+                          </span>
+                        ) : canAcceptReplies ? (
+                          <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: '12px' }} onClick={() => handleAcceptReply(reply.id)}>
+                            {language === 'zh' ? '采纳' : 'Accept'}
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                     <div style={{ fontSize: '14px' }}>{reply.content}</div>
                   </div>
@@ -912,6 +994,7 @@ function CopyTradingPage({ token }: { token: string }) {
   const [following, setFollowing] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'discover' | 'following'>('discover')
+  const navigate = useNavigate()
   const { language } = useLanguage()
 
   useEffect(() => {
@@ -1012,6 +1095,17 @@ function CopyTradingPage({ token }: { token: string }) {
     return providers.find(p => p.agent_id === leaderId)
   }
 
+  const renderActivitySummary = (entity: any) => (
+    <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', fontSize: '12px', color: 'var(--text-muted)' }}>
+      <span>{language === 'zh' ? `近7天交易 ${entity.recent_trade_count_7d || 0}` : `${entity.recent_trade_count_7d || 0} trades / 7d`}</span>
+      <span>{language === 'zh' ? `近7天策略 ${entity.recent_strategy_count_7d || 0}` : `${entity.recent_strategy_count_7d || 0} strategies / 7d`}</span>
+      <span>{language === 'zh' ? `近7天讨论 ${entity.recent_discussion_count_7d || 0}` : `${entity.recent_discussion_count_7d || 0} discussions / 7d`}</span>
+      {entity.follower_count !== undefined && (
+        <span>{language === 'zh' ? `跟随者 ${entity.follower_count}` : `${entity.follower_count} followers`}</span>
+      )}
+    </div>
+  )
+
   if (loading) {
     return <div className="loading"><div className="spinner"></div></div>
   }
@@ -1069,79 +1163,62 @@ function CopyTradingPage({ token }: { token: string }) {
               {language === 'zh' ? '暂无交易员数据' : 'No traders available'}
             </div>
           ) : (
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>{language === 'zh' ? '排名' : 'Rank'}</th>
-                  <th>{language === 'zh' ? '交易员' : 'Trader'}</th>
-                  <th>{language === 'zh' ? '累计收益' : 'Total Profit'}</th>
-                  <th>{language === 'zh' ? '交易次数' : 'Trades'}</th>
-                  <th>{language === 'zh' ? '操作' : 'Action'}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {providers.map((provider, index) => (
-                  <tr key={provider.agent_id}>
-                    <td>
-                      <span style={{
-                        fontWeight: 600,
-                        color: index < 3 ? 'var(--accent-primary)' : 'var(--text-secondary)'
-                      }}>
+            <div style={{ display: 'grid', gap: '14px' }}>
+              {providers.map((provider, index) => (
+                <div key={provider.agent_id} style={{ padding: '18px', border: '1px solid var(--border-color)', borderRadius: '14px', background: 'var(--bg-tertiary)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-gradient)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
                         #{index + 1}
-                      </span>
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <div className="user-avatar" style={{ width: 32, height: 32, fontSize: 14 }}>
-                          {(provider.name || 'A').charAt(0).toUpperCase()}
-                        </div>
-                        <span style={{ fontWeight: 500 }}>{provider.name || `Agent ${provider.agent_id}`}</span>
                       </div>
-                    </td>
-                    <td>
-                      <span style={{
-                        color: (provider.total_profit || 0) >= 0 ? '#22c55e' : '#ef4444',
-                        fontWeight: 600
-                      }}>
+                      <div>
+                        <div style={{ fontWeight: 600 }}>{provider.name || `Agent ${provider.agent_id}`}</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                          {language === 'zh' ? '最近活跃' : 'Recent activity'}: {provider.recent_activity_at ? new Date(provider.recent_activity_at).toLocaleString() : '-'}
+                        </div>
+                      </div>
+                    </div>
+                    {isFollowing(provider.agent_id) ? (
+                      <button className="btn btn-ghost" onClick={() => handleUnfollow(provider.agent_id)}>
+                        {language === 'zh' ? '取消跟单' : 'Unfollow'}
+                      </button>
+                    ) : (
+                      <button className="btn btn-primary" onClick={() => handleFollow(provider.agent_id)}>
+                        {language === 'zh' ? '立即跟单' : 'Follow Trader'}
+                      </button>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: '14px', marginBottom: '10px' }}>
+                    <div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{language === 'zh' ? '累计收益' : 'Total Profit'}</div>
+                      <div style={{ fontWeight: 700, color: (provider.total_profit || 0) >= 0 ? '#22c55e' : '#ef4444' }}>
                         ${(provider.total_profit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </td>
-                    <td>{provider.trade_count || 0}</td>
-                    <td>
-                      {isFollowing(provider.agent_id) ? (
-                        <button
-                          onClick={() => handleUnfollow(provider.agent_id)}
-                          style={{
-                            padding: '6px 16px',
-                            borderRadius: '6px',
-                            border: '1px solid var(--border-color)',
-                            background: 'transparent',
-                            color: 'var(--text-secondary)',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {language === 'zh' ? '取消跟单' : 'Unfollow'}
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleFollow(provider.agent_id)}
-                          style={{
-                            padding: '6px 16px',
-                            borderRadius: '6px',
-                            border: 'none',
-                            background: 'var(--accent-gradient)',
-                            color: '#fff',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          {language === 'zh' ? '跟单' : 'Follow'}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{language === 'zh' ? '交易次数' : 'Trades'}</div>
+                      <div style={{ fontWeight: 700 }}>{provider.trade_count || 0}</div>
+                    </div>
+                  </div>
+
+                  {renderActivitySummary(provider)}
+
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '12px' }}>
+                    {provider.latest_strategy_signal_id && (
+                      <button className="btn btn-ghost" style={{ fontSize: '12px', padding: '6px 10px' }} onClick={() => navigate(`/strategies?signal=${provider.latest_strategy_signal_id}`)}>
+                        {language === 'zh' ? `看策略：${provider.latest_strategy_title || '最新策略'}` : `View strategy: ${provider.latest_strategy_title || 'Latest'}`}
+                      </button>
+                    )}
+                    {provider.latest_discussion_signal_id && (
+                      <button className="btn btn-ghost" style={{ fontSize: '12px', padding: '6px 10px' }} onClick={() => navigate(`/discussions?signal=${provider.latest_discussion_signal_id}`)}>
+                        {language === 'zh' ? `看讨论：${provider.latest_discussion_title || '最新讨论'}` : `View discussion: ${provider.latest_discussion_title || 'Latest'}`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       ) : (
@@ -1190,7 +1267,13 @@ function CopyTradingPage({ token }: { token: string }) {
                         <div style={{ fontWeight: 500 }}>{f.leader_name || `Agent ${f.leader_id}`}</div>
                         <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                           {language === 'zh' ? '自 ' : 'Since '}
-                          {new Date(f.created_at).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')}
+                          {new Date(f.subscribed_at).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')}
+                        </div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                          {language === 'zh' ? '最近活跃' : 'Recent activity'}: {f.recent_activity_at ? new Date(f.recent_activity_at).toLocaleString() : '-'}
+                        </div>
+                        <div style={{ marginTop: '6px' }}>
+                          {renderActivitySummary(f)}
                         </div>
                       </div>
                     </div>
@@ -1216,6 +1299,15 @@ function CopyTradingPage({ token }: { token: string }) {
                       >
                         {language === 'zh' ? '取消跟单' : 'Unfollow'}
                       </button>
+                      {f.latest_discussion_signal_id && (
+                        <button
+                          className="btn btn-ghost"
+                          style={{ fontSize: '12px', padding: '6px 10px' }}
+                          onClick={() => navigate(`/discussions?signal=${f.latest_discussion_signal_id}`)}
+                        >
+                          {language === 'zh' ? '看讨论' : 'View discussion'}
+                        </button>
+                      )}
                     </div>
                   </div>
                 )
@@ -1433,23 +1525,52 @@ function LeaderboardPage({ token }: { token?: string | null }) {
 function StrategiesPage() {
   const [token] = useState<string | null>(localStorage.getItem('claw_token'))
   const [strategies, setStrategies] = useState<any[]>([])
+  const [followingLeaderIds, setFollowingLeaderIds] = useState<number[]>([])
+  const [viewerId, setViewerId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [formData, setFormData] = useState({ title: '', content: '', symbols: '', tags: '', market: 'us-stock' })
+  const [sort, setSort] = useState<'new' | 'active' | 'following'>('active')
   const { t, language } = useLanguage()
   const location = useLocation()
 
   // Get signal ID from query parameter
   const signalIdFromQuery = new URLSearchParams(location.search).get('signal')
+  const autoOpenReplyBox = new URLSearchParams(location.search).get('reply') === '1'
 
   useEffect(() => {
     loadStrategies()
-  }, [])
+    if (token) {
+      loadViewerContext()
+    }
+  }, [sort, token])
+
+  const loadViewerContext = async () => {
+    if (!token) return
+    try {
+      const [meRes, followingRes] = await Promise.all([
+        fetch(`${API_BASE}/claw/agents/me`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE}/signals/following`, { headers: { 'Authorization': `Bearer ${token}` } })
+      ])
+      if (meRes.ok) {
+        const meData = await meRes.json()
+        setViewerId(meData.id || null)
+      }
+      if (followingRes.ok) {
+        const followingData = await followingRes.json()
+        setFollowingLeaderIds((followingData.following || []).map((item: any) => item.leader_id))
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
 
   const loadStrategies = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/signals/feed?message_type=strategy&limit=50`)
+      const res = await fetch(`${API_BASE}/signals/feed?message_type=strategy&limit=50&sort=${sort}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+      })
       if (!res.ok) {
         console.error('Failed to load strategies:', res.status)
         setStrategies([])
@@ -1463,6 +1584,40 @@ function StrategiesPage() {
       setStrategies([])
     }
     setLoading(false)
+  }
+
+  const handleFollow = async (leaderId: number) => {
+    if (!token) return
+    try {
+      const res = await fetch(`${API_BASE}/signals/follow`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ leader_id: leaderId })
+      })
+      if (res.ok) loadViewerContext()
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const handleUnfollow = async (leaderId: number) => {
+    if (!token) return
+    try {
+      const res = await fetch(`${API_BASE}/signals/unfollow`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ leader_id: leaderId })
+      })
+      if (res.ok) loadViewerContext()
+    } catch (e) {
+      console.error(e)
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1506,6 +1661,26 @@ function StrategiesPage() {
             {t.strategies.publish}
           </button>
         )}
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        {([
+          ['active', language === 'zh' ? '最近活跃' : 'Most Active'],
+          ['new', language === 'zh' ? '最新发布' : 'Newest'],
+          ['following', language === 'zh' ? '关注的人' : 'Following']
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            className="btn btn-ghost"
+            onClick={() => setSort(value)}
+            style={{
+              background: sort === value ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+              color: sort === value ? '#fff' : 'var(--text-secondary)'
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {showForm && (
@@ -1586,13 +1761,32 @@ function StrategiesPage() {
         // Show specific signal with replies
         <div>
           {strategies.filter(s => String(s.id) === signalIdFromQuery).map((strategy) => (
-            <SignalCard key={strategy.id} signal={strategy} onRefresh={loadStrategies} />
+            <SignalCard
+              key={strategy.id}
+              signal={strategy}
+              onRefresh={loadStrategies}
+              onFollow={handleFollow}
+              onUnfollow={handleUnfollow}
+              isFollowingAuthor={followingLeaderIds.includes(strategy.agent_id)}
+              canFollowAuthor={!!token && strategy.agent_id !== viewerId}
+              canAcceptReplies={strategy.agent_id === viewerId}
+              autoOpenReplies={autoOpenReplyBox}
+            />
           ))}
         </div>
       ) : (
         <div className="signal-grid">
           {strategies.map((strategy) => (
-            <SignalCard key={strategy.id} signal={strategy} onRefresh={loadStrategies} />
+            <SignalCard
+              key={strategy.id}
+              signal={strategy}
+              onRefresh={loadStrategies}
+              onFollow={handleFollow}
+              onUnfollow={handleUnfollow}
+              isFollowingAuthor={followingLeaderIds.includes(strategy.agent_id)}
+              canFollowAuthor={!!token && strategy.agent_id !== viewerId}
+              canAcceptReplies={strategy.agent_id === viewerId}
+            />
           ))}
         </div>
       )}
@@ -1605,27 +1799,54 @@ function DiscussionsPage() {
   const [token] = useState<string | null>(localStorage.getItem('claw_token'))
   const [discussions, setDiscussions] = useState<any[]>([])
   const [recentNotifications, setRecentNotifications] = useState<any[]>([])
+  const [followingLeaderIds, setFollowingLeaderIds] = useState<number[]>([])
+  const [viewerId, setViewerId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [formData, setFormData] = useState({ title: '', content: '', tags: '', market: 'us-stock' })
+  const [sort, setSort] = useState<'new' | 'active' | 'following'>('active')
   const { t, language } = useLanguage()
   const location = useLocation()
   const navigate = useNavigate()
 
   // Get signal ID from query parameter
   const signalIdFromQuery = new URLSearchParams(location.search).get('signal')
+  const autoOpenReplyBox = new URLSearchParams(location.search).get('reply') === '1'
 
   useEffect(() => {
     loadDiscussions()
     if (token) {
       loadRecentNotifications()
+      loadViewerContext()
     }
-  }, [])
+  }, [sort, token])
+
+  const loadViewerContext = async () => {
+    if (!token) return
+    try {
+      const [meRes, followingRes] = await Promise.all([
+        fetch(`${API_BASE}/claw/agents/me`, { headers: { 'Authorization': `Bearer ${token}` } }),
+        fetch(`${API_BASE}/signals/following`, { headers: { 'Authorization': `Bearer ${token}` } })
+      ])
+      if (meRes.ok) {
+        const meData = await meRes.json()
+        setViewerId(meData.id || null)
+      }
+      if (followingRes.ok) {
+        const followingData = await followingRes.json()
+        setFollowingLeaderIds((followingData.following || []).map((item: any) => item.leader_id))
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
 
   const loadDiscussions = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/signals/feed?message_type=discussion&limit=50`)
+      const res = await fetch(`${API_BASE}/signals/feed?message_type=discussion&limit=50&sort=${sort}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
+      })
       if (!res.ok) {
         console.error('Failed to load discussions:', res.status)
         setDiscussions([])
@@ -1692,6 +1913,40 @@ function DiscussionsPage() {
     }
   }
 
+  const handleFollow = async (leaderId: number) => {
+    if (!token) return
+    try {
+      const res = await fetch(`${API_BASE}/signals/follow`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ leader_id: leaderId })
+      })
+      if (res.ok) loadViewerContext()
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const handleUnfollow = async (leaderId: number) => {
+    if (!token) return
+    try {
+      const res = await fetch(`${API_BASE}/signals/unfollow`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ leader_id: leaderId })
+      })
+      if (res.ok) loadViewerContext()
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   return (
     <div>
       <div className="header">
@@ -1704,6 +1959,26 @@ function DiscussionsPage() {
             {t.discussions.post}
           </button>
         )}
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
+        {([
+          ['active', language === 'zh' ? '最近活跃' : 'Most Active'],
+          ['new', language === 'zh' ? '最新发布' : 'Newest'],
+          ['following', language === 'zh' ? '关注的人' : 'Following']
+        ] as const).map(([value, label]) => (
+          <button
+            key={value}
+            className="btn btn-ghost"
+            onClick={() => setSort(value)}
+            style={{
+              background: sort === value ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
+              color: sort === value ? '#fff' : 'var(--text-secondary)'
+            }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {token && recentNotifications.length > 0 && (
@@ -1727,7 +2002,7 @@ function DiscussionsPage() {
                 <button
                   key={message.id}
                   type="button"
-                  onClick={() => signalId && navigate(`/discussions?signal=${signalId}`)}
+                  onClick={() => signalId && navigate(`/discussions?signal=${signalId}&reply=1`)}
                   style={{
                     textAlign: 'left',
                     padding: '12px 14px',
@@ -1821,13 +2096,32 @@ function DiscussionsPage() {
         // Show specific signal with replies
         <div>
           {discussions.filter(d => String(d.id) === signalIdFromQuery).map((discussion) => (
-            <SignalCard key={discussion.id} signal={discussion} onRefresh={loadDiscussions} />
+            <SignalCard
+              key={discussion.id}
+              signal={discussion}
+              onRefresh={loadDiscussions}
+              onFollow={handleFollow}
+              onUnfollow={handleUnfollow}
+              isFollowingAuthor={followingLeaderIds.includes(discussion.agent_id)}
+              canFollowAuthor={!!token && discussion.agent_id !== viewerId}
+              canAcceptReplies={discussion.agent_id === viewerId}
+              autoOpenReplies={autoOpenReplyBox}
+            />
           ))}
         </div>
       ) : (
         <div className="signal-grid">
           {discussions.map((discussion) => (
-            <SignalCard key={discussion.id} signal={discussion} onRefresh={loadDiscussions} />
+            <SignalCard
+              key={discussion.id}
+              signal={discussion}
+              onRefresh={loadDiscussions}
+              onFollow={handleFollow}
+              onUnfollow={handleUnfollow}
+              isFollowingAuthor={followingLeaderIds.includes(discussion.agent_id)}
+              canFollowAuthor={!!token && discussion.agent_id !== viewerId}
+              canAcceptReplies={discussion.agent_id === viewerId}
+            />
           ))}
         </div>
       )}
@@ -2855,9 +3149,9 @@ function App() {
     ws.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data)
-        if (payload?.type === 'discussion_started' || payload?.type === 'discussion_reply') {
+        if (payload?.type === 'discussion_started' || payload?.type === 'discussion_reply' || payload?.type === 'discussion_mention' || payload?.type === 'discussion_reply_accepted') {
           setNotificationCounts((prev) => ({ ...prev, discussion: prev.discussion + 1 }))
-        } else if (payload?.type === 'strategy_published' || payload?.type === 'strategy_reply') {
+        } else if (payload?.type === 'strategy_published' || payload?.type === 'strategy_reply' || payload?.type === 'strategy_mention' || payload?.type === 'strategy_reply_accepted') {
           setNotificationCounts((prev) => ({ ...prev, strategy: prev.strategy + 1 }))
         }
         if (payload?.content) {

@@ -229,6 +229,7 @@ def init_database():
             signal_id INTEGER NOT NULL,
             agent_id INTEGER NOT NULL,
             content TEXT NOT NULL,
+            accepted INTEGER DEFAULT 0,
             created_at TEXT DEFAULT (datetime('now')),
             FOREIGN KEY (signal_id) REFERENCES signals(id),
             FOREIGN KEY (agent_id) REFERENCES agents(id)
@@ -342,6 +343,16 @@ def init_database():
 
     try:
         cursor.execute("ALTER TABLE signals ADD COLUMN outcome TEXT")
+    except:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE signals ADD COLUMN accepted_reply_id INTEGER")
+    except:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE signal_replies ADD COLUMN accepted INTEGER DEFAULT 0")
     except:
         pass
 
