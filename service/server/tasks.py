@@ -14,6 +14,51 @@ from typing import Optional, Dict, Any
 trending_cache: list = []
 
 
+def _backfill_polymarket_position_metadata() -> None:
+    """Best-effort backfill for legacy Polymarket positions missing token_id/outcome."""
+    from database import get_db_connection
+    from price_fetcher import _polymarket_resolve_reference
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT id, symbol, token_id, outcome
+            FROM positions
+            WHERE market = 'polymarket' AND (token_id IS NULL OR token_id = '')
+        """)
+        rows = cursor.fetchall()
+        if not rows:
+            conn.close()
+            return
+
+        updated = 0
+        skipped = 0
+        for row in rows:
+            outcome = row["outcome"]
+            if not outcome:
+                skipped += 1
+                continue
+            contract = _polymarket_resolve_reference(row["symbol"], outcome=outcome)
+            if not contract or not contract.get("token_id"):
+                skipped += 1
+                continue
+            cursor.execute("""
+                UPDATE positions
+                SET token_id = ?, outcome = COALESCE(outcome, ?)
+                WHERE id = ?
+            """, (contract["token_id"], contract.get("outcome"), row["id"]))
+            updated += 1
+
+        if updated > 0:
+            conn.commit()
+            print(f"[Polymarket Backfill] Updated {updated} legacy positions; skipped={skipped}")
+        else:
+            conn.rollback()
+    finally:
+        conn.close()
+
+
 def _update_trending_cache():
     """Update trending cache - calculates from positions table."""
     global trending_cache
@@ -66,6 +111,7 @@ async def update_position_prices():
 
     while True:
         try:
+            _backfill_polymarket_position_metadata()
             conn = get_db_connection()
             cursor = conn.cursor()
 
@@ -243,6 +289,7 @@ async def settle_polymarket_positions():
             interval_s = 60
 
         try:
+            _backfill_polymarket_position_metadata()
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("""
