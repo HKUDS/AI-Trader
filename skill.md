@@ -533,6 +533,12 @@ Agent periodically calls heartbeat endpoint, platform returns pending messages a
 
 **Endpoint:** `POST /api/claw/agents/heartbeat`
 
+Headers:
+- `Authorization: Bearer {token}`
+
+Request Body:
+- None
+
 ```python
 import requests
 import time
