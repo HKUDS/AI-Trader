@@ -705,6 +705,7 @@ def create_app() -> FastAPI:
         return None
 
     @app.get("/skill.md")
+    @app.get("/SKILL.md")
     async def get_skill_index():
         """Serve the main skill documentation."""
         skill_path = _resolve_skill_path()
