@@ -99,19 +99,39 @@ def _get_agent_points(agent_id: int) -> int:
     return row["points"] if row else 0
 
 
-def _get_next_signal_id() -> int:
-    """Get next signal ID."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT MAX(signal_id) as max_id FROM signals")
-    row = cursor.fetchone()
-    conn.close()
-    return (row["max_id"] or 0) + 1
+def _reserve_signal_id(cursor=None) -> int:
+    """Reserve a unique signal ID using an autoincrement sequence table."""
+    own_connection = False
+    if cursor is None:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        own_connection = True
+
+    cursor.execute("INSERT INTO signal_sequence DEFAULT VALUES")
+    signal_id = cursor.lastrowid
+
+    if own_connection:
+        conn.commit()
+        conn.close()
+
+    return signal_id
 
 
 # ==================== Position Services ====================
 
-def _update_position_from_signal(agent_id: int, symbol: str, market: str, action: str, quantity: float, price: float, executed_at: str, leader_id: int = None, cursor=None):
+def _update_position_from_signal(
+    agent_id: int,
+    symbol: str,
+    market: str,
+    action: str,
+    quantity: float,
+    price: float,
+    executed_at: str,
+    leader_id: int = None,
+    cursor=None,
+    token_id: Optional[str] = None,
+    outcome: Optional[str] = None,
+):
     """
     Update position based on trading signal.
     - buy: increase long position
@@ -129,11 +149,21 @@ def _update_position_from_signal(agent_id: int, symbol: str, market: str, action
         own_connection = True
 
     # Get current position for this symbol
-    cursor.execute("""
+    query = """
         SELECT id, quantity, entry_price
         FROM positions
-        WHERE agent_id = ? AND symbol = ? AND market = ?
-    """, (agent_id, symbol, market))
+        WHERE agent_id = ? AND market = ?
+    """
+    params = [agent_id, market]
+    if market == "polymarket":
+        if not token_id:
+            raise ValueError("Polymarket trades require token_id")
+        query += " AND token_id = ?"
+        params.append(token_id)
+    else:
+        query += " AND symbol = ?"
+        params.append(symbol)
+    cursor.execute(query, params)
     row = cursor.fetchone()
 
     current_qty = row["quantity"] if row else 0
@@ -164,15 +194,15 @@ def _update_position_from_signal(agent_id: int, symbol: str, market: str, action
             # Create new long position
             if leader_id:
                 cursor.execute("""
-                    INSERT INTO positions (agent_id, symbol, market, side, quantity, entry_price, opened_at, leader_id)
-                    VALUES (?, ?, ?, 'long', ?, ?, ?, ?)
-                """, (agent_id, symbol, market, quantity, price, executed_at, leader_id))
+                    INSERT INTO positions (agent_id, symbol, market, token_id, outcome, side, quantity, entry_price, opened_at, leader_id)
+                    VALUES (?, ?, ?, ?, ?, 'long', ?, ?, ?, ?)
+                """, (agent_id, symbol, market, token_id, outcome, quantity, price, executed_at, leader_id))
                 print(f"[Position] {symbol}: created copied long position {quantity} from leader {leader_id}")
             else:
                 cursor.execute("""
-                    INSERT INTO positions (agent_id, symbol, market, side, quantity, entry_price, opened_at)
-                    VALUES (?, ?, ?, 'long', ?, ?, ?)
-                """, (agent_id, symbol, market, quantity, price, executed_at))
+                    INSERT INTO positions (agent_id, symbol, market, token_id, outcome, side, quantity, entry_price, opened_at)
+                    VALUES (?, ?, ?, ?, ?, 'long', ?, ?, ?)
+                """, (agent_id, symbol, market, token_id, outcome, quantity, price, executed_at))
                 print(f"[Position] {symbol}: created long position {quantity}")
 
     elif action_lower == "sell":
@@ -207,15 +237,15 @@ def _update_position_from_signal(agent_id: int, symbol: str, market: str, action
             # Create new short position (negative quantity for short)
             if leader_id:
                 cursor.execute("""
-                    INSERT INTO positions (agent_id, symbol, market, side, quantity, entry_price, opened_at, leader_id)
-                    VALUES (?, ?, ?, 'short', ?, ?, ?, ?)
-                """, (agent_id, symbol, market, -quantity, price, executed_at, leader_id))
+                    INSERT INTO positions (agent_id, symbol, market, token_id, outcome, side, quantity, entry_price, opened_at, leader_id)
+                    VALUES (?, ?, ?, ?, ?, 'short', ?, ?, ?, ?)
+                """, (agent_id, symbol, market, token_id, outcome, -quantity, price, executed_at, leader_id))
                 print(f"[Position] {symbol}: created copied short position {quantity} from leader {leader_id}")
             else:
                 cursor.execute("""
-                    INSERT INTO positions (agent_id, symbol, market, side, quantity, entry_price, opened_at)
-                    VALUES (?, ?, ?, 'short', ?, ?, ?)
-                """, (agent_id, symbol, market, -quantity, price, executed_at))
+                    INSERT INTO positions (agent_id, symbol, market, token_id, outcome, side, quantity, entry_price, opened_at)
+                    VALUES (?, ?, ?, ?, ?, 'short', ?, ?, ?)
+                """, (agent_id, symbol, market, token_id, outcome, -quantity, price, executed_at))
                 print(f"[Position] {symbol}: created short position {quantity}")
 
     elif action_lower == "cover":

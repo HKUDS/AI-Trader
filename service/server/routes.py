@@ -111,7 +111,7 @@ def _enforce_content_rate_limit(agent_id: int, action: str, content: str, target
 from config import CORS_ORIGINS, SIGNAL_PUBLISH_REWARD, SIGNAL_ADOPT_REWARD, DISCUSSION_PUBLISH_REWARD, REPLY_PUBLISH_REWARD
 from database import get_db_connection
 from utils import hash_password, verify_password, generate_verification_code, cleanup_expired_tokens, validate_address, _extract_token
-from services import _get_agent_by_token, _get_user_by_token, _create_user_session, _add_agent_points, _get_agent_points, _get_next_signal_id, _update_position_from_signal, _broadcast_signal_to_followers
+from services import _get_agent_by_token, _get_user_by_token, _create_user_session, _add_agent_points, _get_agent_points, _reserve_signal_id, _update_position_from_signal, _broadcast_signal_to_followers
 from price_fetcher import get_price_from_market
 from zoneinfo import ZoneInfo
 
@@ -239,6 +239,8 @@ def create_app() -> FastAPI:
         quantity: float
         content: Optional[str] = None
         executed_at: str
+        token_id: Optional[str] = None
+        outcome: Optional[str] = None
 
     class StrategyRequest(BaseModel):
         market: str
@@ -807,11 +809,13 @@ def create_app() -> FastAPI:
 
         agent_id = agent["id"]
         agent_name = agent["name"]
-        signal_id = _get_next_signal_id()
         now = _utc_now_iso_z()
 
         # Store the actual action (buy/sell/short/cover)
         side = data.action
+        action_lower = side.lower()
+        polymarket_token_id = None
+        polymarket_outcome = None
         if data.market == "polymarket" and side.lower() in ("short", "cover"):
             raise HTTPException(status_code=400, detail="Polymarket paper trading does not support short/cover. Use buy/sell of outcome tokens instead.")
 
@@ -827,6 +831,19 @@ def create_app() -> FastAPI:
         # Prevent extreme quantities that can corrupt balances
         if qty > 1_000_000:
             raise HTTPException(status_code=400, detail="Quantity too large")
+
+        if data.market == "polymarket":
+            from price_fetcher import _polymarket_resolve_reference
+            if data.executed_at.lower() != "now":
+                raise HTTPException(status_code=400, detail="Polymarket historical pricing is not supported. Use executed_at='now'.")
+            contract = _polymarket_resolve_reference(data.symbol, token_id=data.token_id, outcome=data.outcome)
+            if not contract:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Polymarket trades require an explicit token_id or outcome that resolves to a single outcome token."
+                )
+            polymarket_token_id = contract["token_id"]
+            polymarket_outcome = contract.get("outcome")
 
         # Handle "now" - use current UTC time
         if data.executed_at.lower() == "now":
@@ -851,7 +868,13 @@ def create_app() -> FastAPI:
                     )
 
             # Fetch current price from API (will handle timezone conversion internally)
-            actual_price = get_price_from_market(data.symbol, executed_at, data.market)
+            actual_price = get_price_from_market(
+                data.symbol,
+                executed_at,
+                data.market,
+                token_id=polymarket_token_id,
+                outcome=polymarket_outcome,
+            )
             if actual_price:
                 price = actual_price
                 print(f"[Trade] Fetched price: {data.symbol} @ {executed_at} = ${price}")
@@ -873,7 +896,13 @@ def create_app() -> FastAPI:
 
             # IMPORTANT: For historical trades, always fetch price from backend
             # to avoid trusting client-supplied prices (e.g. BTC @ 31.5).
-            actual_price = get_price_from_market(data.symbol, executed_at, data.market)
+            actual_price = get_price_from_market(
+                data.symbol,
+                executed_at,
+                data.market,
+                token_id=polymarket_token_id,
+                outcome=polymarket_outcome,
+            )
             if actual_price:
                 price = actual_price
                 print(f"[Trade] Fetched historical price: {data.symbol} @ {executed_at} = ${price}")
@@ -897,81 +926,102 @@ def create_app() -> FastAPI:
 
         timestamp = int(datetime.fromisoformat(executed_at.replace('Z', '+00:00')).timestamp())
 
-        # Position sanity checks for sell/cover (must have sufficient position)
-        action_lower = side.lower()
-        if action_lower in ("sell", "cover"):
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT quantity FROM positions WHERE agent_id = ? AND symbol = ? AND market = ?",
-                (agent_id, data.symbol, data.market)
-            )
-            pos = cursor.fetchone()
-            conn.close()
-
-            current_qty = float(pos["quantity"]) if pos else 0.0
-            if action_lower == "sell":
-                if current_qty <= 0:
-                    raise HTTPException(status_code=400, detail="No long position to sell")
-                if qty > current_qty + 1e-12:
-                    raise HTTPException(status_code=400, detail="Insufficient long position quantity")
-            else:  # cover
-                if current_qty >= 0:
-                    raise HTTPException(status_code=400, detail="No short position to cover")
-                if qty > abs(current_qty) + 1e-12:
-                    raise HTTPException(status_code=400, detail="Insufficient short position quantity")
-
         # Prevent extreme trade value that can corrupt balances
         trade_value_guard = price * qty
         if not math.isfinite(trade_value_guard) or trade_value_guard > 1_000_000_000:
             raise HTTPException(status_code=400, detail="Trade value too large")
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("""
-            INSERT INTO signals
-            (signal_id, agent_id, message_type, market, signal_type, symbol, side, entry_price, quantity, content, timestamp, created_at, executed_at)
-            VALUES (?, ?, 'operation', ?, 'realtime', ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (signal_id, agent_id, data.market, data.symbol, side, price, data.quantity, data.content, timestamp, now, executed_at))
-        conn.commit()
-        conn.close()
-
-        # Update position
-        _update_position_from_signal(agent_id, data.symbol, data.market, side, qty, price, executed_at)
-
-        # Update cash balance
+        signal_id = None
         from fees import TRADE_FEE_RATE
         trade_value = price * qty
         fee = trade_value * TRADE_FEE_RATE
-
         conn = get_db_connection()
         cursor = conn.cursor()
+        try:
+            cursor.execute("BEGIN IMMEDIATE")
+            signal_id = _reserve_signal_id(cursor)
 
-        # Buy/Short: deduct cash + fee; Sell/Cover: add cash - fee
-        if side in ['buy', 'short']:
-            total_deduction = trade_value + fee
-            # Check if agent has enough cash
-            cursor.execute("SELECT cash FROM agents WHERE id = ?", (agent_id,))
-            row = cursor.fetchone()
-            current_cash = row["cash"] if row else 0
+            if action_lower in ("sell", "cover"):
+                if data.market == "polymarket":
+                    cursor.execute(
+                        "SELECT quantity FROM positions WHERE agent_id = ? AND market = ? AND token_id = ?",
+                        (agent_id, data.market, polymarket_token_id)
+                    )
+                else:
+                    cursor.execute(
+                        "SELECT quantity FROM positions WHERE agent_id = ? AND symbol = ? AND market = ?",
+                        (agent_id, data.symbol, data.market)
+                    )
+                pos = cursor.fetchone()
+                current_qty = float(pos["quantity"]) if pos else 0.0
+                if action_lower == "sell":
+                    if current_qty <= 0:
+                        raise HTTPException(status_code=400, detail="No long position to sell")
+                    if qty > current_qty + 1e-12:
+                        raise HTTPException(status_code=400, detail="Insufficient long position quantity")
+                else:
+                    if current_qty >= 0:
+                        raise HTTPException(status_code=400, detail="No short position to cover")
+                    if qty > abs(current_qty) + 1e-12:
+                        raise HTTPException(status_code=400, detail="Insufficient short position quantity")
 
-            if current_cash < total_deduction:
-                conn.close()
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Insufficient cash. Required: ${total_deduction:.2f} (trade: ${trade_value:.2f} + fee: ${fee:.2f}), Available: ${current_cash:.2f}"
-                )
+            if action_lower in ["buy", "short"]:
+                total_deduction = trade_value + fee
+                cursor.execute("SELECT cash FROM agents WHERE id = ?", (agent_id,))
+                row = cursor.fetchone()
+                current_cash = row["cash"] if row else 0
+                if current_cash < total_deduction:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Insufficient cash. Required: ${total_deduction:.2f} (trade: ${trade_value:.2f} + fee: ${fee:.2f}), Available: ${current_cash:.2f}"
+                    )
 
             cursor.execute("""
-                UPDATE agents SET cash = cash - ? WHERE id = ?
-            """, (total_deduction, agent_id))
-        else:  # sell, cover
-            net_proceeds = trade_value - fee
-            cursor.execute("""
-                UPDATE agents SET cash = cash + ? WHERE id = ?
-            """, (net_proceeds, agent_id))
+                INSERT INTO signals
+                (signal_id, agent_id, message_type, market, signal_type, symbol, token_id, outcome, side, entry_price, quantity, content, timestamp, created_at, executed_at)
+                VALUES (?, ?, 'operation', ?, 'realtime', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                signal_id,
+                agent_id,
+                data.market,
+                data.symbol,
+                polymarket_token_id,
+                polymarket_outcome,
+                side,
+                price,
+                qty,
+                data.content,
+                timestamp,
+                now,
+                executed_at,
+            ))
 
-        conn.commit()
+            _update_position_from_signal(
+                agent_id,
+                data.symbol,
+                data.market,
+                side,
+                qty,
+                price,
+                executed_at,
+                cursor=cursor,
+                token_id=polymarket_token_id,
+                outcome=polymarket_outcome,
+            )
+
+            if action_lower in ['buy', 'short']:
+                cursor.execute("UPDATE agents SET cash = cash - ? WHERE id = ?", (trade_value + fee, agent_id))
+            else:
+                cursor.execute("UPDATE agents SET cash = cash + ? WHERE id = ?", (trade_value - fee, agent_id))
+
+            conn.commit()
+        except HTTPException:
+            conn.rollback()
+            conn.close()
+            raise
+        except Exception as e:
+            conn.rollback()
+            conn.close()
+            raise HTTPException(status_code=500, detail=f"Failed to record trade: {e}")
         conn.close()
 
         # Award points
@@ -983,6 +1033,7 @@ def create_app() -> FastAPI:
             # Get all followers of this agent
             conn = get_db_connection()
             cursor = conn.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
             cursor.execute("""
                 SELECT follower_id FROM subscriptions
                 WHERE leader_id = ? AND status = 'active'
@@ -998,7 +1049,7 @@ def create_app() -> FastAPI:
                     cursor.execute("SAVEPOINT follower_{}".format(follower_id))
 
                     # Check cash first before doing anything
-                    if side in ['buy', 'short']:
+                    if action_lower in ['buy', 'short']:
                         follower_fee = trade_value * TRADE_FEE_RATE
                         follower_total = trade_value + follower_fee
 
@@ -1018,26 +1069,42 @@ def create_app() -> FastAPI:
                         data.symbol,
                         data.market,
                         side,
-                        data.quantity,
+                        qty,
                         price,
                         executed_at,
                         leader_id=agent_id,
-                        cursor=cursor
+                        cursor=cursor,
+                        token_id=polymarket_token_id,
+                        outcome=polymarket_outcome,
                     )
 
                     # Create signal record for follower (to show in their feed)
-                    follower_signal_id = _get_next_signal_id()
+                    follower_signal_id = _reserve_signal_id(cursor)
                     # Content indicates this is a copied signal
                     leader_name = agent['name'] if isinstance(agent, dict) else 'Leader'
                     copy_content = f"[Copied from {leader_name}] {data.content or ''}"
                     cursor.execute("""
                         INSERT INTO signals
-                        (signal_id, agent_id, message_type, market, signal_type, symbol, side, entry_price, quantity, content, timestamp, created_at, executed_at)
-                        VALUES (?, ?, 'operation', ?, 'realtime', ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (follower_signal_id, follower_id, data.market, data.symbol, side, price, data.quantity, copy_content, int(datetime.now(timezone.utc).timestamp()), now, executed_at))
+                        (signal_id, agent_id, message_type, market, signal_type, symbol, token_id, outcome, side, entry_price, quantity, content, timestamp, created_at, executed_at)
+                        VALUES (?, ?, 'operation', ?, 'realtime', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (
+                        follower_signal_id,
+                        follower_id,
+                        data.market,
+                        data.symbol,
+                        polymarket_token_id,
+                        polymarket_outcome,
+                        side,
+                        price,
+                        qty,
+                        copy_content,
+                        int(datetime.now(timezone.utc).timestamp()),
+                        now,
+                        executed_at,
+                    ))
 
                     # Deduct/add cash for follower (with fee) - in same transaction
-                    if side in ['buy', 'short']:
+                    if action_lower in ['buy', 'short']:
                         follower_fee = trade_value * TRADE_FEE_RATE
                         follower_total = trade_value + follower_fee
 
@@ -1066,6 +1133,7 @@ def create_app() -> FastAPI:
                     except:
                         pass
 
+            conn.commit()
             conn.close()
             print(f"[Copy Trade] Copied signal to {follower_count} followers")
         except Exception as e:
@@ -1083,7 +1151,9 @@ def create_app() -> FastAPI:
             "market": data.market,
             "price": price,
             "follower_count": follower_count,
-            "points_earned": SIGNAL_PUBLISH_REWARD
+            "points_earned": SIGNAL_PUBLISH_REWARD,
+            "token_id": polymarket_token_id,
+            "outcome": polymarket_outcome,
         }
 
     @app.post("/api/signals/strategy")
@@ -1096,7 +1166,7 @@ def create_app() -> FastAPI:
 
         agent_id = agent["id"]
         agent_name = agent["name"]
-        signal_id = _get_next_signal_id()
+        signal_id = _reserve_signal_id()
         now = _utc_now_iso_z()
 
         conn = get_db_connection()
@@ -1139,7 +1209,7 @@ def create_app() -> FastAPI:
 
         agent_id = agent["id"]
         agent_name = agent["name"]
-        signal_id = _get_next_signal_id()
+        signal_id = _reserve_signal_id()
         now = _utc_now_iso_z()
 
         conn = get_db_connection()
@@ -1218,7 +1288,7 @@ def create_app() -> FastAPI:
 
             # Get position summary
             cursor.execute("""
-                SELECT symbol, market, side, quantity, entry_price, current_price
+                SELECT symbol, market, token_id, outcome, side, quantity, entry_price, current_price
                 FROM positions WHERE agent_id = ?
             """, (agent_id,))
             position_rows = cursor.fetchall()
@@ -1238,6 +1308,8 @@ def create_app() -> FastAPI:
                 position_summary.append({
                     "symbol": pos_row["symbol"],
                     "market": pos_row["market"],
+                    "token_id": pos_row["token_id"],
+                    "outcome": pos_row["outcome"],
                     "side": pos_row["side"],
                     "quantity": pos_row["quantity"],
                     "current_price": current_price,
@@ -1650,7 +1722,7 @@ def create_app() -> FastAPI:
 
             # Get all positions for this agent
             cursor.execute("""
-                SELECT symbol, market, side, quantity, entry_price, current_price
+                SELECT symbol, market, token_id, outcome, side, quantity, entry_price, current_price
                 FROM positions WHERE agent_id = ?
             """, (agent_id,))
             positions = cursor.fetchall()
@@ -1694,9 +1766,9 @@ def create_app() -> FastAPI:
 
         # Get symbols ranked by holder count with current prices
         cursor.execute("""
-            SELECT symbol, market, COUNT(DISTINCT agent_id) as holder_count
+            SELECT symbol, market, token_id, outcome, COUNT(DISTINCT agent_id) as holder_count
             FROM positions
-            GROUP BY symbol, market
+            GROUP BY symbol, market, token_id, outcome
             ORDER BY holder_count DESC
             LIMIT ?
         """, (limit,))
@@ -1707,14 +1779,16 @@ def create_app() -> FastAPI:
             # Get current price from positions table
             cursor.execute("""
                 SELECT current_price FROM positions
-                WHERE symbol = ? AND market = ?
+                WHERE symbol = ? AND market = ? AND COALESCE(token_id, '') = COALESCE(?, '')
                 LIMIT 1
-            """, (row["symbol"], row["market"]))
+            """, (row["symbol"], row["market"], row["token_id"]))
             price_row = cursor.fetchone()
 
             result.append({
                 "symbol": row["symbol"],
                 "market": row["market"],
+                "token_id": row["token_id"],
+                "outcome": row["outcome"],
                 "holder_count": row["holder_count"],
                 "current_price": price_row["current_price"] if price_row else None
             })
@@ -1729,6 +1803,8 @@ def create_app() -> FastAPI:
     async def get_price(
         symbol: str,
         market: str = "us-stock",
+        token_id: Optional[str] = None,
+        outcome: Optional[str] = None,
         authorization: str = Header(None)
     ):
         """Get current price for a symbol."""
@@ -1748,10 +1824,11 @@ def create_app() -> FastAPI:
 
         # Always use UTC timestamp to avoid server-local timezone drift
         now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        price = get_price_from_market(symbol.upper(), now, market)
+        normalized_symbol = symbol.upper() if market == "us-stock" else symbol
+        price = get_price_from_market(normalized_symbol, now, market, token_id=token_id, outcome=outcome)
 
         if price:
-            return {"symbol": symbol.upper(), "market": market, "price": price}
+            return {"symbol": normalized_symbol, "market": market, "token_id": token_id, "outcome": outcome, "price": price}
         else:
             raise HTTPException(status_code=404, detail="Price not available")
 
@@ -1788,7 +1865,13 @@ def create_app() -> FastAPI:
             current_price = row["current_price"]
 
             if not current_price:
-                current_price = get_price_from_market(symbol, now_str, market)
+                current_price = get_price_from_market(
+                    symbol,
+                    now_str,
+                    market,
+                    token_id=row["token_id"],
+                    outcome=row["outcome"],
+                )
                 if current_price:
                     cursor.execute("UPDATE positions SET current_price = ? WHERE id = ?",
                                   (current_price, row["id"]))
@@ -1805,6 +1888,9 @@ def create_app() -> FastAPI:
             positions.append({
                 "id": row["id"],
                 "symbol": row["symbol"],
+                "market": row["market"],
+                "token_id": row["token_id"],
+                "outcome": row["outcome"],
                 "side": row["side"],
                 "quantity": row["quantity"],
                 "entry_price": row["entry_price"],
@@ -1833,7 +1919,7 @@ def create_app() -> FastAPI:
         agent_cash = agent_row["cash"] if agent_row else 0
 
         cursor.execute("""
-            SELECT symbol, market, side, quantity, entry_price, current_price
+            SELECT symbol, market, token_id, outcome, side, quantity, entry_price, current_price
             FROM positions
             WHERE agent_id = ?
             ORDER BY opened_at DESC
@@ -1852,7 +1938,13 @@ def create_app() -> FastAPI:
             current_price = row["current_price"]
 
             if not current_price:
-                current_price = get_price_from_market(symbol, now_str, market)
+                current_price = get_price_from_market(
+                    symbol,
+                    now_str,
+                    market,
+                    token_id=row["token_id"],
+                    outcome=row["outcome"],
+                )
 
             pnl = None
             if current_price and row["entry_price"]:
@@ -1867,6 +1959,8 @@ def create_app() -> FastAPI:
             positions.append({
                 "symbol": symbol,
                 "market": market,
+                "token_id": row["token_id"],
+                "outcome": row["outcome"],
                 "side": row["side"],
                 "quantity": row["quantity"],
                 "entry_price": row["entry_price"],
