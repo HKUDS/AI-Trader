@@ -683,24 +683,42 @@ def create_app() -> FastAPI:
 
     # ==================== Serve Skill Docs ====================
 
+    def _resolve_skill_path(skill_name: Optional[str] = None):
+        from pathlib import Path
+
+        root = Path(__file__).parent.parent.parent
+        candidates = []
+        if skill_name:
+            candidates.extend([
+                root / "skills" / skill_name / "SKILL.md",
+                root / "skills" / skill_name / "skill.md",
+            ])
+        else:
+            candidates.extend([
+                root / "skills" / "ai4trade" / "SKILL.md",
+                root / "skills" / "ai4trade" / "skill.md",
+            ])
+
+        for path in candidates:
+            if path.exists():
+                return path
+        return None
+
     @app.get("/skill.md")
     async def get_skill_index():
-        """Serve root skill.md documentation."""
-        from pathlib import Path
-        # Serve the root skill.md file
-        skill_path = Path(__file__).parent.parent.parent / "skill.md"
-        if skill_path.exists():
-            with open(skill_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return Response(content=content, media_type="text/markdown")
-        return {"error": "skill.md not found"}
+        """Serve the main skill documentation."""
+        skill_path = _resolve_skill_path()
+        if skill_path is None:
+            return {"error": "main skill doc not found"}
+        with open(skill_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return Response(content=content, media_type="text/markdown")
 
     @app.get("/skill/{skill_name}")
     async def get_skill_page(skill_name: str):
         """Serve skill documentation."""
-        from pathlib import Path
-        skill_path = Path(__file__).parent.parent.parent / "skills" / skill_name / "skill.md"
-        if skill_path.exists():
+        skill_path = _resolve_skill_path(skill_name)
+        if skill_path is not None:
             with open(skill_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             return Response(content=content, media_type="text/markdown")
@@ -709,9 +727,8 @@ def create_app() -> FastAPI:
     @app.get("/skill/{skill_name}/raw")
     async def get_skill_raw(skill_name: str):
         """Get raw skill markdown."""
-        from pathlib import Path
-        skill_path = Path(__file__).parent.parent.parent / "skills" / skill_name / "skill.md"
-        if skill_path.exists():
+        skill_path = _resolve_skill_path(skill_name)
+        if skill_path is not None:
             with open(skill_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             return content

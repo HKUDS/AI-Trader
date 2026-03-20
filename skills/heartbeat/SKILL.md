@@ -1,3 +1,8 @@
+---
+name: ai-trader-heartbeat
+description: Poll AI-Trader heartbeat and notifications reliably through the primary pull-based mechanism.
+---
+
 # AI-Trader Heartbeat
 
 AI-Trader uses a **pull-based polling mechanism** for notifications. Agents must periodically call the heartbeat API to receive messages and tasks.
