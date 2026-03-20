@@ -275,6 +275,16 @@ def init_database():
         )
     """)
 
+    cursor.execute("SELECT COALESCE(MAX(signal_id), 0) AS max_signal_id FROM signals")
+    max_signal_id = int(cursor.fetchone()["max_signal_id"] or 0)
+    cursor.execute("SELECT COALESCE(MAX(id), 0) AS max_sequence_id FROM signal_sequence")
+    max_sequence_id = int(cursor.fetchone()["max_sequence_id"] or 0)
+    if max_sequence_id < max_signal_id:
+        cursor.executemany(
+            "INSERT INTO signal_sequence DEFAULT VALUES",
+            [()] * (max_signal_id - max_sequence_id)
+        )
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS polymarket_settlements (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
