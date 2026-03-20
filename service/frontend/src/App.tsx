@@ -28,6 +28,7 @@ const REFRESH_INTERVAL = parseInt(import.meta.env.VITE_REFRESH_INTERVAL || '3000
 const NOTIFICATION_POLL_INTERVAL = 60 * 1000
 const FIVE_MINUTES_MS = 5 * 60 * 1000
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
+const SIGNALS_FEED_PAGE_SIZE = 12
 
 type LeaderboardChartRange = 'all' | '24h'
 
@@ -119,6 +120,17 @@ function buildLeaderboardChartData(profitHistory: any[], chartRange: Leaderboard
 
     return point
   }).filter((point) => Object.keys(point).length > 1)
+}
+
+function getPolymarketDisplayTitle(item: any) {
+  return item?.display_title || item?.market_title || (item?.outcome && item?.symbol ? `${item.symbol} [${item.outcome}]` : item?.symbol || '')
+}
+
+function getInstrumentLabel(item: any) {
+  if (item?.market === 'polymarket') {
+    return getPolymarketDisplayTitle(item)
+  }
+  return item?.title || item?.symbol || ''
 }
 
 // Market types (only US Stock and Crypto are supported currently)
@@ -615,6 +627,8 @@ function SignalCard({
 // Signals Feed Page - Two-level structure (Grouped by Agent)
 function SignalsFeed({ token }: { token?: string | null }) {
   const [agents, setAgents] = useState<any[]>([])
+  const [totalAgents, setTotalAgents] = useState(0)
+  const [page, setPage] = useState(1)
   const [selectedAgent, setSelectedAgent] = useState<any>(null)
   const [agentSignals, setAgentSignals] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -626,27 +640,34 @@ function SignalsFeed({ token }: { token?: string | null }) {
   const [loadingPositions, setLoadingPositions] = useState(false)
   const { t, language } = useLanguage()
   const navigate = useNavigate()
+  const location = useLocation()
 
   useEffect(() => {
-    loadAgents()
+    loadAgents(page)
 
     // Refresh signals periodically
     const interval = setInterval(() => {
-      loadAgents()
+      loadAgents(page)
     }, REFRESH_INTERVAL)
 
     return () => clearInterval(interval)
+  }, [market, page])
+
+  useEffect(() => {
+    setPage(1)
   }, [market])
 
-  const loadAgents = async () => {
+  const loadAgents = async (pageToLoad = page) => {
     setLoading(true)
     try {
+      const offset = (pageToLoad - 1) * SIGNALS_FEED_PAGE_SIZE
       const url = market === 'all'
-        ? `${API_BASE}/signals/grouped?message_type=operation&limit=50`
-        : `${API_BASE}/signals/grouped?message_type=operation&market=${market}&limit=50`
+        ? `${API_BASE}/signals/grouped?message_type=operation&limit=${SIGNALS_FEED_PAGE_SIZE}&offset=${offset}`
+        : `${API_BASE}/signals/grouped?message_type=operation&market=${market}&limit=${SIGNALS_FEED_PAGE_SIZE}&offset=${offset}`
       const res = await fetch(url)
       const data = await res.json()
       setAgents(data.agents || [])
+      setTotalAgents(data.total || 0)
     } catch (e) {
       console.error(e)
     }
@@ -674,6 +695,22 @@ function SignalsFeed({ token }: { token?: string | null }) {
     setLoadingSignals(false)
   }
 
+  const loadAgentSummary = async (agentId: number) => {
+    try {
+      const res = await fetch(`${API_BASE}/agents/${agentId}/positions`)
+      const data = await res.json()
+      if (res.ok) {
+        return {
+          agent_id: agentId,
+          agent_name: data.agent_name || `Agent ${agentId}`
+        }
+      }
+    } catch (e) {
+      console.error(e)
+    }
+    return null
+  }
+
   // Load positions for an agent
   const loadAgentPositions = async (agentId: number) => {
     setLoadingPositions(true)
@@ -699,7 +736,46 @@ function SignalsFeed({ token }: { token?: string | null }) {
     }
   }, [signalType, selectedAgent])
 
-  const handleAgentClick = async (agent: any) => {
+  useEffect(() => {
+    const agentIdParam = new URLSearchParams(location.search).get('agent')
+    if (!agentIdParam) {
+      if (selectedAgent) {
+        setSelectedAgent(null)
+        setAgentSignals([])
+      }
+      return
+    }
+
+    if (agents.length === 0) {
+      return
+    }
+
+    const agentId = Number(agentIdParam)
+    if (!Number.isFinite(agentId)) {
+      return
+    }
+
+    if (selectedAgent?.agent_id === agentId) {
+      return
+    }
+
+    const matchedAgent = agents.find((agent) => agent.agent_id === agentId)
+    if (matchedAgent) {
+      void handleAgentClick(matchedAgent, false)
+    } else {
+      void (async () => {
+        const summary = await loadAgentSummary(agentId)
+        if (summary) {
+          await handleAgentClick(summary, false)
+        }
+      })()
+    }
+  }, [agents, location.search, selectedAgent])
+
+  const handleAgentClick = async (agent: any, syncUrl = true) => {
+    if (syncUrl) {
+      navigate(`/?agent=${agent.agent_id}`)
+    }
     setSelectedAgent(agent)
     await loadAgentSignals(agent.agent_id)
   }
@@ -707,9 +783,11 @@ function SignalsFeed({ token }: { token?: string | null }) {
   const handleBack = () => {
     setSelectedAgent(null)
     setAgentSignals([])
+    navigate('/')
   }
 
   const getMarketLabel = (code: string) => MARKETS.find(m => m.value === code)?.[language === 'zh' ? 'labelZh' : 'label'] || code
+  const totalPages = Math.max(1, Math.ceil(totalAgents / SIGNALS_FEED_PAGE_SIZE))
 
   // Convert action/side to display text (e.g., "long" -> "买入", "short" -> "做空")
   const getActionLabel = (action: string | undefined | null, isZh: boolean) => {
@@ -850,7 +928,7 @@ function SignalsFeed({ token }: { token?: string | null }) {
                         <tbody>
                           {agentPositions.map((pos, idx) => (
                             <tr key={idx}>
-                              <td style={{ fontWeight: 600 }}>{pos.symbol}</td>
+                              <td style={{ fontWeight: 600 }}>{getInstrumentLabel(pos)}</td>
                               <td>
                                 <span className={`tag ${pos.side === 'long' ? 'signal-side long' : 'signal-side short'}`}>
                                   {pos.side === 'long' ? (language === 'zh' ? '做多' : 'Long') : (language === 'zh' ? '做空' : 'Short')}
@@ -891,12 +969,15 @@ function SignalsFeed({ token }: { token?: string | null }) {
                     // Trading signals display (realtime: buy/sell/short/cover)
                     <>
                       <div className="signal-header">
-                        <span className="signal-symbol">{signal.symbol}</span>
+                        <span className="signal-symbol">{getInstrumentLabel(signal)}</span>
                         <span className={`signal-side ${signal.action || signal.side}`}>
                           {getActionLabel(signal.action || signal.side, language === 'zh')}
                         </span>
                       </div>
                       <div className="signal-meta">
+                        {signal.market === 'polymarket' && signal.outcome && (
+                          <span className="signal-meta-item">🎯 {language === 'zh' ? 'Outcome' : 'Outcome'}: {signal.outcome}</span>
+                        )}
                         <span className="signal-meta-item">💰 {language === 'zh' ? '价格' : 'Price'}: ${(signal.price || signal.entry_price)?.toLocaleString()}</span>
                         <span className="signal-meta-item">📦 {language === 'zh' ? '数量' : 'Qty'}: {signal.quantity}</span>
                         <span className="signal-meta-item">🏷️ {getMarketLabel(signal.market)}</span>
@@ -952,37 +1033,63 @@ function SignalsFeed({ token }: { token?: string | null }) {
         </div>
       ) : (
         // First level: Show agents grouped
-        <div className="agent-grid">
-          {agents.map((agent) => (
-            <div
-              key={agent.agent_id}
-              className="agent-card"
-              onClick={() => handleAgentClick(agent)}
-            >
-              <div className="agent-header">
-                <span className="agent-name">{agent.agent_name}</span>
-              </div>
-              <div className="agent-stats">
-                <div className="agent-stat">
-                  <span className="stat-label">{language === 'zh' ? '持仓数' : 'Positions'}</span>
-                  <span className="stat-value">{agent.position_count || 0}</span>
+        <>
+          <div className="agent-grid">
+            {agents.map((agent) => (
+              <div
+                key={agent.agent_id}
+                className="agent-card"
+                onClick={() => handleAgentClick(agent)}
+              >
+                <div className="agent-header">
+                  <span className="agent-name">{agent.agent_name}</span>
                 </div>
-                <div className="agent-stat">
-                  <span className="stat-label">{language === 'zh' ? '持仓盈亏(浮动)' : 'Position PnL (Unrealized)'}</span>
-                  <span className={`stat-value ${(agent.position_pnl || 0) >= 0 ? 'positive' : 'negative'}`}>
-                    {(agent.position_pnl || 0) >= 0 ? '+' : ''}{agent.position_pnl?.toFixed(2) || '0.00'}
+                <div className="agent-stats">
+                  <div className="agent-stat">
+                    <span className="stat-label">{language === 'zh' ? '持仓数' : 'Positions'}</span>
+                    <span className="stat-value">{agent.position_count || 0}</span>
+                  </div>
+                  <div className="agent-stat">
+                    <span className="stat-label">{language === 'zh' ? '持仓盈亏(浮动)' : 'Position PnL (Unrealized)'}</span>
+                    <span className={`stat-value ${(agent.position_pnl || 0) >= 0 ? 'positive' : 'negative'}`}>
+                      {(agent.position_pnl || 0) >= 0 ? '+' : ''}{agent.position_pnl?.toFixed(2) || '0.00'}
+                    </span>
+                  </div>
+                </div>
+                <div className="agent-meta">
+                  <span className="agent-last-signal">
+                    {language === 'zh' ? '持仓: ' : 'Positions: '}
+                    {(agent.positions || []).map((p: any) => getInstrumentLabel(p)).join(', ') || '-'}
                   </span>
                 </div>
               </div>
-              <div className="agent-meta">
-                <span className="agent-last-signal">
-                  {language === 'zh' ? '持仓: ' : 'Positions: '}
-                  {(agent.positions || []).map((p: any) => p.symbol).join(', ') || '-'}
-                </span>
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="card" style={{ marginTop: '20px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' }}>
+              <button
+                className="btn btn-secondary"
+                disabled={page <= 1}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                {language === 'zh' ? '上一页' : 'Previous'}
+              </button>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                {language === 'zh'
+                  ? `第 ${page} / ${totalPages} 页，共 ${totalAgents} 位交易员`
+                  : `Page ${page} / ${totalPages}, ${totalAgents} traders total`}
               </div>
+              <button
+                className="btn btn-secondary"
+                disabled={page >= totalPages}
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              >
+                {language === 'zh' ? '下一页' : 'Next'}
+              </button>
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -1324,7 +1431,7 @@ function CopyTradingPage({ token }: { token: string }) {
 function LeaderboardPage({ token }: { token?: string | null }) {
   const [profitHistory, setProfitHistory] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [chartRange, setChartRange] = useState<LeaderboardChartRange>('all')
+  const [chartRange, setChartRange] = useState<LeaderboardChartRange>('24h')
   const { language } = useLanguage()
   const navigate = useNavigate()
 
@@ -2221,7 +2328,7 @@ function PositionsPage() {
               <tbody>
                 {positions.map((pos, idx) => (
                   <tr key={idx}>
-                    <td style={{ fontWeight: 600 }}>{pos.symbol}</td>
+                              <td style={{ fontWeight: 600 }}>{getInstrumentLabel(pos)}</td>
                     <td>{Math.abs(pos.quantity)}</td>
                     <td>
                       <div>{language === 'zh' ? '买入价格' : 'Entry Price'}: ${pos.entry_price?.toLocaleString()}</div>
@@ -2481,6 +2588,8 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
   const [market, setMarket] = useState('us-stock')
   const [action, setAction] = useState('buy')
   const [symbol, setSymbol] = useState('')
+  const [polymarketOutcome, setPolymarketOutcome] = useState('')
+  const [polymarketTokenId, setPolymarketTokenId] = useState('')
   const [quantity, setQuantity] = useState('')
   const [content, setContent] = useState('')
   const [currentPrice, setCurrentPrice] = useState<number | null>(null)
@@ -2514,13 +2623,23 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
     setPriceLoading(true)
     try {
       const requestSymbol = market === 'polymarket' ? symbol.trim() : symbol.toUpperCase()
-      const res = await fetch(`${API_BASE}/price?symbol=${encodeURIComponent(requestSymbol)}&market=${market}`, {
+      const priceParams = new URLSearchParams({
+        symbol: requestSymbol,
+        market,
+      })
+      if (market === 'polymarket' && polymarketOutcome.trim()) {
+        priceParams.set('outcome', polymarketOutcome.trim())
+      }
+      if (market === 'polymarket' && polymarketTokenId.trim()) {
+        priceParams.set('token_id', polymarketTokenId.trim())
+      }
+      const res = await fetch(`${API_BASE}/price?${priceParams.toString()}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
 
       const data = await res.json()
 
-      if (res.ok && data.price) {
+      if (res.ok && data.price !== null && data.price !== undefined) {
         setCurrentPrice(data.price)
         // Auto-fill price input
         const priceInput = document.getElementById('price-input') as HTMLInputElement
@@ -2593,6 +2712,8 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
           market,
           action,
           symbol: requestSymbol,
+          outcome: market === 'polymarket' && polymarketOutcome.trim() ? polymarketOutcome.trim() : undefined,
+          token_id: market === 'polymarket' && polymarketTokenId.trim() ? polymarketTokenId.trim() : undefined,
           price: currentPrice,
           quantity: parseFloat(quantity),
           content,
@@ -2606,6 +2727,8 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
         alert(language === 'zh' ? '下单成功！' : 'Order placed successfully!')
         // Reset form
         setSymbol('')
+        setPolymarketOutcome('')
+        setPolymarketTokenId('')
         setCurrentPrice(null)
         setQuantity('')
         setContent('')
@@ -2682,8 +2805,8 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
           {market === 'polymarket' && (
             <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>
               {language === 'zh'
-                ? '提示：预测市场为现货式模拟交易，不支持做空/平空。看空请交易相反 outcome。标的可填写 market slug / conditionId / tokenId。'
-                : 'Note: Polymarket is spot-like paper trading here (no short/cover). To express bearish views, trade the opposite outcome. Symbol can be a market slug / conditionId / tokenId.'}
+                ? '提示：预测市场为现货式模拟交易，不支持做空/平空。请填写 market slug / conditionId，并额外指定 outcome 或 token ID，这样平台会显示具体问题与 outcome，而不是原始标识符。'
+                : 'Note: Polymarket is spot-like paper trading here (no short/cover). Enter a market slug / conditionId and also specify an outcome or token ID, so the platform can display the actual question and outcome instead of a raw identifier.'}
             </div>
           )}
         </div>
@@ -2719,6 +2842,38 @@ function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentI
             </div>
           )}
         </div>
+
+        {market === 'polymarket' && (
+          <>
+            <div className="form-group">
+              <label className="form-label">{language === 'zh' ? 'Outcome' : 'Outcome'}</label>
+              <input
+                type="text"
+                className="form-input"
+                value={polymarketOutcome}
+                onChange={e => {
+                  setPolymarketOutcome(e.target.value)
+                  setCurrentPrice(null)
+                }}
+                placeholder={language === 'zh' ? '例如：Yes / No' : 'e.g. Yes / No'}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">{language === 'zh' ? 'Token ID（可选）' : 'Token ID (Optional)'}</label>
+              <input
+                type="text"
+                className="form-input"
+                value={polymarketTokenId}
+                onChange={e => {
+                  setPolymarketTokenId(e.target.value)
+                  setCurrentPrice(null)
+                }}
+                placeholder={language === 'zh' ? '已知 outcome token 时可直接填写' : 'Fill this if you already know the outcome token'}
+              />
+            </div>
+          </>
+        )}
 
         {/* Price - read only, auto-filled after clicking Get Price */}
         <div className="form-group">
