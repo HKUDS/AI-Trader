@@ -17,6 +17,52 @@ import secrets
 import time
 from datetime import datetime, timedelta, timezone
 
+GROUPED_SIGNALS_CACHE_TTL_SECONDS = 30
+AGENT_SIGNALS_CACHE_TTL_SECONDS = 15
+grouped_signals_cache: dict[tuple[str, str, int, int], tuple[float, dict[str, Any]]] = {}
+agent_signals_cache: dict[tuple[int, str, int], tuple[float, dict[str, Any]]] = {}
+
+
+def _format_polymarket_reference(reference: str) -> str:
+    ref = (reference or "").strip()
+    if not ref:
+        return ""
+    if ref.startswith("0x") or ref.isdigit():
+        return ref
+    return ref.replace("-", " ")
+
+
+def _decorate_polymarket_item(item: dict, fetch_remote: bool = False) -> dict:
+    if item.get("market") != "polymarket":
+        return item
+
+    description = None
+    if fetch_remote:
+        try:
+            from price_fetcher import describe_polymarket_contract
+
+            description = describe_polymarket_contract(
+                item.get("symbol") or "",
+                token_id=item.get("token_id"),
+                outcome=item.get("outcome"),
+            )
+        except Exception:
+            description = None
+
+    if not description:
+        fallback = _format_polymarket_reference(item.get("symbol") or "")
+        outcome = item.get("outcome")
+        item["display_title"] = f"{fallback} [{outcome}]" if fallback and outcome else fallback
+        item["market_title"] = fallback or (item.get("symbol") or "")
+        return item
+
+    item["token_id"] = item.get("token_id") or description.get("token_id")
+    item["outcome"] = item.get("outcome") or description.get("outcome")
+    item["market_title"] = description.get("market_title")
+    item["market_slug"] = description.get("market_slug")
+    item["display_title"] = description.get("display_title")
+    return item
+
 # Rate limiting for price API
 price_api_last_request: dict[int, float] = {}  # agent_id -> timestamp
 PRICE_API_RATE_LIMIT = 1.0  # seconds between requests
@@ -1227,17 +1273,21 @@ def create_app() -> FastAPI:
             except:
                 pass
 
-        return {
+        payload = {
             "success": True,
             "signal_id": signal_id,
             "message_type": "operation",
             "market": data.market,
+            "symbol": data.symbol,
             "price": price,
             "follower_count": follower_count,
             "points_earned": SIGNAL_PUBLISH_REWARD,
             "token_id": polymarket_token_id,
             "outcome": polymarket_outcome,
         }
+        if data.market == "polymarket":
+            _decorate_polymarket_item(payload, fetch_remote=True)
+        return payload
 
     @app.post("/api/signals/strategy")
     async def upload_strategy(data: StrategyRequest, authorization: str = Header(None)):
@@ -1326,6 +1376,12 @@ def create_app() -> FastAPI:
         offset: int = 0
     ):
         """Get signals grouped by agent."""
+        cache_key = ((message_type or "").strip(), (market or "").strip(), max(1, limit), max(0, offset))
+        cached = grouped_signals_cache.get(cache_key)
+        now_ts = time.time()
+        if cached and now_ts - cached[0] < GROUPED_SIGNALS_CACHE_TTL_SECONDS:
+            return cached[1]
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -1339,6 +1395,19 @@ def create_app() -> FastAPI:
             params.append(market)
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
+
+        count_query = f"""
+            SELECT COUNT(*) AS total FROM (
+                SELECT a.id
+                FROM agents a
+                LEFT JOIN signals s ON s.agent_id = a.id AND {where_clause}
+                GROUP BY a.id
+                HAVING COUNT(s.id) > 0
+            ) grouped_agents
+        """
+        cursor.execute(count_query, params)
+        total_row = cursor.fetchone()
+        total = total_row["total"] if total_row else 0
 
         query = f"""
             SELECT
@@ -1363,8 +1432,6 @@ def create_app() -> FastAPI:
         params.extend([limit, offset])
         cursor.execute(query, params)
         rows = cursor.fetchall()
-
-        total = len(rows)
         agents = []
         for row in rows:
             agent_id = row["agent_id"]
@@ -1398,6 +1465,8 @@ def create_app() -> FastAPI:
                     "current_price": current_price,
                     "pnl": pnl
                 })
+                if position_summary[-1]["market"] == "polymarket":
+                    _decorate_polymarket_item(position_summary[-1], fetch_remote=False)
 
             agents.append({
                 "agent_id": agent_id,
@@ -1413,7 +1482,9 @@ def create_app() -> FastAPI:
             })
 
         conn.close()
-        return {"agents": agents, "total": total}
+        payload = {"agents": agents, "total": total}
+        grouped_signals_cache[cache_key] = (now_ts, payload)
+        return payload
 
     # ==================== Signal Replies (must be before {agent_id}) ====================
 
@@ -1533,6 +1604,8 @@ def create_app() -> FastAPI:
                 signal_dict['tags'] = [t.strip() for t in signal_dict['tags'].split(',') if t.strip()]
             if signal_dict.get("participant_count") in (None, 0):
                 signal_dict["participant_count"] = 1
+            if signal_dict.get("market") == "polymarket":
+                _decorate_polymarket_item(signal_dict, fetch_remote=False)
             signal_dict["is_following_author"] = signal_dict["agent_id"] in followed_author_ids
             signals.append(signal_dict)
 
@@ -1639,6 +1712,12 @@ def create_app() -> FastAPI:
     @app.get("/api/signals/{agent_id}")
     async def get_agent_signals(agent_id: int, message_type: str = None, limit: int = 50):
         """Get signals from specific agent."""
+        cache_key = (agent_id, (message_type or "").strip(), max(1, limit))
+        cached = agent_signals_cache.get(cache_key)
+        now_ts = time.time()
+        if cached and now_ts - cached[0] < AGENT_SIGNALS_CACHE_TTL_SECONDS:
+            return cached[1]
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -1662,9 +1741,13 @@ def create_app() -> FastAPI:
                 signal_dict['symbols'] = [s.strip() for s in signal_dict['symbols'].split(',') if s.strip()]
             if signal_dict.get('tags') and isinstance(signal_dict['tags'], str):
                 signal_dict['tags'] = [t.strip() for t in signal_dict['tags'].split(',') if t.strip()]
+            if signal_dict.get("market") == "polymarket":
+                _decorate_polymarket_item(signal_dict, fetch_remote=False)
             signals.append(signal_dict)
 
-        return {"signals": signals}
+        payload = {"signals": signals}
+        agent_signals_cache[cache_key] = (now_ts, payload)
+        return payload
 
     # ==================== Replies ====================
 
@@ -2115,8 +2198,11 @@ def create_app() -> FastAPI:
         normalized_symbol = symbol.upper() if market == "us-stock" else symbol
         price = get_price_from_market(normalized_symbol, now, market, token_id=token_id, outcome=outcome)
 
-        if price:
-            return {"symbol": normalized_symbol, "market": market, "token_id": token_id, "outcome": outcome, "price": price}
+        if price is not None:
+            payload = {"symbol": normalized_symbol, "market": market, "token_id": token_id, "outcome": outcome, "price": price}
+            if market == "polymarket":
+                _decorate_polymarket_item(payload, fetch_remote=True)
+            return payload
         else:
             raise HTTPException(status_code=404, detail="Price not available")
 
@@ -2187,6 +2273,8 @@ def create_app() -> FastAPI:
                 "source": source,
                 "opened_at": row["opened_at"]
             })
+            if positions[-1]["market"] == "polymarket":
+                _decorate_polymarket_item(positions[-1], fetch_remote=False)
 
         conn.commit()
         conn.close()
@@ -2255,6 +2343,8 @@ def create_app() -> FastAPI:
                 "current_price": current_price,
                 "pnl": pnl
             })
+            if positions[-1]["market"] == "polymarket":
+                _decorate_polymarket_item(positions[-1], fetch_remote=False)
 
         return {
             "positions": positions,

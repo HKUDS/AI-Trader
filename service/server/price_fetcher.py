@@ -47,6 +47,41 @@ def _polymarket_price_valid(price: float) -> bool:
 _polymarket_token_cache: Dict[str, Tuple[str, float]] = {}
 _POLYMARKET_TOKEN_CACHE_TTL_S = 300.0
 
+
+def _polymarket_market_title(market: Optional[dict]) -> Optional[str]:
+    if not isinstance(market, dict):
+        return None
+    for key in ("question", "title", "description", "slug"):
+        value = market.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def describe_polymarket_contract(reference: str, token_id: Optional[str] = None, outcome: Optional[str] = None) -> Optional[dict]:
+    """
+    Return human-readable Polymarket metadata for UI/documentation.
+    """
+    contract = _polymarket_resolve_reference(reference, token_id=token_id, outcome=outcome)
+    if not contract:
+        return None
+
+    market = contract.get("market")
+    resolved_outcome = contract.get("outcome")
+    market_title = _polymarket_market_title(market)
+    market_slug = market.get("slug") if isinstance(market, dict) else None
+    display_title = market_title or market_slug or reference
+    if resolved_outcome:
+        display_title = f"{display_title} [{resolved_outcome}]"
+
+    return {
+        "token_id": contract.get("token_id"),
+        "outcome": resolved_outcome,
+        "market_title": market_title,
+        "market_slug": market_slug,
+        "display_title": display_title,
+    }
+
 def _parse_executed_at_to_utc(executed_at: str) -> Optional[datetime]:
     """
     Parse executed_at into an aware UTC datetime.
