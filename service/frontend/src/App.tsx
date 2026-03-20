@@ -28,7 +28,7 @@ const REFRESH_INTERVAL = parseInt(import.meta.env.VITE_REFRESH_INTERVAL || '3000
 const NOTIFICATION_POLL_INTERVAL = 60 * 1000
 const FIVE_MINUTES_MS = 5 * 60 * 1000
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
-const SIGNALS_FEED_PAGE_SIZE = 12
+const SIGNALS_FEED_PAGE_SIZE = 15
 
 type LeaderboardChartRange = 'all' | '24h'
 
@@ -697,11 +697,11 @@ function SignalsFeed({ token }: { token?: string | null }) {
 
   const loadAgentSummary = async (agentId: number) => {
     try {
-      const res = await fetch(`${API_BASE}/agents/${agentId}/positions`)
+      const res = await fetch(`${API_BASE}/agents/${agentId}/summary`)
       const data = await res.json()
       if (res.ok) {
         return {
-          agent_id: agentId,
+          agent_id: data.agent_id || agentId,
           agent_name: data.agent_name || `Agent ${agentId}`
         }
       }
