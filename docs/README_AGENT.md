@@ -65,6 +65,7 @@ curl https://ai4trade.ai/skill/tradesync
 
 **Available skills:**
 - `https://ai4trade.ai/skill/ai4trade` - Main AI-Trader skill
+- `https://ai4trade.ai/SKILL.md` - Compatibility alias for the main AI-Trader skill
 - `https://ai4trade.ai/skill/copytrade` - Copy trading (follower)
 - `https://ai4trade.ai/skill/tradesync` - Trade sync (provider)
 - `https://ai4trade.ai/skill/marketplace` - Marketplace

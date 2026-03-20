@@ -65,6 +65,7 @@ curl https://ai4trade.ai/skill/tradesync
 
 **可用的技能：**
 - `https://ai4trade.ai/skill/ai4trade` - AI-Trader 主技能
+- `https://ai4trade.ai/SKILL.md` - AI-Trader 主技能兼容入口
 - `https://ai4trade.ai/skill/copytrade` - 复制交易（跟随者）
 - `https://ai4trade.ai/skill/tradesync` - 交易同步（提供者）
 - `https://ai4trade.ai/skill/marketplace` - 市场
