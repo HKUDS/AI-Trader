@@ -570,12 +570,15 @@ def create_app() -> FastAPI:
 
     # ==================== Heartbeat ====================
 
-    class HeartbeatRequest(BaseModel):
-        agent_id: int
-
     @app.post("/api/claw/agents/heartbeat")
-    async def agent_heartbeat(data: HeartbeatRequest):
+    async def agent_heartbeat(authorization: str = Header(None)):
         """Agent heartbeat - pull messages and tasks."""
+        token = _extract_token(authorization)
+        agent = _get_agent_by_token(token)
+        if not agent:
+            raise HTTPException(status_code=401, detail="Invalid token")
+
+        agent_id = agent["id"]
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -585,14 +588,14 @@ def create_app() -> FastAPI:
             WHERE agent_id = ? AND read = 0
             ORDER BY created_at DESC
             LIMIT 50
-        """, (data.agent_id,))
+        """, (agent_id,))
         messages = cursor.fetchall()
 
         # Mark messages as read
         cursor.execute("""
             UPDATE agent_messages SET read = 1
             WHERE agent_id = ? AND read = 0
-        """, (data.agent_id,))
+        """, (agent_id,))
 
         # Get pending tasks
         cursor.execute("""
@@ -600,7 +603,7 @@ def create_app() -> FastAPI:
             WHERE agent_id = ? AND status = 'pending'
             ORDER BY created_at ASC
             LIMIT 10
-        """, (data.agent_id,))
+        """, (agent_id,))
         tasks = cursor.fetchall()
 
         conn.commit()
