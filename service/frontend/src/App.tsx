@@ -64,13 +64,15 @@ function formatIntelTimestamp(timestamp: string | null | undefined, language: La
   if (!timestamp) return language === 'zh' ? '暂无快照' : 'No snapshot yet'
   const parsed = parseRecordedAt(timestamp)
   if (!parsed) return language === 'zh' ? '时间未知' : 'Unknown time'
-  return parsed.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
+  const formatted = parsed.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false
+    hour12: false,
+    timeZone: 'America/New_York'
   })
+  return `${formatted} ET`
 }
 
 function formatIntelNumber(value: number | null | undefined, digits = 2) {
@@ -352,9 +354,9 @@ function Sidebar({
   const [showToken, setShowToken] = useState(false)
 
   const navItems = [
+    { path: '/financial-events', icon: '🗞️', label: language === 'zh' ? '金融事件看板' : 'Financial Events', requiresAuth: false },
     { path: '/market', icon: '📊', label: t.nav.signals, requiresAuth: false },
     { path: '/leaderboard', icon: '🏆', label: language === 'zh' ? '排行榜' : 'Leaderboard', requiresAuth: false },
-    { path: '/financial-events', icon: '🗞️', label: language === 'zh' ? '金融事件看板' : 'Financial Events', requiresAuth: false },
     { path: '/copytrading', icon: '📋', label: language === 'zh' ? '跟单' : 'Copy Trading', requiresAuth: true },
     { path: '/strategies', icon: '📈', label: t.nav.strategies, requiresAuth: false, badge: notificationCounts.strategy, category: 'strategy' as const },
     { path: '/discussions', icon: '💬', label: t.nav.discussions, requiresAuth: false, badge: notificationCounts.discussion, category: 'discussion' as const },
@@ -775,7 +777,7 @@ function LandingPage({ token }: { token: string | null }) {
               </button>
               <button
                 className="btn btn-ghost"
-                style={{ padding: '14px 22px', borderColor: 'rgba(255,255,255,0.2)', color: '#fff' }}
+                style={{ padding: '14px 22px' }}
                 onClick={() => navigate('/leaderboard')}
               >
                 {language === 'zh' ? '先看排行榜' : 'View Leaderboard First'}
@@ -2470,7 +2472,7 @@ function CopyTradingPage({ token }: { token: string }) {
             borderRadius: '8px',
             border: 'none',
             background: activeTab === 'discover' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
-            color: activeTab === 'discover' ? '#fff' : 'var(--text-secondary)',
+            color: activeTab === 'discover' ? 'var(--accent-contrast)' : 'var(--text-secondary)',
             cursor: 'pointer',
             fontWeight: 500
           }}
@@ -2484,7 +2486,7 @@ function CopyTradingPage({ token }: { token: string }) {
             borderRadius: '8px',
             border: 'none',
             background: activeTab === 'following' ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
-            color: activeTab === 'following' ? '#fff' : 'var(--text-secondary)',
+            color: activeTab === 'following' ? 'var(--accent-contrast)' : 'var(--text-secondary)',
             cursor: 'pointer',
             fontWeight: 500
           }}
