@@ -7,3 +7,4 @@ web3>=6.15.1
 requests>=2.31.0
 aiohttp>=3.9.1
 python-multipart>=0.0.6
+openrouter>=1.0.0

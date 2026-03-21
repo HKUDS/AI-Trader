@@ -176,6 +176,101 @@ async def update_position_prices():
         await asyncio.sleep(refresh_interval)
 
 
+async def refresh_market_news_snapshots_loop():
+    """Background task to refresh market-news snapshots on a fixed interval."""
+    from market_intel import refresh_market_news_snapshots
+
+    refresh_interval = int(os.getenv("MARKET_NEWS_REFRESH_INTERVAL", "900"))
+
+    # Give the API a moment to start before hitting external providers.
+    await asyncio.sleep(3)
+
+    while True:
+        try:
+            result = await asyncio.to_thread(refresh_market_news_snapshots)
+            print(
+                "[Market Intel] Refreshed market news snapshots: "
+                f"inserted={result.get('inserted_categories', 0)} "
+                f"errors={len(result.get('errors', {}))}"
+            )
+            for category, error in (result.get("errors") or {}).items():
+                print(f"[Market Intel] {category} refresh failed: {error}")
+        except Exception as e:
+            print(f"[Market Intel Error] {e}")
+
+        print(f"[Market Intel] Next market news refresh in {refresh_interval} seconds")
+        await asyncio.sleep(refresh_interval)
+
+
+async def refresh_macro_signal_snapshots_loop():
+    """Background task to refresh macro signal snapshots on a fixed interval."""
+    from market_intel import refresh_macro_signal_snapshot
+
+    refresh_interval = int(os.getenv("MACRO_SIGNAL_REFRESH_INTERVAL", "900"))
+
+    await asyncio.sleep(6)
+
+    while True:
+        try:
+            result = await asyncio.to_thread(refresh_macro_signal_snapshot)
+            print(
+                "[Market Intel] Refreshed macro signal snapshot: "
+                f"verdict={result.get('verdict')} "
+                f"signals={result.get('total_count', 0)}"
+            )
+        except Exception as e:
+            print(f"[Macro Signal Error] {e}")
+
+        print(f"[Market Intel] Next macro signal refresh in {refresh_interval} seconds")
+        await asyncio.sleep(refresh_interval)
+
+
+async def refresh_etf_flow_snapshots_loop():
+    """Background task to refresh ETF flow snapshots on a fixed interval."""
+    from market_intel import refresh_etf_flow_snapshot
+
+    refresh_interval = int(os.getenv("ETF_FLOW_REFRESH_INTERVAL", "900"))
+
+    await asyncio.sleep(9)
+
+    while True:
+        try:
+            result = await asyncio.to_thread(refresh_etf_flow_snapshot)
+            print(
+                "[Market Intel] Refreshed ETF flow snapshot: "
+                f"direction={result.get('direction')} "
+                f"tracked={result.get('tracked_count', 0)}"
+            )
+        except Exception as e:
+            print(f"[ETF Flow Error] {e}")
+
+        print(f"[Market Intel] Next ETF flow refresh in {refresh_interval} seconds")
+        await asyncio.sleep(refresh_interval)
+
+
+async def refresh_stock_analysis_snapshots_loop():
+    """Background task to refresh featured stock-analysis snapshots."""
+    from market_intel import refresh_stock_analysis_snapshots
+
+    refresh_interval = int(os.getenv("STOCK_ANALYSIS_REFRESH_INTERVAL", "1800"))
+
+    await asyncio.sleep(12)
+
+    while True:
+        try:
+            result = await asyncio.to_thread(refresh_stock_analysis_snapshots)
+            print(
+                "[Market Intel] Refreshed stock analysis snapshots: "
+                f"inserted={result.get('inserted_symbols', 0)} "
+                f"errors={len(result.get('errors', {}))}"
+            )
+        except Exception as e:
+            print(f"[Stock Analysis Error] {e}")
+
+        print(f"[Market Intel] Next stock analysis refresh in {refresh_interval} seconds")
+        await asyncio.sleep(refresh_interval)
+
+
 async def periodic_token_cleanup():
     """Periodically clean up expired tokens."""
     from utils import cleanup_expired_tokens

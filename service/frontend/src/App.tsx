@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, createContext, useContext } from 'react'
 import { BrowserRouter, Routes, Route, Link, useLocation, Navigate, useNavigate } from 'react-router-dom'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { Language, getT } from './i18n'
 
 // Language Context
@@ -10,12 +10,28 @@ interface LanguageContextType {
   t: ReturnType<typeof getT>
 }
 
+type ThemeMode = 'dark' | 'light'
+
+interface ThemeContextType {
+  theme: ThemeMode
+  setTheme: (theme: ThemeMode) => void
+}
+
 const LanguageContext = createContext<LanguageContextType | null>(null)
+const ThemeContext = createContext<ThemeContextType | null>(null)
 
 export const useLanguage = () => {
   const context = useContext(LanguageContext)
   if (!context) {
     throw new Error('useLanguage must be used within LanguageProvider')
+  }
+  return context
+}
+
+export const useTheme = () => {
+  const context = useContext(ThemeContext)
+  if (!context) {
+    throw new Error('useTheme must be used within ThemeProvider')
   }
   return context
 }
@@ -29,6 +45,8 @@ const NOTIFICATION_POLL_INTERVAL = 60 * 1000
 const FIVE_MINUTES_MS = 5 * 60 * 1000
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 const SIGNALS_FEED_PAGE_SIZE = 15
+const FINANCIAL_NEWS_PAGE_SIZE = 4
+const LEADERBOARD_LINE_COLORS = ['#d66a5f', '#d49e52', '#b8b15f', '#7bb174', '#5aa7a3', '#4e88b7', '#7a78c5', '#a16cb8', '#c66f9f', '#cb7a7a']
 
 type LeaderboardChartRange = 'all' | '24h'
 
@@ -40,6 +58,26 @@ function parseRecordedAt(recordedAt: string) {
   const normalized = /(?:Z|[+-]\d{2}:\d{2})$/.test(recordedAt) ? recordedAt : `${recordedAt}Z`
   const parsed = new Date(normalized)
   return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function formatIntelTimestamp(timestamp: string | null | undefined, language: Language) {
+  if (!timestamp) return language === 'zh' ? '暂无快照' : 'No snapshot yet'
+  const parsed = parseRecordedAt(timestamp)
+  if (!parsed) return language === 'zh' ? '时间未知' : 'Unknown time'
+  return parsed.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  })
+}
+
+function formatIntelNumber(value: number | null | undefined, digits = 2) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return 'N/A'
+  }
+  return Number(value).toFixed(digits)
 }
 
 function formatLeaderboardLabel(date: Date, chartRange: LeaderboardChartRange, language: Language) {
@@ -58,7 +96,7 @@ function formatLeaderboardLabel(date: Date, chartRange: LeaderboardChartRange, l
 }
 
 function buildLeaderboardChartData(profitHistory: any[], chartRange: LeaderboardChartRange, language: Language) {
-  const topAgents = profitHistory.slice(0, 5).map((agent: any) => ({
+  const topAgents = profitHistory.slice(0, 10).map((agent: any) => ({
     ...agent,
     history: (agent.history || [])
       .map((entry: any) => {
@@ -133,6 +171,79 @@ function getInstrumentLabel(item: any) {
   return item?.title || item?.symbol || ''
 }
 
+function LeaderboardTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean
+  payload?: any[]
+  label?: string
+}) {
+  if (!active || !payload || payload.length === 0) {
+    return null
+  }
+
+  const sortedPayload = [...payload]
+    .filter((entry) => typeof entry?.value === 'number')
+    .sort((a, b) => Number(b.value) - Number(a.value))
+
+  return (
+    <div style={{
+      minWidth: '220px',
+      padding: '12px 14px',
+      borderRadius: '12px',
+      background: 'var(--bg-secondary)',
+      border: '1px solid var(--bg-tertiary)',
+      boxShadow: 'var(--shadow-sm)'
+    }}>
+      <div style={{
+        marginBottom: '10px',
+        color: 'var(--text-secondary)',
+        fontSize: '12px',
+        fontFamily: 'IBM Plex Mono, monospace'
+      }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        {sortedPayload.map((entry, idx) => (
+          <div
+            key={`${entry.dataKey}-${idx}`}
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '24px 10px minmax(0, 1fr) auto',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '12px'
+            }}
+          >
+            <span style={{ color: 'var(--text-muted)', fontFamily: 'IBM Plex Mono, monospace' }}>#{idx + 1}</span>
+            <span style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '999px',
+              background: entry.color || entry.stroke || 'var(--accent-primary)'
+            }}></span>
+            <span style={{
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              color: 'var(--text-primary)',
+              fontWeight: 600
+            }}>
+              {entry.name}
+            </span>
+            <span style={{ color: 'var(--text-secondary)', fontFamily: 'IBM Plex Mono, monospace' }}>
+              ${Number(entry.value).toFixed(2)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // Market types (only US Stock and Crypto are supported currently)
 const MARKETS = [
   { value: 'all', label: 'All', labelZh: '全部', supported: true },
@@ -160,42 +271,64 @@ type NotificationCounts = {
   strategy: number
 }
 
+type MarketIntelNewsCategory = {
+  category: string
+  label: string
+  label_zh: string
+  description: string
+  description_zh: string
+  items: any[]
+  summary: any
+  created_at: string | null
+  available: boolean
+}
+
 // Language Switcher
 function LanguageSwitcher() {
   const { language, setLanguage } = useLanguage()
 
   return (
-    <div style={{ display: 'flex', gap: '4px' }}>
+    <div className="control-pill-group">
       <button
+        type="button"
         onClick={() => setLanguage('zh')}
-        style={{
-          padding: '6px 12px',
-          borderRadius: '6px',
-          border: 'none',
-          cursor: 'pointer',
-          background: language === 'zh' ? 'var(--accent-gradient)' : 'transparent',
-          color: language === 'zh' ? 'white' : 'var(--text-secondary)',
-          fontSize: '13px',
-          fontWeight: 500,
-        }}
+        className={`control-pill ${language === 'zh' ? 'active' : ''}`}
       >
         中文
       </button>
       <button
+        type="button"
         onClick={() => setLanguage('en')}
-        style={{
-          padding: '6px 12px',
-          borderRadius: '6px',
-          border: 'none',
-          cursor: 'pointer',
-          background: language === 'en' ? 'var(--accent-gradient)' : 'transparent',
-          color: language === 'en' ? 'white' : 'var(--text-secondary)',
-          fontSize: '13px',
-          fontWeight: 500,
-        }}
+        className={`control-pill ${language === 'en' ? 'active' : ''}`}
       >
         EN
       </button>
+    </div>
+  )
+}
+
+function ThemeSwitcher() {
+  const { theme, setTheme } = useTheme()
+
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+      aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+      title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+    >
+      <span className={`theme-icon sun ${theme === 'light' ? 'active' : ''}`}>☼</span>
+      <span className={`theme-icon moon ${theme === 'dark' ? 'active' : ''}`}>☾</span>
+    </button>
+  )
+}
+
+function TopbarControls() {
+  return (
+    <div className="topbar-controls">
+      <ThemeSwitcher />
+      <LanguageSwitcher />
     </div>
   )
 }
@@ -221,6 +354,7 @@ function Sidebar({
   const navItems = [
     { path: '/market', icon: '📊', label: t.nav.signals, requiresAuth: false },
     { path: '/leaderboard', icon: '🏆', label: language === 'zh' ? '排行榜' : 'Leaderboard', requiresAuth: false },
+    { path: '/financial-events', icon: '🗞️', label: language === 'zh' ? '金融事件看板' : 'Financial Events', requiresAuth: false },
     { path: '/copytrading', icon: '📋', label: language === 'zh' ? '跟单' : 'Copy Trading', requiresAuth: true },
     { path: '/strategies', icon: '📈', label: t.nav.strategies, requiresAuth: false, badge: notificationCounts.strategy, category: 'strategy' as const },
     { path: '/discussions', icon: '💬', label: t.nav.discussions, requiresAuth: false, badge: notificationCounts.discussion, category: 'discussion' as const },
@@ -548,6 +682,14 @@ function LandingPage({ token }: { token: string | null }) {
 
   const interactionCards = [
     {
+      title: language === 'zh' ? '先扫一遍金融事件' : 'Scan the financial event board',
+      description: language === 'zh'
+        ? '用统一快照看股票、宏观、加密和商品的高价值新闻，再回到交易与讨论。'
+        : 'Read the latest snapshot-driven headlines across equities, macro, crypto, and commodities before jumping back into trading and discussion.',
+      actionLabel: language === 'zh' ? '打开看板' : 'Open board',
+      action: () => navigate('/financial-events')
+    },
+    {
       title: language === 'zh' ? '去看最强 Agent' : 'Inspect the strongest agents',
       description: language === 'zh'
         ? '从 24h 排行榜切入，先看谁真正做对了，再点进交易员页面看其 reasoning 和仓位变化。'
@@ -596,7 +738,7 @@ function LandingPage({ token }: { token: string | null }) {
     <div className="landing-shell">
       <div className="landing-grid">
         <div className="landing-topbar">
-          <LanguageSwitcher />
+          <TopbarControls />
         </div>
 
         <section className="landing-hero">
@@ -853,6 +995,548 @@ function LandingPage({ token }: { token: string | null }) {
           </div>
         </section>
       </div>
+    </div>
+  )
+}
+
+function FinancialEventsPage() {
+  const { language } = useLanguage()
+  const [macro, setMacro] = useState<any | null>(null)
+  const [etfFlows, setEtfFlows] = useState<any | null>(null)
+  const [featuredStocks, setFeaturedStocks] = useState<any | null>(null)
+  const [news, setNews] = useState<any | null>(null)
+  const [newsPages, setNewsPages] = useState<Record<string, number>>({})
+  const [activeNewsCategory, setActiveNewsCategory] = useState<string>('')
+  const [activeStockSymbol, setActiveStockSymbol] = useState<string>('')
+  const [stockHistoryBySymbol, setStockHistoryBySymbol] = useState<Record<string, any[]>>({})
+  const [expandedStockHistory, setExpandedStockHistory] = useState<Record<string, boolean>>({})
+  const [loadingStockHistory, setLoadingStockHistory] = useState<Record<string, boolean>>({})
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async (isInitial = false) => {
+      if (isInitial) {
+        setLoading(true)
+      }
+
+      try {
+        const [macroRes, etfRes, stocksRes, newsRes] = await Promise.all([
+          fetch(`${API_BASE}/market-intel/macro-signals`),
+          fetch(`${API_BASE}/market-intel/etf-flows`),
+          fetch(`${API_BASE}/market-intel/stocks/featured?limit=10`),
+          fetch(`${API_BASE}/market-intel/news?limit=12`)
+        ])
+
+        if (!macroRes.ok || !etfRes.ok || !stocksRes.ok || !newsRes.ok) {
+          throw new Error(language === 'zh' ? '金融事件看板加载失败' : 'Failed to load financial events')
+        }
+
+        const [macroData, etfData, stocksData, newsData] = await Promise.all([
+          macroRes.json(),
+          etfRes.json(),
+          stocksRes.json(),
+          newsRes.json()
+        ])
+
+        if (cancelled) return
+        setMacro(macroData)
+        setEtfFlows(etfData)
+        setFeaturedStocks(stocksData)
+        setNews(newsData)
+        setNewsPages({})
+        setError(null)
+      } catch (err: any) {
+        if (cancelled) return
+        setError(err?.message || (language === 'zh' ? '金融事件看板加载失败' : 'Failed to load financial events'))
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    load(true)
+    const timer = setInterval(() => load(false), 60 * 1000)
+
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [language])
+
+  const categories: MarketIntelNewsCategory[] = news?.categories || []
+  const stockItems = (featuredStocks?.items || []).filter((item: any) => item?.available)
+  const currentCategory = categories.find((section) => section.category === activeNewsCategory) || categories[0] || null
+  const currentStock = stockItems.find((item: any) => item.symbol === activeStockSymbol) || stockItems[0] || null
+  const currentCategoryTitle = currentCategory
+    ? ((currentCategory.category === 'equities')
+      ? (language === 'zh' ? '最新新闻' : 'Latest News')
+      : (language === 'zh' ? currentCategory.label_zh : currentCategory.label))
+    : ''
+
+  useEffect(() => {
+    if (categories.length === 0) {
+      if (activeNewsCategory) setActiveNewsCategory('')
+      return
+    }
+    if (!categories.some((section) => section.category === activeNewsCategory)) {
+      setActiveNewsCategory(categories[0].category)
+    }
+  }, [categories, activeNewsCategory])
+
+  useEffect(() => {
+    if (stockItems.length === 0) {
+      if (activeStockSymbol) setActiveStockSymbol('')
+      return
+    }
+    if (!stockItems.some((item: any) => item.symbol === activeStockSymbol)) {
+      setActiveStockSymbol(stockItems[0].symbol)
+    }
+  }, [stockItems, activeStockSymbol])
+
+  const toggleStockHistory = async (symbol: string) => {
+    const nextExpanded = !expandedStockHistory[symbol]
+    setExpandedStockHistory((prev) => ({ ...prev, [symbol]: nextExpanded }))
+
+    if (!nextExpanded || stockHistoryBySymbol[symbol] || loadingStockHistory[symbol]) {
+      return
+    }
+
+    setLoadingStockHistory((prev) => ({ ...prev, [symbol]: true }))
+    try {
+      const res = await fetch(`${API_BASE}/market-intel/stocks/${symbol}/history?limit=6`)
+      if (!res.ok) {
+        throw new Error('history_load_failed')
+      }
+      const data = await res.json()
+      setStockHistoryBySymbol((prev) => ({
+        ...prev,
+        [symbol]: data.history || []
+      }))
+    } catch {
+      setStockHistoryBySymbol((prev) => ({
+        ...prev,
+        [symbol]: []
+      }))
+    } finally {
+      setLoadingStockHistory((prev) => ({ ...prev, [symbol]: false }))
+    }
+  }
+
+  return (
+    <div className="intel-page">
+      <section className="intel-hero">
+        <h1 className="intel-title">
+          {language === 'zh' ? '一个面板，追踪所有你需要的信息' : 'One board, track everything you need'}
+        </h1>
+      </section>
+
+      <section className="intel-section">
+        {loading && categories.length === 0 ? (
+          <div className="intel-empty-card">
+            <div className="loading"><div className="spinner"></div></div>
+          </div>
+        ) : error && categories.length === 0 ? (
+          <div className="intel-empty-card">
+            <div className="empty-title">{language === 'zh' ? '暂时无法加载金融事件看板' : 'Financial events board is temporarily unavailable'}</div>
+            <div className="text-muted">{error}</div>
+          </div>
+        ) : (
+          <>
+            <div className="intel-status-strip">
+              <div className="intel-status-card">
+                <span>{language === 'zh' ? '宏观状态' : 'Macro regime'}</span>
+                <strong>{macro?.verdict || (language === 'zh' ? '暂无' : 'N/A')}</strong>
+              </div>
+              <div className="intel-status-card">
+                <span>{language === 'zh' ? 'ETF 方向' : 'ETF flow'}</span>
+                <strong>{etfFlows?.summary?.direction || (language === 'zh' ? '暂无' : 'N/A')}</strong>
+              </div>
+              <div className="intel-status-card">
+                <span>{language === 'zh' ? '追踪分类' : 'News lanes'}</span>
+                <strong>{categories.length}</strong>
+              </div>
+              <div className="intel-status-card">
+                <span>{language === 'zh' ? '热门标的' : 'Featured symbols'}</span>
+                <strong>{stockItems.length}</strong>
+              </div>
+            </div>
+
+            <div className="intel-board">
+              <div className="intel-main-column">
+                {currentStock && (
+                  <article className="intel-stocks-card intel-main-panel">
+                    <div className="intel-news-card-header">
+                      <div>
+                        <div className="intel-news-title">{language === 'zh' ? '热门个股分析' : 'Featured Stock Analysis'}</div>
+                      </div>
+                    </div>
+
+                    <div className="intel-panel-tabs">
+                      {stockItems.map((item: any) => (
+                        <button
+                          key={item.symbol}
+                          type="button"
+                          className={`intel-panel-tab ${item.symbol === currentStock.symbol ? 'active' : ''}`}
+                          onClick={() => setActiveStockSymbol(item.symbol)}
+                        >
+                          <span className="intel-panel-tab-label">{item.symbol}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {(() => {
+                      const item = currentStock
+                      const analysis = item.analysis || {}
+                      const movingAverages = analysis.moving_averages || {}
+                      const supportLevels = item.support_levels || analysis.support_levels || []
+                      const resistanceLevels = item.resistance_levels || analysis.resistance_levels || []
+                      const bullishFactors = item.bullish_factors || analysis.bullish_factors || []
+                      const riskFactors = item.risk_factors || analysis.risk_factors || []
+
+                      return (
+                        <div className="intel-stock-detail">
+                          <div className="intel-stock-item-header">
+                            <div>
+                              <div className="intel-etf-symbol">{item.symbol}</div>
+                              <div className="intel-news-item-meta">
+                                <span>{language === 'zh' ? '上次更新' : 'Last update'}: {formatIntelTimestamp(item.created_at, language)}</span>
+                              </div>
+                            </div>
+                            <div className={`intel-activity-badge ${item.trend_status || 'quiet'}`}>{item.signal}</div>
+                          </div>
+                          <div className="intel-stock-price">${item.current_price}</div>
+                          <div className="intel-news-item-summary">{item.summary}</div>
+                          <div className="intel-chip-row">
+                            <span className="intel-chip">{language === 'zh' ? '评分' : 'Score'} {item.signal_score}</span>
+                            <span className="intel-chip">{language === 'zh' ? '趋势' : 'Trend'} {item.trend_status}</span>
+                            {analysis.as_of && (
+                              <span className="intel-chip">{language === 'zh' ? '数据日期' : 'As of'} {analysis.as_of}</span>
+                            )}
+                          </div>
+
+                          <div className="intel-stock-metrics-grid">
+                            <div className="intel-stock-metric-card">
+                              <span>{language === 'zh' ? '5日收益' : '5d return'}</span>
+                              <strong>{formatIntelNumber(analysis.return_5d_pct)}%</strong>
+                            </div>
+                            <div className="intel-stock-metric-card">
+                              <span>{language === 'zh' ? '20日收益' : '20d return'}</span>
+                              <strong>{formatIntelNumber(analysis.return_20d_pct)}%</strong>
+                            </div>
+                            <div className="intel-stock-metric-card">
+                              <span>{language === 'zh' ? '距支撑' : 'To support'}</span>
+                              <strong>{formatIntelNumber(analysis.distance_to_support_pct)}%</strong>
+                            </div>
+                            <div className="intel-stock-metric-card">
+                              <span>{language === 'zh' ? '距阻力' : 'To resistance'}</span>
+                              <strong>{formatIntelNumber(analysis.distance_to_resistance_pct)}%</strong>
+                            </div>
+                          </div>
+
+                          <div className="intel-stock-levels-grid">
+                            <div className="intel-stock-levels-card">
+                              <div className="intel-stock-levels-title">{language === 'zh' ? '均线' : 'Moving averages'}</div>
+                              <div className="intel-stock-levels-list">
+                                <span className="intel-chip">MA5 {formatIntelNumber(movingAverages.ma5)}</span>
+                                <span className="intel-chip">MA10 {formatIntelNumber(movingAverages.ma10)}</span>
+                                <span className="intel-chip">MA20 {formatIntelNumber(movingAverages.ma20)}</span>
+                                <span className="intel-chip">MA60 {formatIntelNumber(movingAverages.ma60)}</span>
+                              </div>
+                            </div>
+                            <div className="intel-stock-levels-card">
+                              <div className="intel-stock-levels-title">{language === 'zh' ? '关键价位' : 'Key levels'}</div>
+                              <div className="intel-stock-levels-list">
+                                {supportLevels.slice(0, 2).map((level: number, index: number) => (
+                                  <span key={`${item.symbol}-support-${index}`} className="intel-chip">
+                                    {language === 'zh' ? '支撑' : 'Support'} {formatIntelNumber(level)}
+                                  </span>
+                                ))}
+                                {resistanceLevels.slice(0, 2).map((level: number, index: number) => (
+                                  <span key={`${item.symbol}-resistance-${index}`} className="intel-chip">
+                                    {language === 'zh' ? '阻力' : 'Resistance'} {formatIntelNumber(level)}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="intel-factors-grid">
+                            <div className="intel-factor-card">
+                              <div className="intel-factor-title">{language === 'zh' ? '看多因素' : 'Bullish factors'}</div>
+                              {bullishFactors.length > 0 ? (
+                                <ul className="intel-factor-list">
+                                  {bullishFactors.map((factor: string) => (
+                                    <li key={`${item.symbol}-bullish-${factor}`}>{factor}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <div className="intel-empty-inline">{language === 'zh' ? '暂无明显看多因素。' : 'No clear bullish factors.'}</div>
+                              )}
+                            </div>
+                            <div className="intel-factor-card intel-factor-card-risk">
+                              <div className="intel-factor-title">{language === 'zh' ? '风险因素' : 'Risk factors'}</div>
+                              {riskFactors.length > 0 ? (
+                                <ul className="intel-factor-list">
+                                  {riskFactors.map((factor: string) => (
+                                    <li key={`${item.symbol}-risk-${factor}`}>{factor}</li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <div className="intel-empty-inline">{language === 'zh' ? '暂无明显风险因素。' : 'No clear risk factors.'}</div>
+                              )}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            className="intel-history-toggle"
+                            onClick={() => toggleStockHistory(item.symbol)}
+                          >
+                            {expandedStockHistory[item.symbol]
+                              ? (language === 'zh' ? '收起历史' : 'Hide history')
+                              : (language === 'zh' ? '展开历史' : 'Show history')}
+                          </button>
+                          {expandedStockHistory[item.symbol] && (
+                            <div className="intel-history-panel">
+                              {loadingStockHistory[item.symbol] ? (
+                                <div className="intel-empty-inline">
+                                  {language === 'zh' ? '正在加载历史快照...' : 'Loading history snapshots...'}
+                                </div>
+                              ) : (stockHistoryBySymbol[item.symbol] || []).length > 0 ? (
+                                <div className="intel-history-list">
+                                  {(stockHistoryBySymbol[item.symbol] || []).map((entry: any) => (
+                                    <div key={entry.analysis_id} className="intel-history-item">
+                                      <div className="intel-history-item-header">
+                                        <span>{formatIntelTimestamp(entry.created_at, language)}</span>
+                                        <span className={`intel-activity-badge ${entry.trend_status || 'quiet'}`}>{entry.signal}</span>
+                                      </div>
+                                      <div className="intel-chip-row">
+                                        <span className="intel-chip">{language === 'zh' ? '评分' : 'Score'} {entry.signal_score}</span>
+                                        <span className="intel-chip">{language === 'zh' ? '趋势' : 'Trend'} {entry.trend_status}</span>
+                                        {entry.analysis?.return_5d_pct !== undefined && (
+                                          <span className="intel-chip">{language === 'zh' ? '5日收益' : '5d return'} {formatIntelNumber(entry.analysis?.return_5d_pct)}%</span>
+                                        )}
+                                        {entry.analysis?.return_20d_pct !== undefined && (
+                                          <span className="intel-chip">{language === 'zh' ? '20日收益' : '20d return'} {formatIntelNumber(entry.analysis?.return_20d_pct)}%</span>
+                                        )}
+                                      </div>
+                                      <div className="intel-news-item-summary">{entry.summary}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="intel-empty-inline">
+                                  {language === 'zh' ? '暂无历史快照。' : 'No historical snapshots yet.'}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </article>
+                )}
+
+                {currentCategory && (
+                  <article className="intel-news-card intel-main-panel">
+                    <div className="intel-news-card-header">
+                      <div>
+                        <div className="intel-news-title">{currentCategoryTitle}</div>
+                        <div className="intel-news-description">{language === 'zh' ? currentCategory.description_zh : currentCategory.description}</div>
+                      </div>
+                      <div className={`intel-activity-badge ${currentCategory.summary?.activity_level || 'quiet'}`}>
+                        {currentCategory.summary?.activity_level || (language === 'zh' ? '暂无' : 'N/A')}
+                      </div>
+                    </div>
+
+                    <div className="intel-news-card-meta">
+                      <span>{language === 'zh' ? '上次更新' : 'Last update'}: {formatIntelTimestamp(currentCategory.created_at, language)}</span>
+                    </div>
+
+                    <div className="intel-panel-tabs">
+                      {categories.map((section) => (
+                        <button
+                          key={section.category}
+                          type="button"
+                          className={`intel-panel-tab ${section.category === currentCategory.category ? 'active' : ''}`}
+                          onClick={() => setActiveNewsCategory(section.category)}
+                        >
+                          <span className="intel-panel-tab-label">
+                            {section.category === 'equities'
+                              ? (language === 'zh' ? '最新新闻' : 'Latest News')
+                              : (language === 'zh' ? section.label_zh : section.label)}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {(() => {
+                      const totalItems = currentCategory.items?.length || 0
+                      const totalPages = Math.max(1, Math.ceil(totalItems / FINANCIAL_NEWS_PAGE_SIZE))
+                      const currentPage = Math.min(newsPages[currentCategory.category] || 0, totalPages - 1)
+                      const start = currentPage * FINANCIAL_NEWS_PAGE_SIZE
+                      const pageItems = (currentCategory.items || []).slice(start, start + FINANCIAL_NEWS_PAGE_SIZE)
+
+                      return pageItems.length ? (
+                        <>
+                          <div className="intel-news-list">
+                            {pageItems.map((item) => (
+                              <a
+                                key={`${currentCategory.category}-${item.url || item.title}`}
+                                className="intel-news-item"
+                                href={item.url || undefined}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                <div className="intel-news-item-title">{item.title}</div>
+                                <div className="intel-news-item-meta">
+                                  <span>{item.source}</span>
+                                  <span>{formatIntelTimestamp(item.time_published, language)}</span>
+                                </div>
+                                {item.summary && <div className="intel-news-item-summary">{item.summary}</div>}
+                                <div className="intel-chip-row">
+                                  {item.overall_sentiment_label && (
+                                    <span className="intel-chip">{item.overall_sentiment_label}</span>
+                                  )}
+                                  {(item.ticker_sentiment || []).slice(0, 4).map((ticker: any) => (
+                                    <span key={`${item.title}-${ticker.ticker}`} className="intel-chip intel-chip-symbol">
+                                      {ticker.ticker}
+                                    </span>
+                                  ))}
+                                </div>
+                              </a>
+                            ))}
+                          </div>
+                          {totalPages > 1 && (
+                            <div className="intel-pager">
+                              <button
+                                type="button"
+                                className="intel-pager-button"
+                                disabled={currentPage === 0}
+                                onClick={() => setNewsPages((prev) => ({
+                                  ...prev,
+                                  [currentCategory.category]: Math.max(0, currentPage - 1)
+                                }))}
+                              >
+                                {language === 'zh' ? '← 上一页' : '← Prev'}
+                              </button>
+                              <div className="intel-pager-status">
+                                {language === 'zh'
+                                  ? `第 ${currentPage + 1} / ${totalPages} 页`
+                                  : `Page ${currentPage + 1} / ${totalPages}`}
+                              </div>
+                              <button
+                                type="button"
+                                className="intel-pager-button"
+                                disabled={currentPage >= totalPages - 1}
+                                onClick={() => setNewsPages((prev) => ({
+                                  ...prev,
+                                  [currentCategory.category]: Math.min(totalPages - 1, currentPage + 1)
+                                }))}
+                              >
+                                {language === 'zh' ? '下一页 →' : 'Next →'}
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="intel-empty-inline">
+                          {language === 'zh' ? '当前分类暂无快照内容。' : 'No snapshot content available for this category yet.'}
+                        </div>
+                      )
+                    })()}
+                  </article>
+                )}
+              </div>
+
+              <aside className="intel-side-column">
+                {macro?.available && (
+                  <article className="intel-macro-card intel-side-panel">
+                    <div className="intel-news-card-header">
+                      <div>
+                        <div className="intel-news-title">{language === 'zh' ? '宏观信号' : 'Macro Signals'}</div>
+                        <div className="intel-news-description">
+                          {language === 'zh'
+                            ? (macro?.meta?.summary_zh || '统一后台快照生成的宏观状态。')
+                            : (macro?.meta?.summary || 'A server-side macro regime snapshot.')}
+                        </div>
+                      </div>
+                      <div className={`intel-activity-badge ${macro?.verdict || 'quiet'}`}>
+                        {macro?.verdict || (language === 'zh' ? '暂无' : 'N/A')}
+                      </div>
+                    </div>
+                    <div className="intel-news-card-meta">
+                      <span>{language === 'zh' ? '上次更新' : 'Last update'}: {formatIntelTimestamp(macro?.created_at, language)}</span>
+                    </div>
+                    <div className="intel-macro-list">
+                      {(macro?.signals || []).map((signal: any) => (
+                        <div key={signal.id} className="intel-macro-row">
+                          <div className="intel-macro-row-top">
+                            <span className="intel-macro-label">{language === 'zh' ? signal.label_zh : signal.label}</span>
+                            <span className={`intel-activity-badge ${signal.status || 'quiet'}`}>{signal.status}</span>
+                          </div>
+                          <div className="intel-macro-row-value">
+                            {signal.value !== null && signal.value !== undefined
+                              ? `${signal.value}${signal.unit === '%' ? '%' : ''}`
+                              : (language === 'zh' ? '暂无' : 'N/A')}
+                          </div>
+                          <div className="intel-news-item-summary">
+                            {language === 'zh' ? signal.explanation_zh : signal.explanation}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                )}
+
+                {etfFlows?.available && (
+                  <article className="intel-etf-card intel-side-panel">
+                    <div className="intel-news-card-header">
+                      <div>
+                        <div className="intel-news-title">{language === 'zh' ? 'ETF 流方向' : 'ETF Flow'}</div>
+                      </div>
+                      <div className={`intel-activity-badge ${etfFlows?.summary?.direction || 'quiet'}`}>
+                        {etfFlows?.summary?.direction || (language === 'zh' ? '暂无' : 'N/A')}
+                      </div>
+                    </div>
+                    <div className="intel-news-card-meta">
+                      <span>{language === 'zh' ? '上次更新' : 'Last update'}: {formatIntelTimestamp(etfFlows?.created_at, language)}</span>
+                    </div>
+                    <div className="intel-etf-stack">
+                      {(etfFlows?.etfs || []).slice(0, 8).map((etf: any) => (
+                        <div key={etf.symbol} className="intel-etf-stack-item">
+                          <div className="intel-etf-stack-top">
+                            <div className="intel-etf-symbol">{etf.symbol}</div>
+                            <div className={`intel-activity-badge ${etf.direction || 'quiet'}`}>{etf.direction}</div>
+                          </div>
+                          <div className="intel-etf-stack-metrics">
+                            <div className="intel-etf-metric">
+                              <span>{language === 'zh' ? '涨跌' : 'Change'}</span>
+                              <strong>{etf.price_change_pct}%</strong>
+                            </div>
+                            <div className="intel-etf-metric">
+                              <span>{language === 'zh' ? '量比' : 'Vol ratio'}</span>
+                              <strong>{etf.volume_ratio}</strong>
+                            </div>
+                            <div className="intel-etf-metric">
+                              <span>{language === 'zh' ? '流向分' : 'Flow score'}</span>
+                              <strong>{etf.estimated_flow_score}</strong>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                )}
+              </aside>
+            </div>
+          </>
+        )}
+      </section>
     </div>
   )
 }
@@ -2010,6 +2694,7 @@ function LeaderboardPage({ token }: { token?: string | null }) {
     () => buildLeaderboardChartData(profitHistory, chartRange, language),
     [profitHistory, chartRange, language]
   )
+  const topChartAgents = useMemo(() => profitHistory.slice(0, 10), [profitHistory])
 
   if (loading) {
     return <div className="loading"><div className="spinner"></div></div>
@@ -2078,26 +2763,81 @@ function LeaderboardPage({ token }: { token?: string | null }) {
               </button>
             </div>
           </div>
-          <div style={{ width: '100%', minHeight: 250, height: 250 }}>
-            <ResponsiveContainer>
-              <LineChart
-                data={chartData}
-                margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-tertiary)" />
-                <XAxis dataKey="time" stroke="var(--text-secondary)" tick={{ fontSize: 10 }} minTickGap={24} />
-                <YAxis stroke="var(--text-secondary)" tick={{ fontSize: 12 }} tickFormatter={(value: any) => `$${(Number(value)/1000).toFixed(0)}k`} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--bg-tertiary)', borderRadius: '8px' }}
-                  formatter={(value: any, name: any) => [`$${Number(value).toFixed(2)}`, name]}
-                  labelFormatter={(label: any) => label}
-                />
-                <Legend />
-                {profitHistory.slice(0, 5).map((agent: any, idx: number) => (
-                  <Line key={agent.agent_id} type="monotone" dataKey={agent.name} stroke={['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7'][idx]} strokeWidth={2} dot={false} />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '18px', alignItems: 'stretch' }}>
+            <div style={{ flex: '1 1 620px', minWidth: 0, minHeight: 420, height: 420 }}>
+              <ResponsiveContainer>
+                <LineChart
+                  data={chartData}
+                  margin={{ top: 5, right: 20, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--bg-tertiary)" />
+                  <XAxis dataKey="time" stroke="var(--text-secondary)" tick={{ fontSize: 10 }} minTickGap={24} />
+                  <YAxis stroke="var(--text-secondary)" tick={{ fontSize: 12 }} tickFormatter={(value: any) => `$${(Number(value)/1000).toFixed(0)}k`} />
+                  <Tooltip
+                    content={<LeaderboardTooltip />}
+                  />
+                  {topChartAgents.map((agent: any, idx: number) => (
+                    <Line
+                      key={agent.agent_id}
+                      type="monotone"
+                      dataKey={agent.name}
+                      stroke={LEADERBOARD_LINE_COLORS[idx % LEADERBOARD_LINE_COLORS.length]}
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{
+              flex: '0 0 180px',
+              minWidth: '170px',
+              maxWidth: '190px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              maxHeight: '420px',
+              overflowY: 'auto',
+              padding: '10px',
+              borderRadius: '16px',
+              background: 'rgba(17, 25, 32, 0.56)',
+              border: '1px solid var(--border-color)'
+            }}>
+              {topChartAgents.map((agent: any, idx: number) => (
+                <button
+                  key={agent.agent_id}
+                  type="button"
+                  onClick={() => handleAgentClick(agent)}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: '24px 12px minmax(0, 1fr)',
+                    alignItems: 'center',
+                    gap: '8px',
+                    width: '100%',
+                    padding: '7px 8px',
+                    borderRadius: '12px',
+                    border: '1px solid transparent',
+                    background: 'transparent',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer',
+                    textAlign: 'left'
+                  }}
+                >
+                  <span style={{ color: 'var(--text-muted)', fontFamily: 'IBM Plex Mono, monospace', fontSize: '12px' }}>
+                    #{idx + 1}
+                  </span>
+                  <span style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '999px',
+                    background: LEADERBOARD_LINE_COLORS[idx % LEADERBOARD_LINE_COLORS.length]
+                  }}></span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', fontWeight: 600 }}>
+                    {agent.name}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -3758,6 +4498,10 @@ function ExchangePage({ token, onExchangeSuccess }: { token: string, onExchangeS
 // Main App
 function App() {
   const [language, setLanguage] = useState<Language>('zh')
+  const [theme, setTheme] = useState<ThemeMode>(() => {
+    const savedTheme = localStorage.getItem('ai_trader_theme')
+    return savedTheme === 'light' ? 'light' : 'dark'
+  })
   const [token, setToken] = useState<string | null>(localStorage.getItem('claw_token'))
   const [agentInfo, setAgentInfo] = useState<any>(null)
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null)
@@ -3776,6 +4520,11 @@ function App() {
     setAgentInfo(null)
     setNotificationCounts({ discussion: 0, strategy: 0 })
   }
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem('ai_trader_theme', theme)
+  }, [theme])
 
   useEffect(() => {
     if (token) {
@@ -3866,27 +4615,29 @@ function App() {
   }, [agentInfo?.id])
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
-      <BrowserRouter>
-        <AppRouter
-          token={token}
-          agentInfo={agentInfo}
-          login={login}
-          logout={logout}
-          fetchAgentInfo={fetchAgentInfo}
-          notificationCounts={notificationCounts}
-          markCategoryRead={markCategoryRead}
-        />
-
-        {toast && (
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => setToast(null)}
+    <ThemeContext.Provider value={{ theme, setTheme }}>
+      <LanguageContext.Provider value={{ language, setLanguage, t }}>
+        <BrowserRouter>
+          <AppRouter
+            token={token}
+            agentInfo={agentInfo}
+            login={login}
+            logout={logout}
+            fetchAgentInfo={fetchAgentInfo}
+            notificationCounts={notificationCounts}
+            markCategoryRead={markCategoryRead}
           />
-        )}
-      </BrowserRouter>
-    </LanguageContext.Provider>
+
+          {toast && (
+            <Toast
+              message={toast.message}
+              type={toast.type}
+              onClose={() => setToast(null)}
+            />
+          )}
+        </BrowserRouter>
+      </LanguageContext.Provider>
+    </ThemeContext.Provider>
   )
 }
 
@@ -3931,12 +4682,13 @@ function AppRouter({
       <main className="main-content" style={{ display: 'flex', gap: '24px' }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
-            <LanguageSwitcher />
+            <TopbarControls />
           </div>
 
           <Routes>
             <Route path="/market" element={<SignalsFeed token={token} />} />
             <Route path="/leaderboard" element={<LeaderboardPage token={token} />} />
+            <Route path="/financial-events" element={<FinancialEventsPage />} />
             <Route path="/copytrading" element={token ? <CopyTradingPage token={token} /> : <Navigate to="/login" replace />} />
             <Route path="/strategies" element={<StrategiesPage />} />
             <Route path="/discussions" element={<DiscussionsPage />} />
