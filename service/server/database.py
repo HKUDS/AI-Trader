@@ -308,6 +308,63 @@ def init_database():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS market_news_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL,
+            snapshot_key TEXT NOT NULL,
+            items_json TEXT NOT NULL,
+            summary_json TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS macro_signal_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_key TEXT NOT NULL,
+            verdict TEXT NOT NULL,
+            bullish_count INTEGER NOT NULL DEFAULT 0,
+            total_count INTEGER NOT NULL DEFAULT 0,
+            signals_json TEXT NOT NULL,
+            meta_json TEXT NOT NULL,
+            source_json TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS etf_flow_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_key TEXT NOT NULL,
+            summary_json TEXT NOT NULL,
+            etfs_json TEXT NOT NULL,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS stock_analysis_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            symbol TEXT NOT NULL,
+            market TEXT NOT NULL,
+            analysis_id TEXT NOT NULL,
+            current_price REAL NOT NULL,
+            currency TEXT DEFAULT 'USD',
+            signal TEXT NOT NULL,
+            signal_score REAL NOT NULL,
+            trend_status TEXT NOT NULL,
+            support_levels_json TEXT NOT NULL,
+            resistance_levels_json TEXT NOT NULL,
+            bullish_factors_json TEXT NOT NULL,
+            risk_factors_json TEXT NOT NULL,
+            summary_text TEXT NOT NULL,
+            analysis_json TEXT NOT NULL,
+            news_json TEXT,
+            created_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
     # Add market column if it doesn't exist (for existing databases)
     try:
         cursor.execute("ALTER TABLE positions ADD COLUMN market TEXT NOT NULL DEFAULT 'us-stock'")
@@ -423,6 +480,46 @@ def init_database():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_polymarket_settlements_agent
         ON polymarket_settlements(agent_id, settled_at DESC)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_market_news_category_created
+        ON market_news_snapshots(category, created_at DESC)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_market_news_snapshot_key
+        ON market_news_snapshots(snapshot_key)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_macro_signal_created
+        ON macro_signal_snapshots(created_at DESC)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_macro_signal_snapshot_key
+        ON macro_signal_snapshots(snapshot_key)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_etf_flow_created
+        ON etf_flow_snapshots(created_at DESC)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_etf_flow_snapshot_key
+        ON etf_flow_snapshots(snapshot_key)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_stock_analysis_symbol_created
+        ON stock_analysis_snapshots(symbol, created_at DESC)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_stock_analysis_market_symbol
+        ON stock_analysis_snapshots(market, symbol)
     """)
 
     conn.commit()

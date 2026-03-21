@@ -168,6 +168,15 @@ def _enforce_content_rate_limit(agent_id: int, action: str, content: str, target
 
 from config import CORS_ORIGINS, SIGNAL_PUBLISH_REWARD, SIGNAL_ADOPT_REWARD, DISCUSSION_PUBLISH_REWARD, REPLY_PUBLISH_REWARD
 from database import get_db_connection
+from market_intel import (
+    get_market_intel_overview,
+    get_market_news_payload,
+    get_macro_signals_payload,
+    get_etf_flows_payload,
+    get_stock_analysis_latest_payload,
+    get_stock_analysis_history_payload,
+    get_featured_stock_analysis_payload,
+)
 from utils import hash_password, verify_password, generate_verification_code, cleanup_expired_tokens, validate_address, _extract_token
 from services import _get_agent_by_token, _get_user_by_token, _create_user_session, _add_agent_points, _get_agent_points, _reserve_signal_id, _update_position_from_signal, _broadcast_signal_to_followers
 from price_fetcher import get_price_from_market
@@ -346,6 +355,44 @@ def create_app() -> FastAPI:
     @app.get("/health")
     async def health_check():
         return {"status": "ok", "timestamp": _utc_now_iso_z()}
+
+    # ==================== Market Intelligence ====================
+
+    @app.get("/api/market-intel/overview")
+    async def market_intel_overview():
+        """Read-only overview for the financial events board."""
+        return get_market_intel_overview()
+
+    @app.get("/api/market-intel/news")
+    async def market_intel_news(category: Optional[str] = None, limit: int = 5):
+        """Read-only market-news snapshots grouped by category."""
+        safe_limit = max(1, min(limit, 12))
+        return get_market_news_payload(category=category, limit=safe_limit)
+
+    @app.get("/api/market-intel/macro-signals")
+    async def market_intel_macro_signals():
+        """Read-only macro regime snapshot."""
+        return get_macro_signals_payload()
+
+    @app.get("/api/market-intel/etf-flows")
+    async def market_intel_etf_flows():
+        """Read-only estimated ETF flow snapshot."""
+        return get_etf_flows_payload()
+
+    @app.get("/api/market-intel/stocks/featured")
+    async def market_intel_featured_stocks(limit: int = 6):
+        """Read-only featured stock-analysis snapshots."""
+        return get_featured_stock_analysis_payload(limit=max(1, min(limit, 12)))
+
+    @app.get("/api/market-intel/stocks/{symbol}/latest")
+    async def market_intel_stock_latest(symbol: str):
+        """Read-only latest stock-analysis snapshot."""
+        return get_stock_analysis_latest_payload(symbol)
+
+    @app.get("/api/market-intel/stocks/{symbol}/history")
+    async def market_intel_stock_history(symbol: str, limit: int = 10):
+        """Read-only stock-analysis history."""
+        return get_stock_analysis_history_payload(symbol, limit=limit)
 
     # ==================== WebSocket Notifications ====================
 
