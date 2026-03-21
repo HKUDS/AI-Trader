@@ -35,7 +35,7 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-from database import init_database, get_db_connection
+from database import init_database, get_database_status
 from routes import create_app
 from tasks import (
     update_position_prices,
@@ -61,6 +61,12 @@ app = create_app()
 async def startup_event():
     """Startup event - schedule background tasks."""
     import asyncio
+    db_status = get_database_status()
+    logger.info(
+        "Database ready: backend=%s details=%s",
+        db_status.get("backend"),
+        {key: value for key, value in db_status.items() if key != "backend"},
+    )
     # Initialize trending cache
     logger.info("Initializing trending cache...")
     _update_trending_cache()

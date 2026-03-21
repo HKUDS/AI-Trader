@@ -961,32 +961,35 @@ def refresh_market_news_snapshots() -> dict[str, Any]:
     inserted = 0
     errors: dict[str, str] = {}
     created_at = _utc_now_iso_z()
+    rows_to_insert: list[tuple[str, str, str, str, str]] = []
+
+    for category, definition in NEWS_CATEGORY_DEFINITIONS.items():
+        try:
+            items = _fetch_news_feed(category, definition)
+            summary = _build_news_summary(category, items)
+            snapshot_key = f"{category}:{created_at}"
+            rows_to_insert.append((
+                category,
+                snapshot_key,
+                json.dumps(items, ensure_ascii=True),
+                json.dumps(summary, ensure_ascii=True),
+                created_at,
+            ))
+            inserted += 1
+        except Exception as exc:
+            errors[category] = str(exc)
 
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        for category, definition in NEWS_CATEGORY_DEFINITIONS.items():
-            try:
-                items = _fetch_news_feed(category, definition)
-                summary = _build_news_summary(category, items)
-                snapshot_key = f"{category}:{created_at}"
-                cursor.execute(
-                    """
-                    INSERT INTO market_news_snapshots (category, snapshot_key, items_json, summary_json, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                    """,
-                    (
-                        category,
-                        snapshot_key,
-                        json.dumps(items, ensure_ascii=True),
-                        json.dumps(summary, ensure_ascii=True),
-                        created_at,
-                    ),
-                )
-                inserted += 1
-            except Exception as exc:
-                errors[category] = str(exc)
-
+        if rows_to_insert:
+            cursor.executemany(
+                """
+                INSERT INTO market_news_snapshots (category, snapshot_key, items_json, summary_json, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                rows_to_insert,
+            )
         _prune_market_news_history(cursor)
         conn.commit()
     finally:
@@ -1223,45 +1226,48 @@ def refresh_stock_analysis_snapshots() -> dict[str, Any]:
     inserted = 0
     errors: dict[str, str] = {}
     symbols = _get_hot_us_stock_symbols(limit=10)
+    rows_to_insert: list[tuple[Any, ...]] = []
+
+    for symbol in symbols:
+        try:
+            analysis = _build_stock_analysis(symbol)
+            analysis_id = f"{symbol}:{created_at}"
+            rows_to_insert.append((
+                symbol,
+                "us-stock",
+                analysis_id,
+                analysis["current_price"],
+                "USD",
+                analysis["signal"],
+                analysis["signal_score"],
+                analysis["trend_status"],
+                json.dumps(analysis["support_levels"], ensure_ascii=True),
+                json.dumps(analysis["resistance_levels"], ensure_ascii=True),
+                json.dumps(analysis["bullish_factors"], ensure_ascii=True),
+                json.dumps(analysis["risk_factors"], ensure_ascii=True),
+                analysis["summary"],
+                json.dumps(analysis, ensure_ascii=True),
+                json.dumps([], ensure_ascii=True),
+                created_at,
+            ))
+            inserted += 1
+        except Exception as exc:
+            errors[symbol] = str(exc)
 
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
-        for symbol in symbols:
-            try:
-                analysis = _build_stock_analysis(symbol)
-                analysis_id = f"{symbol}:{created_at}"
-                cursor.execute(
-                    """
-                    INSERT INTO stock_analysis_snapshots (
-                        symbol, market, analysis_id, current_price, currency, signal,
-                        signal_score, trend_status, support_levels_json, resistance_levels_json,
-                        bullish_factors_json, risk_factors_json, summary_text, analysis_json, news_json, created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        symbol,
-                        "us-stock",
-                        analysis_id,
-                        analysis["current_price"],
-                        "USD",
-                        analysis["signal"],
-                        analysis["signal_score"],
-                        analysis["trend_status"],
-                        json.dumps(analysis["support_levels"], ensure_ascii=True),
-                        json.dumps(analysis["resistance_levels"], ensure_ascii=True),
-                        json.dumps(analysis["bullish_factors"], ensure_ascii=True),
-                        json.dumps(analysis["risk_factors"], ensure_ascii=True),
-                        analysis["summary"],
-                        json.dumps(analysis, ensure_ascii=True),
-                        json.dumps([], ensure_ascii=True),
-                        created_at,
-                    ),
-                )
-                inserted += 1
-            except Exception as exc:
-                errors[symbol] = str(exc)
-
+        if rows_to_insert:
+            cursor.executemany(
+                """
+                INSERT INTO stock_analysis_snapshots (
+                    symbol, market, analysis_id, current_price, currency, signal,
+                    signal_score, trend_status, support_levels_json, resistance_levels_json,
+                    bullish_factors_json, risk_factors_json, summary_text, analysis_json, news_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows_to_insert,
+            )
         _prune_stock_analysis_history(cursor)
         conn.commit()
     finally:
