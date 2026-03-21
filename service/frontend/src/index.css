@@ -16,6 +16,8 @@
   --accent-primary: #d4a458;
   --accent-secondary: #b8823d;
   --accent-gradient: linear-gradient(135deg, #c99549 0%, #e0ba74 100%);
+  --accent-contrast: #10161d;
+  --surface-elevated: rgba(17, 25, 32, 0.56);
 
   --success: #10b981;
   --error: #ef4444;
@@ -49,6 +51,8 @@
   --accent-primary: #af7830;
   --accent-secondary: #8f6026;
   --accent-gradient: linear-gradient(135deg, #b67b32 0%, #d9aa63 100%);
+  --accent-contrast: #fff8ef;
+  --surface-elevated: rgba(232, 223, 207, 0.9);
 
   --warning: #b8772c;
 
@@ -269,7 +273,7 @@ a {
 }
 
 .nav-link:hover {
-  background: rgba(18, 27, 34, 0.88);
+  background: color-mix(in srgb, var(--bg-hover) 82%, transparent);
   color: var(--text-primary);
   border: 1px solid rgba(214, 175, 110, 0.12);
 }
@@ -277,7 +281,7 @@ a {
 .nav-link.active {
   background:
     linear-gradient(135deg, rgba(216, 163, 84, 0.18), rgba(132, 95, 46, 0.2));
-  color: #f5f0e4;
+  color: var(--text-primary);
   border: 1px solid rgba(216, 163, 84, 0.32);
   box-shadow: inset 0 1px 0 rgba(255, 243, 214, 0.08);
 }
@@ -484,7 +488,7 @@ a {
 }
 
 .back-button {
-  background: rgba(12, 18, 24, 0.86);
+  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
   border: 1px solid rgba(214, 175, 110, 0.12);
   border-radius: var(--radius-md);
   padding: 10px 16px;
@@ -623,25 +627,25 @@ a {
 }
 
 .btn-secondary {
-  background: rgba(17, 25, 32, 0.94);
+  background: color-mix(in srgb, var(--bg-tertiary) 88%, transparent);
   color: var(--text-primary);
   border: 1px solid rgba(214, 175, 110, 0.12);
 }
 
 .btn-secondary:hover {
-  background: rgba(21, 32, 41, 0.98);
+  background: color-mix(in srgb, var(--bg-hover) 92%, transparent);
   border-color: rgba(214, 175, 110, 0.2);
 }
 
 .btn-ghost {
   background: transparent;
-  color: #d9dddf;
+  color: var(--text-secondary);
   border-color: rgba(214, 175, 110, 0.12);
 }
 
 .btn-ghost:hover {
   color: var(--text-primary);
-  background: rgba(21, 32, 41, 0.86);
+  background: color-mix(in srgb, var(--bg-hover) 80%, transparent);
 }
 
 /* Form Elements */
@@ -662,7 +666,7 @@ a {
 .form-select {
   width: 100%;
   padding: 12px 16px;
-  background: rgba(16, 24, 31, 0.92);
+  background: color-mix(in srgb, var(--bg-tertiary) 84%, transparent);
   border: 1px solid rgba(122, 140, 155, 0.16);
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -693,7 +697,7 @@ a {
 
 .market-tab {
   padding: 8px 16px;
-  background: rgba(17, 25, 32, 0.94);
+  background: color-mix(in srgb, var(--bg-tertiary) 88%, transparent);
   border: 1px solid rgba(122, 140, 155, 0.16);
   border-radius: var(--radius-md);
   color: var(--text-secondary);
@@ -709,11 +713,7 @@ a {
 .market-tab.active {
   background: linear-gradient(135deg, rgba(216, 163, 84, 0.18), rgba(132, 95, 46, 0.22));
   border-color: rgba(216, 163, 84, 0.28);
-  color: #f2efe6;
-}
-
-:root[data-theme='light'] .market-tab.active {
-  color: #181614;
+  color: var(--text-primary);
 }
 
 .market-tab.disabled {
@@ -1829,7 +1829,7 @@ a {
   padding: 8px 12px;
   border-radius: 12px;
   border: 1px solid rgba(214, 175, 110, 0.2);
-  background: rgba(21, 32, 41, 0.9);
+  background: color-mix(in srgb, var(--bg-tertiary) 90%, transparent);
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 700;
@@ -1839,7 +1839,7 @@ a {
 
 .intel-history-toggle:hover {
   border-color: rgba(214, 175, 110, 0.34);
-  background: rgba(27, 40, 51, 0.96);
+  background: color-mix(in srgb, var(--bg-hover) 94%, transparent);
 }
 
 .intel-history-panel {
@@ -1986,7 +1986,7 @@ a {
   padding: 9px 14px;
   border-radius: 12px;
   border: 1px solid rgba(214, 175, 110, 0.22);
-  background: rgba(21, 32, 41, 0.92);
+  background: color-mix(in srgb, var(--bg-tertiary) 92%, transparent);
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 700;
@@ -1997,7 +1997,7 @@ a {
 
 .intel-pager-button:hover:not(:disabled) {
   border-color: rgba(214, 175, 110, 0.36);
-  background: rgba(27, 40, 51, 0.98);
+  background: color-mix(in srgb, var(--bg-hover) 96%, transparent);
   transform: translateY(-1px);
 }
 
