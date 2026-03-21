@@ -1472,7 +1472,7 @@ def create_app() -> FastAPI:
             FROM agents a
             LEFT JOIN signals s ON s.agent_id = a.id AND {where_clause}
             GROUP BY a.id
-            HAVING signal_count > 0
+            HAVING COUNT(s.id) > 0
             ORDER BY last_signal_at DESC
             LIMIT ? OFFSET ?
         """
@@ -1616,9 +1616,23 @@ def create_app() -> FastAPI:
 
         where_clause = " AND ".join(conditions) if conditions else "1=1"
         if sort == "active":
-            order_clause = "COALESCE(last_reply_at, s.created_at) DESC, reply_count DESC, s.created_at DESC"
+            order_clause = """
+                COALESCE(
+                    (SELECT MAX(sr.created_at) FROM signal_replies sr WHERE sr.signal_id = s.signal_id),
+                    s.created_at
+                ) DESC,
+                (SELECT COUNT(*) FROM signal_replies sr WHERE sr.signal_id = s.signal_id) DESC,
+                s.created_at DESC
+            """
         elif sort == "following" and viewer:
-            order_clause = "COALESCE(last_reply_at, s.created_at) DESC, reply_count DESC, s.created_at DESC"
+            order_clause = """
+                COALESCE(
+                    (SELECT MAX(sr.created_at) FROM signal_replies sr WHERE sr.signal_id = s.signal_id),
+                    s.created_at
+                ) DESC,
+                (SELECT COUNT(*) FROM signal_replies sr WHERE sr.signal_id = s.signal_id) DESC,
+                s.created_at DESC
+            """
         else:
             order_clause = "s.created_at DESC"
 
@@ -1697,7 +1711,10 @@ def create_app() -> FastAPI:
             FROM subscriptions s
             JOIN agents a ON a.id = s.leader_id
             WHERE s.follower_id = ? AND s.status = 'active'
-            ORDER BY COALESCE(recent_activity_at, s.created_at) DESC
+            ORDER BY COALESCE(
+                (SELECT MAX(sig.created_at) FROM signals sig WHERE sig.agent_id = s.leader_id),
+                s.created_at
+            ) DESC
         """, (follower_id,))
         rows = cursor.fetchall()
         conn.close()
@@ -1744,7 +1761,10 @@ def create_app() -> FastAPI:
             FROM subscriptions s
             JOIN agents a ON a.id = s.follower_id
             WHERE s.leader_id = ? AND s.status = 'active'
-            ORDER BY COALESCE(recent_activity_at, s.created_at) DESC
+            ORDER BY COALESCE(
+                (SELECT MAX(sig.created_at) FROM signals sig WHERE sig.agent_id = s.follower_id),
+                s.created_at
+            ) DESC
         """, (leader_id,))
         rows = cursor.fetchall()
         conn.close()
@@ -2057,10 +2077,14 @@ def create_app() -> FastAPI:
             # Get historical data within the cutoff window, with a hard cap on rows
             cursor.execute("""
                 SELECT profit, recorded_at
-                FROM profit_history
-                WHERE agent_id = ? AND recorded_at >= ?
+                FROM (
+                    SELECT profit, recorded_at
+                    FROM profit_history
+                    WHERE agent_id = ? AND recorded_at >= ?
+                    ORDER BY recorded_at DESC
+                    LIMIT 2000
+                ) recent_history
                 ORDER BY recorded_at ASC
-                LIMIT 2000
             """, (agent["agent_id"], cutoff))
             history = cursor.fetchall()
 

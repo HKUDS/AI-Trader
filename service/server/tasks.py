@@ -7,11 +7,13 @@ Tasks Module
 import asyncio
 import json
 import os
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
 # Global trending cache (shared with routes)
 trending_cache: list = []
+_last_profit_history_prune_at: float = 0.0
 
 
 def _backfill_polymarket_position_metadata() -> None:
@@ -98,6 +100,98 @@ def _update_trending_cache():
     conn.close()
 
 
+def _prune_profit_history() -> None:
+    """Compact profit history so it remains useful for charts without growing forever."""
+    from database import get_db_connection, using_postgres
+
+    full_resolution_hours = int(os.getenv("PROFIT_HISTORY_FULL_RESOLUTION_HOURS", "24"))
+    compact_window_days = int(os.getenv("PROFIT_HISTORY_COMPACT_WINDOW_DAYS", "7"))
+    bucket_minutes = int(os.getenv("PROFIT_HISTORY_COMPACT_BUCKET_MINUTES", "15"))
+
+    if compact_window_days <= 0:
+        return
+
+    now = datetime.now(timezone.utc)
+    hard_cutoff = (now - timedelta(days=compact_window_days)).isoformat().replace("+00:00", "Z")
+    full_resolution_cutoff = (now - timedelta(hours=full_resolution_hours)).isoformat().replace("+00:00", "Z")
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("DELETE FROM profit_history WHERE recorded_at < ?", (hard_cutoff,))
+        deleted_old = cursor.rowcount if cursor.rowcount is not None else 0
+        deleted_compacted = 0
+
+        if bucket_minutes > 0 and full_resolution_cutoff > hard_cutoff:
+            if using_postgres():
+                cursor.execute("""
+                    WITH ranked AS (
+                        SELECT
+                            id,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY
+                                    agent_id,
+                                    date_trunc('hour', recorded_at::timestamptz)
+                                    + floor(extract(minute FROM recorded_at::timestamptz) / ?) * (? || ' minutes')::interval
+                                ORDER BY recorded_at DESC, id DESC
+                            ) AS rn
+                        FROM profit_history
+                        WHERE recorded_at >= ? AND recorded_at < ?
+                    )
+                    DELETE FROM profit_history ph
+                    USING ranked
+                    WHERE ph.id = ranked.id AND ranked.rn > 1
+                """, (bucket_minutes, bucket_minutes, hard_cutoff, full_resolution_cutoff))
+                deleted_compacted = cursor.rowcount if cursor.rowcount is not None else 0
+            else:
+                cursor.execute("""
+                    DELETE FROM profit_history
+                    WHERE id IN (
+                        SELECT id
+                        FROM (
+                            SELECT
+                                id,
+                                ROW_NUMBER() OVER (
+                                    PARTITION BY
+                                        agent_id,
+                                        strftime('%Y-%m-%dT%H', recorded_at),
+                                        CAST(strftime('%M', recorded_at) AS INTEGER) / ?
+                                    ORDER BY recorded_at DESC, id DESC
+                                ) AS rn
+                            FROM profit_history
+                            WHERE recorded_at >= ? AND recorded_at < ?
+                        ) ranked
+                        WHERE rn > 1
+                    )
+                """, (bucket_minutes, hard_cutoff, full_resolution_cutoff))
+                deleted_compacted = cursor.rowcount if cursor.rowcount is not None else 0
+
+        conn.commit()
+        if deleted_old or deleted_compacted:
+            print(
+                "[Profit History] Pruned history: "
+                f"deleted_old={deleted_old} compacted={deleted_compacted}"
+            )
+    finally:
+        conn.close()
+
+
+def _maybe_prune_profit_history() -> None:
+    global _last_profit_history_prune_at
+
+    prune_interval = int(os.getenv("PROFIT_HISTORY_PRUNE_INTERVAL_SECONDS", "3600"))
+    if prune_interval <= 0:
+        return
+
+    now = time.time()
+    if now - _last_profit_history_prune_at < prune_interval:
+        return
+
+    _prune_profit_history()
+    _last_profit_history_prune_at = now
+
+
 async def update_position_prices():
     """Background task to update position prices every 5 minutes."""
     from database import get_db_connection
@@ -113,21 +207,24 @@ async def update_position_prices():
         try:
             _backfill_polymarket_position_metadata()
             conn = get_db_connection()
-            cursor = conn.cursor()
+            try:
+                cursor = conn.cursor()
 
-            # Get all unique positions with symbol and market
-            cursor.execute("""
-                SELECT DISTINCT symbol, market, token_id, outcome
-                FROM positions
-            """)
-            unique_positions = cursor.fetchall()
+                # Get all unique positions with symbol and market
+                cursor.execute("""
+                    SELECT DISTINCT symbol, market, token_id, outcome
+                    FROM positions
+                """)
+                unique_positions = cursor.fetchall()
+            finally:
+                conn.close()
 
             print(f"[Price Update] Found {len(unique_positions)} positions to update")
 
             # Semaphore to control concurrency
             semaphore = asyncio.Semaphore(max_parallel)
 
-            async def fetch_and_update(row):
+            async def fetch_price(row):
                 symbol = row["symbol"]
                 market = row["market"]
                 token_id = row["token_id"]
@@ -142,27 +239,38 @@ async def update_position_prices():
                         get_price_from_market, symbol, executed_at, market, token_id, outcome
                     )
 
-                    if price:
-                        # Update all positions with this symbol/market
-                        conn2 = get_db_connection()
-                        cursor2 = conn2.cursor()
-                        cursor2.execute("""
-                            UPDATE positions
-                            SET current_price = ?
-                            WHERE symbol = ? AND market = ? AND COALESCE(token_id, '') = COALESCE(?, '')
-                        """, (price, symbol, market, token_id))
-                        conn2.commit()
-                        conn2.close()
+                    if price is not None:
                         print(f"[Price Update] {symbol} ({market}, token={token_id or '-'}): ${price}")
                     else:
                         print(f"[Price Update] Failed to get price for {symbol} ({market}, token={token_id or '-'})")
 
-                return price
+                return {
+                    "symbol": symbol,
+                    "market": market,
+                    "token_id": token_id,
+                    "price": price,
+                }
 
-            # Run all fetches in parallel
-            await asyncio.gather(*[fetch_and_update(row) for row in unique_positions])
+            # Fetch prices in parallel, then write them back in one short transaction.
+            results = await asyncio.gather(*[fetch_price(row) for row in unique_positions])
+            updates = [
+                (item["price"], item["symbol"], item["market"], item["token_id"])
+                for item in results
+                if item["price"] is not None
+            ]
 
-            conn.close()
+            if updates:
+                conn = get_db_connection()
+                try:
+                    cursor = conn.cursor()
+                    cursor.executemany("""
+                        UPDATE positions
+                        SET current_price = ?
+                        WHERE symbol = ? AND market = ? AND COALESCE(token_id, '') = COALESCE(?, '')
+                    """, updates)
+                    conn.commit()
+                finally:
+                    conn.close()
 
             # Update trending cache (no additional API call, uses same data)
             _update_trending_cache()
@@ -288,43 +396,49 @@ async def periodic_token_cleanup():
 async def record_profit_history():
     """Record profit history for all agents."""
     from database import get_db_connection
-    from price_fetcher import get_price_from_market
 
     print("[Profit History] Task starting...")
 
     while True:
         try:
             conn = get_db_connection()
-            cursor = conn.cursor()
+            try:
+                cursor = conn.cursor()
 
-            # Get all agents with their cash and positions
-            cursor.execute("""
-                SELECT id, cash, deposited FROM agents
-            """)
-            agents = cursor.fetchall()
+                cursor.execute("""
+                    SELECT
+                        a.id,
+                        COALESCE(a.cash, 0) AS cash,
+                        COALESCE(a.deposited, 0) AS deposited,
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN p.current_price IS NULL THEN 0
+                                    WHEN p.side = 'long' THEN p.current_price * ABS(p.quantity)
+                                    ELSE p.entry_price * ABS(p.quantity)
+                                END
+                            ),
+                            0
+                        ) AS position_value
+                    FROM agents a
+                    LEFT JOIN positions p ON p.agent_id = a.id
+                    GROUP BY a.id, a.cash, a.deposited
+                """)
+                agents = cursor.fetchall()
+            finally:
+                conn.close()
+
             print(f"[Profit History] Found {len(agents)} agents")
 
-            for idx, agent in enumerate(agents):
+            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            rows_to_insert = []
+
+            for agent in agents:
                 agent_id = agent["id"]
                 cash = agent["cash"] or 0
                 deposited = agent["deposited"] or 0
+                position_value = agent["position_value"] or 0
                 initial_capital = 100000.0
-
-                # Calculate position value
-                cursor.execute("""
-                    SELECT quantity, current_price, entry_price, side
-                    FROM positions
-                    WHERE agent_id = ?
-                """, (agent_id,))
-                positions = cursor.fetchall()
-
-                position_value = 0
-                for pos in positions:
-                    if pos["current_price"]:
-                        if pos["side"] == "long":
-                            position_value += pos["current_price"] * abs(pos["quantity"])
-                        else:  # short
-                            position_value += pos["entry_price"] * abs(pos["quantity"])
 
                 # Calculate profit: (cash + position) - (initial + deposited)
                 # This excludes deposited cash from profit calculation
@@ -335,21 +449,21 @@ async def record_profit_history():
                 if abs(profit) > _max_abs_profit:
                     print(f"[Profit History] Agent {agent_id}: clamping absurd profit {profit} to ±{_max_abs_profit}")
                     profit = _max_abs_profit if profit > 0 else -_max_abs_profit
-                # Avoid per-agent logging (too noisy, can starve the event loop under load)
+                rows_to_insert.append((agent_id, total_value, cash, position_value, profit, now))
 
-                # Record history
-                now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-                cursor.execute("""
-                    INSERT INTO profit_history (agent_id, total_value, cash, position_value, profit, recorded_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                """, (agent_id, total_value, cash, position_value, profit, now))
+            if rows_to_insert:
+                conn = get_db_connection()
+                try:
+                    cursor = conn.cursor()
+                    cursor.executemany("""
+                        INSERT INTO profit_history (agent_id, total_value, cash, position_value, profit, recorded_at)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    """, rows_to_insert)
+                    conn.commit()
+                finally:
+                    conn.close()
+                _maybe_prune_profit_history()
 
-                # Yield to the event loop periodically so API remains responsive
-                if idx % 25 == 0:
-                    await asyncio.sleep(0)
-
-            conn.commit()
-            conn.close()
             print(f"[Profit History] Recorded profit for {len(agents)} agents")
 
         except Exception as e:
@@ -386,16 +500,22 @@ async def settle_polymarket_positions():
         try:
             _backfill_polymarket_position_metadata()
             conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT id, agent_id, symbol, token_id, outcome, quantity, entry_price
-                FROM positions
-                WHERE market = 'polymarket'
-            """)
-            rows = cursor.fetchall()
+            try:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT id, agent_id, symbol, token_id, outcome, quantity, entry_price
+                    FROM positions
+                    WHERE market = 'polymarket'
+                """)
+                rows = cursor.fetchall()
+            finally:
+                conn.close()
 
             settled = 0
             skipped = 0
+            cash_updates: dict[int, float] = {}
+            settlement_rows: list[tuple[Any, ...]] = []
+            delete_rows: list[tuple[int]] = []
 
             for row in rows:
                 pos_id = row["id"]
@@ -420,14 +540,8 @@ async def settle_polymarket_positions():
                     continue
 
                 proceeds = float(f"{(abs(qty) * float(settlement_price)):.6f}")
-
-                # Apply settlement atomically
-                cursor.execute("UPDATE agents SET cash = cash + ? WHERE id = ?", (proceeds, agent_id))
-                cursor.execute("""
-                    INSERT INTO polymarket_settlements
-                    (position_id, agent_id, symbol, token_id, outcome, quantity, entry_price, settlement_price, proceeds, market_slug, resolved_outcome, resolved_at, source_data)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """, (
+                cash_updates[agent_id] = float(f"{cash_updates.get(agent_id, 0.0) + proceeds:.6f}")
+                settlement_rows.append((
                     pos_id,
                     agent_id,
                     symbol,
@@ -442,19 +556,31 @@ async def settle_polymarket_positions():
                     datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                     json.dumps(resolution),
                 ))
-                cursor.execute("DELETE FROM positions WHERE id = ?", (pos_id,))
+                delete_rows.append((pos_id,))
                 settled += 1
 
-            conn.commit()
-            conn.close()
+            if settlement_rows:
+                conn = get_db_connection()
+                try:
+                    cursor = conn.cursor()
+                    cursor.executemany(
+                        "UPDATE agents SET cash = cash + ? WHERE id = ?",
+                        [(proceeds, agent_id) for agent_id, proceeds in cash_updates.items()],
+                    )
+                    cursor.executemany("""
+                        INSERT INTO polymarket_settlements
+                        (position_id, agent_id, symbol, token_id, outcome, quantity, entry_price, settlement_price, proceeds, market_slug, resolved_outcome, resolved_at, source_data)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, settlement_rows)
+                    cursor.executemany("DELETE FROM positions WHERE id = ?", delete_rows)
+                    conn.commit()
+                finally:
+                    conn.close()
+
             if settled > 0:
                 print(f"[Polymarket Settler] settled={settled}, skipped={skipped}")
 
         except Exception as e:
-            try:
-                conn.close()
-            except Exception:
-                pass
             print(f"[Polymarket Settler Error] {e}")
 
         await asyncio.sleep(interval_s)

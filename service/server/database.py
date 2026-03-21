@@ -4,22 +4,258 @@ Database Module
 数据库初始化、连接和管理
 """
 
-import sqlite3
-from typing import Optional, Dict, Any
+from __future__ import annotations
+
 import os
+import re
+import sqlite3
+from typing import Any, Iterable, Optional, Sequence
 
 from config import DATABASE_URL
+
+try:
+    import psycopg
+    from psycopg.rows import dict_row
+except ImportError:  # pragma: no cover - dependency is optional until PostgreSQL is enabled
+    psycopg = None
+    dict_row = None
+
+
+_BASE_DIR = os.path.dirname(__file__)
+_DEFAULT_SQLITE_DB_PATH = os.path.join(_BASE_DIR, "data", "clawtrader.db")
+_SQLITE_DB_PATH = os.getenv("DB_PATH", _DEFAULT_SQLITE_DB_PATH)
+_POSTGRES_NOW_TEXT_SQL = (
+    "to_char(CURRENT_TIMESTAMP AT TIME ZONE 'UTC', "
+    "'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')"
+)
+_SQLITE_INTERVAL_PATTERN = re.compile(
+    r"datetime\s*\(\s*'now'\s*,\s*'([+-]?\d+)\s+([A-Za-z]+)'\s*\)",
+    flags=re.IGNORECASE,
+)
+_SQLITE_NOW_PATTERN = re.compile(r"datetime\s*\(\s*'now'\s*\)", flags=re.IGNORECASE)
+_SQLITE_AUTOINCREMENT_PATTERN = re.compile(
+    r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b",
+    flags=re.IGNORECASE,
+)
+_SQLITE_REAL_PATTERN = re.compile(r"\bREAL\b", flags=re.IGNORECASE)
+_ALTER_ADD_COLUMN_PATTERN = re.compile(
+    r"\bALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+ADD\s+COLUMN\s+(?!IF\s+NOT\s+EXISTS)",
+    flags=re.IGNORECASE,
+)
+
+
+def using_postgres() -> bool:
+    return bool(DATABASE_URL)
+
+
+def get_database_backend_name() -> str:
+    return "postgresql" if using_postgres() else "sqlite"
+
+
+def _replace_unquoted_question_marks(sql: str) -> str:
+    """Translate sqlite-style placeholders to psycopg placeholders."""
+    result: list[str] = []
+    i = 0
+    in_single = False
+    in_double = False
+    in_line_comment = False
+    in_block_comment = False
+
+    while i < len(sql):
+        char = sql[i]
+        next_char = sql[i + 1] if i + 1 < len(sql) else ""
+
+        if in_line_comment:
+            result.append(char)
+            if char == "\n":
+                in_line_comment = False
+            i += 1
+            continue
+
+        if in_block_comment:
+            result.append(char)
+            if char == "*" and next_char == "/":
+                result.append(next_char)
+                i += 2
+                in_block_comment = False
+            else:
+                i += 1
+            continue
+
+        if not in_single and not in_double and char == "-" and next_char == "-":
+            result.append(char)
+            result.append(next_char)
+            i += 2
+            in_line_comment = True
+            continue
+
+        if not in_single and not in_double and char == "/" and next_char == "*":
+            result.append(char)
+            result.append(next_char)
+            i += 2
+            in_block_comment = True
+            continue
+
+        if char == "'" and not in_double:
+            result.append(char)
+            if in_single and next_char == "'":
+                result.append(next_char)
+                i += 2
+                continue
+            in_single = not in_single
+            i += 1
+            continue
+
+        if char == '"' and not in_single:
+            in_double = not in_double
+            result.append(char)
+            i += 1
+            continue
+
+        if char == "?" and not in_single and not in_double:
+            result.append("%s")
+            i += 1
+            continue
+
+        result.append(char)
+        i += 1
+
+    return "".join(result)
+
+
+def _replace_sqlite_datetime_functions(sql: str) -> str:
+    def replace_interval(match: re.Match[str]) -> str:
+        amount = match.group(1)
+        unit = match.group(2)
+        return f"to_char((CURRENT_TIMESTAMP AT TIME ZONE 'UTC') + INTERVAL '{amount} {unit}', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')"
+
+    sql = _SQLITE_INTERVAL_PATTERN.sub(replace_interval, sql)
+    sql = _SQLITE_NOW_PATTERN.sub(_POSTGRES_NOW_TEXT_SQL, sql)
+    return sql
+
+
+def _adapt_sql_for_postgres(sql: str) -> str:
+    adapted = sql
+    adapted = _SQLITE_AUTOINCREMENT_PATTERN.sub("SERIAL PRIMARY KEY", adapted)
+    adapted = _SQLITE_REAL_PATTERN.sub("DOUBLE PRECISION", adapted)
+    adapted = _ALTER_ADD_COLUMN_PATTERN.sub(r"ALTER TABLE \1 ADD COLUMN IF NOT EXISTS ", adapted)
+    adapted = _replace_sqlite_datetime_functions(adapted)
+    adapted = _replace_unquoted_question_marks(adapted)
+    return adapted
+
+
+def _should_append_returning_id(sql: str) -> bool:
+    stripped = sql.strip().rstrip(";")
+    upper = stripped.upper()
+    return upper.startswith("INSERT INTO ") and " RETURNING " not in upper
+
+
+class DatabaseCursor:
+    def __init__(self, cursor: Any, backend: str):
+        self._cursor = cursor
+        self._backend = backend
+        self.lastrowid: Optional[int] = None
+
+    def execute(self, sql: str, params: Optional[Sequence[Any]] = None):
+        self.lastrowid = None
+
+        if self._backend == "postgres":
+            query = _adapt_sql_for_postgres(sql)
+            should_capture_id = _should_append_returning_id(query)
+            if should_capture_id:
+                query = f"{query.strip().rstrip(';')} RETURNING id"
+            self._cursor.execute(query, tuple(params or ()))
+            if should_capture_id:
+                row = self._cursor.fetchone()
+                if row is not None:
+                    self.lastrowid = int(row["id"] if isinstance(row, dict) else row[0])
+            return self
+
+        if params is None:
+            self._cursor.execute(sql)
+        else:
+            self._cursor.execute(sql, tuple(params))
+        self.lastrowid = getattr(self._cursor, "lastrowid", None)
+        return self
+
+    def executemany(self, sql: str, seq_of_params: Iterable[Sequence[Any]]):
+        self.lastrowid = None
+        if self._backend == "postgres":
+            query = _adapt_sql_for_postgres(sql)
+            self._cursor.executemany(query, [tuple(params) for params in seq_of_params])
+            return self
+
+        self._cursor.executemany(sql, [tuple(params) for params in seq_of_params])
+        return self
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    def __iter__(self):
+        return iter(self._cursor)
+
+    def __getattr__(self, name: str):
+        return getattr(self._cursor, name)
+
+
+class DatabaseConnection:
+    def __init__(self, connection: Any, backend: str):
+        self._connection = connection
+        self._backend = backend
+
+    @property
+    def autocommit(self):
+        return getattr(self._connection, "autocommit", None)
+
+    @autocommit.setter
+    def autocommit(self, value):
+        setattr(self._connection, "autocommit", value)
+
+    def cursor(self):
+        return DatabaseCursor(self._connection.cursor(), self._backend)
+
+    def commit(self):
+        self._connection.commit()
+
+    def rollback(self):
+        self._connection.rollback()
+
+    def close(self):
+        self._connection.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc is not None:
+            try:
+                self.rollback()
+            finally:
+                self.close()
+            return False
+
+        self.commit()
+        self.close()
+        return False
+
+    def __getattr__(self, name: str):
+        return getattr(self._connection, name)
 
 
 def get_db_connection():
     """Get database connection. Supports both SQLite and PostgreSQL."""
-    if DATABASE_URL:
-        # Use PostgreSQL (production)
-        # For now, just use SQLite for development
-        pass
+    if using_postgres():
+        if psycopg is None:
+            raise RuntimeError(
+                "PostgreSQL support requires psycopg. Install service requirements first."
+            )
+        conn = psycopg.connect(DATABASE_URL, row_factory=dict_row)
+        return DatabaseConnection(conn, "postgres")
 
-    # Use SQLite
-    db_path = os.path.join(os.path.dirname(__file__), "data", "clawtrader.db")
+    db_path = _SQLITE_DB_PATH
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
     conn = sqlite3.connect(db_path, timeout=30.0)
@@ -29,12 +265,50 @@ def get_db_connection():
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=30000")
 
-    return conn
+    return DatabaseConnection(conn, "sqlite")
+
+
+def get_database_status() -> dict[str, Any]:
+    """Return a small health snapshot for startup logging."""
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if using_postgres():
+            cursor.execute(
+                """
+                SELECT
+                    current_database() AS database_name,
+                    current_user AS current_user,
+                    inet_server_addr()::text AS server_addr,
+                    inet_server_port() AS server_port
+                """
+            )
+            row = cursor.fetchone()
+            return {
+                "backend": get_database_backend_name(),
+                "database_name": row["database_name"],
+                "current_user": row["current_user"],
+                "server_addr": row["server_addr"],
+                "server_port": row["server_port"],
+            }
+
+        cursor.execute("SELECT 1 AS ok")
+        cursor.fetchone()
+        return {
+            "backend": get_database_backend_name(),
+            "database_path": _SQLITE_DB_PATH,
+        }
+    finally:
+        conn.close()
 
 
 def init_database():
     """Initialize database schema."""
     conn = get_db_connection()
+    previous_autocommit = None
+    if using_postgres():
+        previous_autocommit = conn.autocommit
+        conn.autocommit = True
     cursor = conn.cursor()
 
     # Agents table
@@ -368,49 +642,49 @@ def init_database():
     # Add market column if it doesn't exist (for existing databases)
     try:
         cursor.execute("ALTER TABLE positions ADD COLUMN market TEXT NOT NULL DEFAULT 'us-stock'")
-    except:
-        pass  # Column already exists
+    except Exception:
+        pass
 
     try:
         cursor.execute("ALTER TABLE positions ADD COLUMN token_id TEXT")
-    except:
+    except Exception:
         pass
 
     try:
         cursor.execute("ALTER TABLE positions ADD COLUMN outcome TEXT")
-    except:
+    except Exception:
         pass
 
     # Add cash column if it doesn't exist (for existing databases)
     try:
         cursor.execute("ALTER TABLE agents ADD COLUMN cash REAL DEFAULT 100000.0")
-    except:
-        pass  # Column already exists
+    except Exception:
+        pass
 
     # Add deposited column if it doesn't exist (for existing databases)
     try:
         cursor.execute("ALTER TABLE agents ADD COLUMN deposited REAL DEFAULT 0.0")
-    except:
-        pass  # Column already exists
+    except Exception:
+        pass
 
     try:
         cursor.execute("ALTER TABLE signals ADD COLUMN token_id TEXT")
-    except:
+    except Exception:
         pass
 
     try:
         cursor.execute("ALTER TABLE signals ADD COLUMN outcome TEXT")
-    except:
+    except Exception:
         pass
 
     try:
         cursor.execute("ALTER TABLE signals ADD COLUMN accepted_reply_id INTEGER")
-    except:
+    except Exception:
         pass
 
     try:
         cursor.execute("ALTER TABLE signal_replies ADD COLUMN accepted INTEGER DEFAULT 0")
-    except:
+    except Exception:
         pass
 
     # Profit history table - tracks agent profit over time
@@ -522,6 +796,9 @@ def init_database():
         ON stock_analysis_snapshots(market, symbol)
     """)
 
-    conn.commit()
+    if not using_postgres():
+        conn.commit()
+    elif previous_autocommit is not None:
+        conn.autocommit = previous_autocommit
     conn.close()
     print("[INFO] Database initialized")
