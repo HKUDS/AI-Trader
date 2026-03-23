@@ -5,9 +5,10 @@ Services Module
 """
 
 import json
+import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
-from database import get_db_connection
+from database import get_db_connection, is_retryable_db_error
 
 
 # ==================== Agent Services ====================
@@ -66,7 +67,7 @@ def _add_agent_points(agent_id: int, points: int, reason: str = "reward") -> boo
     if points <= 0:
         return False
 
-    # Retry logic for database locking
+    # Retry transient write conflicts on both SQLite and PostgreSQL.
     max_retries = 3
     for attempt in range(max_retries):
         conn = get_db_connection()
@@ -78,9 +79,13 @@ def _add_agent_points(agent_id: int, points: int, reason: str = "reward") -> boo
             conn.commit()
             return True
         except Exception as e:
-            if "database is locked" in str(e) and attempt < max_retries - 1:
-                import time
-                time.sleep(0.5 * (attempt + 1))  # Exponential backoff
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+
+            if is_retryable_db_error(e) and attempt < max_retries - 1:
+                time.sleep(0.5 * (attempt + 1))
                 continue
             print(f"[ERROR] Failed to add points to agent {agent_id}: {e}")
             return False

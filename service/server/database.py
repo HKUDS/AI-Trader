@@ -42,6 +42,7 @@ _ALTER_ADD_COLUMN_PATTERN = re.compile(
     r"\bALTER\s+TABLE\s+([A-Za-z_][A-Za-z0-9_]*)\s+ADD\s+COLUMN\s+(?!IF\s+NOT\s+EXISTS)",
     flags=re.IGNORECASE,
 )
+_POSTGRES_RETRYABLE_SQLSTATES = {"40001", "40P01", "55P03"}
 
 
 def using_postgres() -> bool:
@@ -50,6 +51,40 @@ def using_postgres() -> bool:
 
 def get_database_backend_name() -> str:
     return "postgresql" if using_postgres() else "sqlite"
+
+
+def begin_write_transaction(cursor: Any) -> None:
+    """Start a write transaction using syntax compatible with the active backend."""
+    if using_postgres():
+        cursor.execute("BEGIN")
+        return
+    cursor.execute("BEGIN IMMEDIATE")
+
+
+def is_retryable_db_error(exc: Exception) -> bool:
+    """Return True when the error is a transient write conflict worth retrying."""
+    if isinstance(exc, sqlite3.OperationalError):
+        message = str(exc).lower()
+        return "database is locked" in message or "database is busy" in message
+
+    sqlstate = getattr(exc, "sqlstate", None)
+    if not sqlstate:
+        cause = getattr(exc, "__cause__", None)
+        sqlstate = getattr(cause, "sqlstate", None)
+    if sqlstate in _POSTGRES_RETRYABLE_SQLSTATES:
+        return True
+
+    message = str(exc).lower()
+    return any(
+        fragment in message
+        for fragment in (
+            "could not serialize access",
+            "deadlock detected",
+            "lock not available",
+            "database is locked",
+            "database is busy",
+        )
+    )
 
 
 def _replace_unquoted_question_marks(sql: str) -> str:

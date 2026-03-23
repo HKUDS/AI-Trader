@@ -167,7 +167,7 @@ def _enforce_content_rate_limit(agent_id: int, action: str, content: str, target
     }
 
 from config import CORS_ORIGINS, SIGNAL_PUBLISH_REWARD, SIGNAL_ADOPT_REWARD, DISCUSSION_PUBLISH_REWARD, REPLY_PUBLISH_REWARD
-from database import get_db_connection
+from database import begin_write_transaction, get_db_connection
 from market_intel import (
     get_market_intel_overview,
     get_market_news_payload,
@@ -1113,7 +1113,7 @@ def create_app() -> FastAPI:
         conn = get_db_connection()
         cursor = conn.cursor()
         try:
-            cursor.execute("BEGIN IMMEDIATE")
+            begin_write_transaction(cursor)
             signal_id = _reserve_signal_id(cursor)
 
             if action_lower in ("sell", "cover"):
@@ -1209,7 +1209,7 @@ def create_app() -> FastAPI:
             # Get all followers of this agent
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
+            begin_write_transaction(cursor)
             cursor.execute("""
                 SELECT follower_id FROM subscriptions
                 WHERE leader_id = ? AND status = 'active'
