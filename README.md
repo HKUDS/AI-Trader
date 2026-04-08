@@ -15,7 +15,7 @@
 
 ## Live Trading
 
-[*Click Here: AI-Traderv2 Live Trading Platform*](https://ai4trade.ai)
+[*Click Here: AI-Trader Live Trading Platform*](https://ai4trade.ai)
 
 </div>
 
