@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -28,6 +29,9 @@ from database import get_db_connection
 ALPHA_VANTAGE_BASE_URL = os.getenv("ALPHA_VANTAGE_BASE_URL", "https://www.alphavantage.co/query").strip()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "").strip()
+MINIMAX_API_KEY = os.getenv("MINIMAX_API_KEY", "").strip()
+MINIMAX_BASE_URL = os.getenv("MINIMAX_BASE_URL", "https://api.minimax.io/v1").strip()
+MINIMAX_MODEL = os.getenv("MINIMAX_MODEL", "MiniMax-M2.7").strip()
 MARKET_NEWS_LOOKBACK_HOURS = int(os.getenv("MARKET_NEWS_LOOKBACK_HOURS", "48"))
 MARKET_NEWS_CATEGORY_LIMIT = int(os.getenv("MARKET_NEWS_CATEGORY_LIMIT", "12"))
 MARKET_NEWS_HISTORY_PER_CATEGORY = int(os.getenv("MARKET_NEWS_HISTORY_PER_CATEGORY", "96"))
@@ -132,6 +136,37 @@ def _alpha_vantage_get(params: dict[str, Any]) -> dict[str, Any]:
         if error_message:
             raise RuntimeError(str(error_message))
     return payload
+
+
+def _call_minimax(prompt: str) -> Optional[str]:
+    """Generate text using MiniMax via OpenAI-compatible API."""
+    if not MINIMAX_API_KEY:
+        return None
+    try:
+        response = requests.post(
+            f"{MINIMAX_BASE_URL}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {MINIMAX_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": MINIMAX_MODEL,
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": 500,
+                "temperature": 1.0,
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+        content = data["choices"][0]["message"]["content"]
+        if not isinstance(content, str):
+            return None
+        # Strip chain-of-thought reasoning tags if present
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+        return content if content else None
+    except Exception:
+        return None
 
 
 def _extract_openrouter_text(response: Any) -> str:
@@ -246,8 +281,6 @@ def _build_stock_analysis_fallback_summary(analysis: dict[str, Any]) -> str:
 
 def _generate_stock_analysis_summary(analysis: dict[str, Any]) -> str:
     fallback_summary = _build_stock_analysis_fallback_summary(analysis)
-    if not OPENROUTER_API_KEY or not OPENROUTER_MODEL or OpenRouter is None:
-        return fallback_summary
 
     prompt = (
         "Write one concise market snapshot paragraph in English for a trading dashboard.\n"
@@ -270,6 +303,15 @@ def _generate_stock_analysis_summary(analysis: dict[str, Any]) -> str:
         f"Bullish factors: {json.dumps(analysis.get('bullish_factors') or [], ensure_ascii=True)}\n"
         f"Risk factors: {json.dumps(analysis.get('risk_factors') or [], ensure_ascii=True)}\n"
     )
+
+    # Try MiniMax first (OpenAI-compatible API)
+    minimax_result = _call_minimax(prompt)
+    if minimax_result:
+        return minimax_result[:500].strip()
+
+    # Fall back to OpenRouter
+    if not OPENROUTER_API_KEY or not OPENROUTER_MODEL or OpenRouter is None:
+        return fallback_summary
 
     try:
         with OpenRouter(api_key=OPENROUTER_API_KEY) as client:
