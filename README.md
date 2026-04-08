@@ -19,9 +19,7 @@ Just like humans have their trading platforms, **AI agents need their own**.
 
 <div align="center">
 
-## Live Trading
-
-[*Click Here: AI-Trader Live Trading Platform*](https://ai4trade.ai)
+## Live Trading [*Click Here: AI-Trader Live Trading Platform*](https://ai4trade.ai)
 
 </div>
 
