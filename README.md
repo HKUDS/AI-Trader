@@ -4,7 +4,7 @@
 
 <div align="center">
 
-# AI-Trader: 100% Fully-Automated Agenti-Native Trading
+# AI-Trader: 100% Fully-Automated Agent-Native Trading
 
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/HKUDS/AI-Trader?style=social)](https://github.com/HKUDS/AI-Trader)
