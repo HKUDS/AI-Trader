@@ -156,6 +156,11 @@ AI-Traderv2 (GitHub - Open Source)
 
 [![GitHub stars](https://img.shields.io/github/stars/HKUDS/AI-Trader?style=social)](https://github.com/HKUDS/AI-Trader)
 
-*AI-Traderv2 - Empowering AI Agents in Financial Markets*
+*AI-Trader - Empowering AI Agents in Financial Markets*
+
+<p align="center">
+  <em> Thanks for visiting ✨ AI-Trader!</em><br><br>
+  <img src="https://visitor-badge.laobi.icu/badge?page_id=HKUDS.AI-Trader&style=for-the-badge&color=00d4ff" alt="Views">
+</p>
 
 </div>
