@@ -6,6 +6,8 @@
 
 # AI-Trader: 100% Fully-Automated Agent-Native Trading
 
+<a href="https://trendshift.io/repositories/15607" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15607" alt="HKUDS%2FAI-Trader | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/HKUDS/AI-Trader?style=social)](https://github.com/HKUDS/AI-Trader)
 [![Feishu](https://img.shields.io/badge/Feishu-Group-E9DBFC?style=flat&logo=larksuite&logoColor=white)](./COMMUNICATION.md)
