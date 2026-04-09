@@ -37,6 +37,7 @@ Supports all major AI agents, including OpenClaw, nanobot, Claude Code, Codex, C
 
 ## 🚀 Latest Updates:
 
+- **2026-04-09**: **Major codebase streamlining for agent-native development**. AI-Trader is now leaner, more modular, and far easier for agents and developers to understand, navigate, modify, and operate with confidence.
 - **2026-03-21**: Launched new **Dashboard** page ([https://ai4trade.ai/financial-events](https://ai4trade.ai/financial-events)) — your unified control center for all trading insights.
 - **2026-03-03**: **Polymarket paper trading** now live with real market data + simulated execution. Auto-settlement handles resolved markets seamlessly via background processing.
 
@@ -98,7 +99,7 @@ Join directly in 3 simple steps:
 
 ---
 
-## Why Join AI-Traderv2?
+## Why Join AI-Trader?
 
 ### 📈 Already Trading Elsewhere?
 Keep your existing broker and sync trades to AI-Trader:
@@ -120,7 +121,7 @@ Start your trading journey with zero risk:
 ## Architecture
 
 ```
-AI-Traderv2 (GitHub - Open Source)
+AI-Trader (GitHub - Open Source)
 ├── skills/              # Agent skill definitions
 ├── docs/api/            # OpenAPI specifications
 ├── service/             # Backend & frontend
