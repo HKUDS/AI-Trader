@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 
-import { API_BASE, MARKETS, useLanguage } from './appShared'
+import { API_BASE, COMMUNITY_FEED_PAGE_SIZE, MARKETS, useLanguage } from './appShared'
 
 function AuthShell({
   mode,
@@ -314,6 +314,8 @@ function SignalCard({
 export function StrategiesPage() {
   const [token] = useState<string | null>(localStorage.getItem('claw_token'))
   const [strategies, setStrategies] = useState<any[]>([])
+  const [strategyPage, setStrategyPage] = useState(1)
+  const [strategyTotal, setStrategyTotal] = useState(0)
   const [followingLeaderIds, setFollowingLeaderIds] = useState<number[]>([])
   const [viewerId, setViewerId] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
@@ -325,13 +327,14 @@ export function StrategiesPage() {
 
   const signalIdFromQuery = new URLSearchParams(location.search).get('signal')
   const autoOpenReplyBox = new URLSearchParams(location.search).get('reply') === '1'
+  const strategyTotalPages = Math.max(1, Math.ceil(strategyTotal / COMMUNITY_FEED_PAGE_SIZE))
 
   useEffect(() => {
-    loadStrategies()
+    loadStrategies(strategyPage)
     if (token) {
       loadViewerContext()
     }
-  }, [sort, token])
+  }, [sort, token, strategyPage])
 
   const loadViewerContext = async () => {
     if (!token) return
@@ -353,23 +356,27 @@ export function StrategiesPage() {
     }
   }
 
-  const loadStrategies = async () => {
+  const loadStrategies = async (pageToLoad = strategyPage) => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/signals/feed?message_type=strategy&limit=50&sort=${sort}`, {
+      const offset = (pageToLoad - 1) * COMMUNITY_FEED_PAGE_SIZE
+      const res = await fetch(`${API_BASE}/signals/feed?message_type=strategy&limit=${COMMUNITY_FEED_PAGE_SIZE}&offset=${offset}&sort=${sort}`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
       })
       if (!res.ok) {
         console.error('Failed to load strategies:', res.status)
         setStrategies([])
+        setStrategyTotal(0)
         setLoading(false)
         return
       }
       const data = await res.json()
       setStrategies(data.signals || [])
+      setStrategyTotal(data.total || 0)
     } catch (e) {
       console.error('Error loading strategies:', e)
       setStrategies([])
+      setStrategyTotal(0)
     }
     setLoading(false)
   }
@@ -430,7 +437,8 @@ export function StrategiesPage() {
       if (res.ok) {
         setFormData({ title: '', content: '', symbols: '', tags: '', market: 'us-stock' })
         setShowForm(false)
-        loadStrategies()
+        setStrategyPage(1)
+        loadStrategies(1)
       }
     } catch (e) {
       console.error(e)
@@ -460,7 +468,10 @@ export function StrategiesPage() {
           <button
             key={value}
             className="btn btn-ghost"
-            onClick={() => setSort(value)}
+            onClick={() => {
+              setSort(value)
+              setStrategyPage(1)
+            }}
             style={{
               background: sort === value ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
               color: sort === value ? '#fff' : 'var(--text-secondary)'
@@ -562,20 +573,45 @@ export function StrategiesPage() {
           ))}
         </div>
       ) : (
-        <div className="signal-grid">
-          {strategies.map((strategy) => (
-            <SignalCard
-              key={strategy.id}
-              signal={strategy}
-              onRefresh={loadStrategies}
-              onFollow={handleFollow}
-              onUnfollow={handleUnfollow}
-              isFollowingAuthor={followingLeaderIds.includes(strategy.agent_id)}
-              canFollowAuthor={!!token && strategy.agent_id !== viewerId}
-              canAcceptReplies={strategy.agent_id === viewerId}
-            />
-          ))}
-        </div>
+        <>
+          <div className="signal-grid">
+            {strategies.map((strategy) => (
+              <SignalCard
+                key={strategy.id}
+                signal={strategy}
+                onRefresh={loadStrategies}
+                onFollow={handleFollow}
+                onUnfollow={handleUnfollow}
+                isFollowingAuthor={followingLeaderIds.includes(strategy.agent_id)}
+                canFollowAuthor={!!token && strategy.agent_id !== viewerId}
+                canAcceptReplies={strategy.agent_id === viewerId}
+              />
+            ))}
+          </div>
+          {strategyTotalPages > 1 && (
+            <div className="card" style={{ marginTop: '20px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-secondary"
+                disabled={strategyPage <= 1}
+                onClick={() => setStrategyPage((current) => Math.max(1, current - 1))}
+              >
+                {language === 'zh' ? '上一页' : 'Previous'}
+              </button>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                {language === 'zh'
+                  ? `第 ${strategyPage} / ${strategyTotalPages} 页，共 ${strategyTotal} 条策略`
+                  : `Page ${strategyPage} / ${strategyTotalPages}, ${strategyTotal} strategies total`}
+              </div>
+              <button
+                className="btn btn-secondary"
+                disabled={strategyPage >= strategyTotalPages}
+                onClick={() => setStrategyPage((current) => Math.min(strategyTotalPages, current + 1))}
+              >
+                {language === 'zh' ? '下一页' : 'Next'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -584,6 +620,8 @@ export function StrategiesPage() {
 export function DiscussionsPage() {
   const [token] = useState<string | null>(localStorage.getItem('claw_token'))
   const [discussions, setDiscussions] = useState<any[]>([])
+  const [discussionPage, setDiscussionPage] = useState(1)
+  const [discussionTotal, setDiscussionTotal] = useState(0)
   const [recentNotifications, setRecentNotifications] = useState<any[]>([])
   const [followingLeaderIds, setFollowingLeaderIds] = useState<number[]>([])
   const [viewerId, setViewerId] = useState<number | null>(null)
@@ -597,14 +635,15 @@ export function DiscussionsPage() {
 
   const signalIdFromQuery = new URLSearchParams(location.search).get('signal')
   const autoOpenReplyBox = new URLSearchParams(location.search).get('reply') === '1'
+  const discussionTotalPages = Math.max(1, Math.ceil(discussionTotal / COMMUNITY_FEED_PAGE_SIZE))
 
   useEffect(() => {
-    loadDiscussions()
+    loadDiscussions(discussionPage)
     if (token) {
       loadRecentNotifications()
       loadViewerContext()
     }
-  }, [sort, token])
+  }, [sort, token, discussionPage])
 
   const loadViewerContext = async () => {
     if (!token) return
@@ -626,23 +665,27 @@ export function DiscussionsPage() {
     }
   }
 
-  const loadDiscussions = async () => {
+  const loadDiscussions = async (pageToLoad = discussionPage) => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/signals/feed?message_type=discussion&limit=50&sort=${sort}`, {
+      const offset = (pageToLoad - 1) * COMMUNITY_FEED_PAGE_SIZE
+      const res = await fetch(`${API_BASE}/signals/feed?message_type=discussion&limit=${COMMUNITY_FEED_PAGE_SIZE}&offset=${offset}&sort=${sort}`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : undefined
       })
       if (!res.ok) {
         console.error('Failed to load discussions:', res.status)
         setDiscussions([])
+        setDiscussionTotal(0)
         setLoading(false)
         return
       }
       const data = await res.json()
       setDiscussions(data.signals || [])
+      setDiscussionTotal(data.total || 0)
     } catch (e) {
       console.error('Error loading discussions:', e)
       setDiscussions([])
+      setDiscussionTotal(0)
     }
     setLoading(false)
   }
@@ -686,7 +729,8 @@ export function DiscussionsPage() {
       if (res.ok) {
         setFormData({ title: '', content: '', tags: '', market: 'us-stock' })
         setShowForm(false)
-        loadDiscussions()
+        setDiscussionPage(1)
+        loadDiscussions(1)
         loadRecentNotifications()
       } else {
         const data = await res.json()
@@ -755,7 +799,10 @@ export function DiscussionsPage() {
           <button
             key={value}
             className="btn btn-ghost"
-            onClick={() => setSort(value)}
+            onClick={() => {
+              setSort(value)
+              setDiscussionPage(1)
+            }}
             style={{
               background: sort === value ? 'var(--accent-primary)' : 'var(--bg-tertiary)',
               color: sort === value ? '#fff' : 'var(--text-secondary)'
@@ -894,20 +941,45 @@ export function DiscussionsPage() {
           ))}
         </div>
       ) : (
-        <div className="signal-grid">
-          {discussions.map((discussion) => (
-            <SignalCard
-              key={discussion.id}
-              signal={discussion}
-              onRefresh={loadDiscussions}
-              onFollow={handleFollow}
-              onUnfollow={handleUnfollow}
-              isFollowingAuthor={followingLeaderIds.includes(discussion.agent_id)}
-              canFollowAuthor={!!token && discussion.agent_id !== viewerId}
-              canAcceptReplies={discussion.agent_id === viewerId}
-            />
-          ))}
-        </div>
+        <>
+          <div className="signal-grid">
+            {discussions.map((discussion) => (
+              <SignalCard
+                key={discussion.id}
+                signal={discussion}
+                onRefresh={loadDiscussions}
+                onFollow={handleFollow}
+                onUnfollow={handleUnfollow}
+                isFollowingAuthor={followingLeaderIds.includes(discussion.agent_id)}
+                canFollowAuthor={!!token && discussion.agent_id !== viewerId}
+                canAcceptReplies={discussion.agent_id === viewerId}
+              />
+            ))}
+          </div>
+          {discussionTotalPages > 1 && (
+            <div className="card" style={{ marginTop: '20px', padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-secondary"
+                disabled={discussionPage <= 1}
+                onClick={() => setDiscussionPage((current) => Math.max(1, current - 1))}
+              >
+                {language === 'zh' ? '上一页' : 'Previous'}
+              </button>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                {language === 'zh'
+                  ? `第 ${discussionPage} / ${discussionTotalPages} 页，共 ${discussionTotal} 条讨论`
+                  : `Page ${discussionPage} / ${discussionTotalPages}, ${discussionTotal} discussions total`}
+              </div>
+              <button
+                className="btn btn-secondary"
+                disabled={discussionPage >= discussionTotalPages}
+                onClick={() => setDiscussionPage((current) => Math.min(discussionTotalPages, current + 1))}
+              >
+                {language === 'zh' ? '下一页' : 'Next'}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

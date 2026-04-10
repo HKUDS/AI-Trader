@@ -4,8 +4,10 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 
 import {
   API_BASE,
+  COPY_TRADING_PAGE_SIZE,
   FINANCIAL_NEWS_PAGE_SIZE,
   LEADERBOARD_LINE_COLORS,
+  LEADERBOARD_PAGE_SIZE,
   MARKETS,
   REFRESH_INTERVAL,
   SIGNALS_FEED_PAGE_SIZE,
@@ -1527,47 +1529,56 @@ export function SignalsFeed({ token }: { token?: string | null }) {
 // Copy Trading Page
 export function CopyTradingPage({ token }: { token: string }) {
   const [providers, setProviders] = useState<any[]>([])
+  const [providerPage, setProviderPage] = useState(1)
+  const [providerTotal, setProviderTotal] = useState(0)
   const [following, setFollowing] = useState<any[]>([])
+  const [followingPage, setFollowingPage] = useState(1)
+  const [followingTotal, setFollowingTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'discover' | 'following'>('discover')
   const navigate = useNavigate()
   const { language } = useLanguage()
 
   useEffect(() => {
-    loadData()
-    const interval = setInterval(() => loadData(), REFRESH_INTERVAL)
+    loadData(providerPage, followingPage)
+    const interval = setInterval(() => loadData(providerPage, followingPage), REFRESH_INTERVAL)
     return () => clearInterval(interval)
-  }, [])
+  }, [providerPage, followingPage])
 
-  const loadData = async () => {
-    console.log('CopyTradingPage loadData - token:', token)
+  const loadData = async (providerPageToLoad = providerPage, followingPageToLoad = followingPage) => {
     try {
-      // Get list of signal providers (top traders)
-      const res = await fetch(`${API_BASE}/profit/history?limit=20`)
+      const providerOffset = (providerPageToLoad - 1) * COPY_TRADING_PAGE_SIZE
+      const res = await fetch(
+        `${API_BASE}/profit/history?limit=${COPY_TRADING_PAGE_SIZE}&offset=${providerOffset}&include_history=false`
+      )
       if (!res.ok) {
         console.error('Failed to load providers:', res.status)
         setProviders([])
+        setProviderTotal(0)
       } else {
         const data = await res.json()
         setProviders(data.top_agents || [])
+        setProviderTotal(data.total || 0)
       }
 
-      // Get following list
       if (token) {
-        console.log('Fetching following with token:', token.substring(0, 10) + '...')
-        const followRes = await fetch(`${API_BASE}/signals/following`, {
+        const followingOffset = (followingPageToLoad - 1) * COPY_TRADING_PAGE_SIZE
+        const followRes = await fetch(`${API_BASE}/signals/following?limit=${COPY_TRADING_PAGE_SIZE}&offset=${followingOffset}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         })
-        console.log('Following response:', followRes.status, followRes.statusText)
         if (followRes.ok) {
           const followData = await followRes.json()
           setFollowing(followData.following || [])
+          setFollowingTotal(followData.total || 0)
         } else {
           const errorText = await followRes.text()
           console.error('Failed to load following:', followRes.status, errorText)
+          setFollowing([])
+          setFollowingTotal(0)
         }
       } else {
-        console.warn('No token available for following request')
+        setFollowing([])
+        setFollowingTotal(0)
       }
     } catch (e) {
       console.error('Error loading copy trading data:', e)
@@ -1591,7 +1602,7 @@ export function CopyTradingPage({ token }: { token: string }) {
       })
       const data = await res.json()
       if (res.ok && (data.success || data.message === 'Already following')) {
-        loadData()
+        loadData(providerPage, followingPage)
       } else {
         console.error('Follow failed:', data)
       }
@@ -1616,7 +1627,7 @@ export function CopyTradingPage({ token }: { token: string }) {
       })
       const data = await res.json()
       if (data.success) {
-        loadData()
+        loadData(providerPage, followingPage)
       }
     } catch (e) {
       console.error(e)
@@ -1641,6 +1652,9 @@ export function CopyTradingPage({ token }: { token: string }) {
       )}
     </div>
   )
+
+  const providerTotalPages = Math.max(1, Math.ceil(providerTotal / COPY_TRADING_PAGE_SIZE))
+  const followingTotalPages = Math.max(1, Math.ceil(followingTotal / COPY_TRADING_PAGE_SIZE))
 
   if (loading) {
     return <div className="loading"><div className="spinner"></div></div>
@@ -1687,7 +1701,7 @@ export function CopyTradingPage({ token }: { token: string }) {
             fontWeight: 500
           }}
         >
-          {language === 'zh' ? `我的跟单 (${following.length})` : `My Following (${following.length})`}
+          {language === 'zh' ? `我的跟单 (${followingTotal})` : `My Following (${followingTotal})`}
         </button>
       </div>
 
@@ -1700,12 +1714,14 @@ export function CopyTradingPage({ token }: { token: string }) {
             </div>
           ) : (
             <div style={{ display: 'grid', gap: '14px' }}>
-              {providers.map((provider, index) => (
+              {providers.map((provider, index) => {
+                const rank = (providerPage - 1) * COPY_TRADING_PAGE_SIZE + index + 1
+                return (
                 <div key={provider.agent_id} style={{ padding: '18px', border: '1px solid var(--border-color)', borderRadius: '14px', background: 'var(--bg-tertiary)' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'flex-start' }}>
                     <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                       <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--accent-gradient)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
-                        #{index + 1}
+                        #{rank}
                       </div>
                       <div>
                         <div style={{ fontWeight: 600 }}>{provider.name || `Agent ${provider.agent_id}`}</div>
@@ -1753,7 +1769,31 @@ export function CopyTradingPage({ token }: { token: string }) {
                     )}
                   </div>
                 </div>
-              ))}
+                )
+              })}
+              {providerTotalPages > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', paddingTop: '4px', flexWrap: 'wrap' }}>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={providerPage <= 1}
+                    onClick={() => setProviderPage((current) => Math.max(1, current - 1))}
+                  >
+                    {language === 'zh' ? '上一页' : 'Previous'}
+                  </button>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                    {language === 'zh'
+                      ? `第 ${providerPage} / ${providerTotalPages} 页，共 ${providerTotal} 位交易员`
+                      : `Page ${providerPage} / ${providerTotalPages}, ${providerTotal} traders total`}
+                  </div>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={providerPage >= providerTotalPages}
+                    onClick={() => setProviderPage((current) => Math.min(providerTotalPages, current + 1))}
+                  >
+                    {language === 'zh' ? '下一页' : 'Next'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1848,6 +1888,29 @@ export function CopyTradingPage({ token }: { token: string }) {
                   </div>
                 )
               })}
+              {followingTotalPages > 1 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', paddingTop: '4px', flexWrap: 'wrap' }}>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={followingPage <= 1}
+                    onClick={() => setFollowingPage((current) => Math.max(1, current - 1))}
+                  >
+                    {language === 'zh' ? '上一页' : 'Previous'}
+                  </button>
+                  <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+                    {language === 'zh'
+                      ? `第 ${followingPage} / ${followingTotalPages} 页，共 ${followingTotal} 个跟单`
+                      : `Page ${followingPage} / ${followingTotalPages}, ${followingTotal} follows total`}
+                  </div>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={followingPage >= followingTotalPages}
+                    onClick={() => setFollowingPage((current) => Math.min(followingTotalPages, current + 1))}
+                  >
+                    {language === 'zh' ? '下一页' : 'Next'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1859,25 +1922,29 @@ export function CopyTradingPage({ token }: { token: string }) {
 // Leaderboard Page - Top 10 Traders (no market distinction)
 export function LeaderboardPage({ token }: { token?: string | null }) {
   const [profitHistory, setProfitHistory] = useState<any[]>([])
+  const [totalTraders, setTotalTraders] = useState(0)
+  const [leaderboardPage, setLeaderboardPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [chartRange, setChartRange] = useState<LeaderboardChartRange>('24h')
   const { language } = useLanguage()
   const navigate = useNavigate()
 
   useEffect(() => {
-    loadProfitHistory()
+    loadProfitHistory(leaderboardPage)
     const interval = setInterval(() => {
-      loadProfitHistory()
+      loadProfitHistory(leaderboardPage)
     }, REFRESH_INTERVAL)
     return () => clearInterval(interval)
-  }, [chartRange])
+  }, [chartRange, leaderboardPage])
 
-  const loadProfitHistory = async () => {
+  const loadProfitHistory = async (pageToLoad = leaderboardPage) => {
     try {
       const days = getLeaderboardDays(chartRange)
-      const res = await fetch(`${API_BASE}/profit/history?limit=10&days=${days}`)
+      const offset = (pageToLoad - 1) * LEADERBOARD_PAGE_SIZE
+      const res = await fetch(`${API_BASE}/profit/history?limit=${LEADERBOARD_PAGE_SIZE}&offset=${offset}&days=${days}`)
       const data = await res.json()
       setProfitHistory(data.top_agents || [])
+      setTotalTraders(data.total || 0)
     } catch (e) {
       console.error(e)
     }
@@ -1893,6 +1960,8 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
     [profitHistory, chartRange, language]
   )
   const topChartAgents = useMemo(() => profitHistory.slice(0, 10), [profitHistory])
+  const leaderboardTotalPages = Math.max(1, Math.ceil(totalTraders / LEADERBOARD_PAGE_SIZE))
+  const leaderboardOffset = (leaderboardPage - 1) * LEADERBOARD_PAGE_SIZE
 
   if (loading) {
     return <div className="loading"><div className="spinner"></div></div>
@@ -1932,7 +2001,10 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
             </h3>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
               <button
-                onClick={() => setChartRange('all')}
+                onClick={() => {
+                  setChartRange('all')
+                  setLeaderboardPage(1)
+                }}
                 style={{
                   padding: '4px 12px',
                   borderRadius: '4px',
@@ -1946,7 +2018,10 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
                 {language === 'zh' ? '全部数据' : 'All Data'}
               </button>
               <button
-                onClick={() => setChartRange('24h')}
+                onClick={() => {
+                  setChartRange('24h')
+                  setLeaderboardPage(1)
+                }}
                 style={{
                   padding: '4px 12px',
                   borderRadius: '4px',
@@ -2001,7 +2076,9 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
               background: 'rgba(17, 25, 32, 0.56)',
               border: '1px solid var(--border-color)'
             }}>
-              {topChartAgents.map((agent: any, idx: number) => (
+              {topChartAgents.map((agent: any, idx: number) => {
+                const rank = leaderboardOffset + idx + 1
+                return (
                 <button
                   key={agent.agent_id}
                   type="button"
@@ -2022,7 +2099,7 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
                   }}
                 >
                   <span style={{ color: 'var(--text-muted)', fontFamily: 'IBM Plex Mono, monospace', fontSize: '12px' }}>
-                    #{idx + 1}
+                    #{rank}
                   </span>
                   <span style={{
                     width: '8px',
@@ -2034,16 +2111,17 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
                     {agent.name}
                   </span>
                 </button>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
       )}
 
-      {/* Top 10 Traders Cards */}
+      {/* Traders Cards */}
       <div className="card">
         <div className="card-header">
-          <h3 className="card-title">{language === 'zh' ? '🏆 Top 10 交易员' : '🏆 Top 10 Traders'}</h3>
+          <h3 className="card-title">{language === 'zh' ? '🏆 交易员' : '🏆 Traders'}</h3>
         </div>
         {profitHistory.length === 0 ? (
           <div className="empty-state">
@@ -2052,7 +2130,10 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
           </div>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '16px' }}>
-            {profitHistory.map((agent: any, idx: number) => (
+            {profitHistory.map((agent: any, idx: number) => {
+              const rank = leaderboardOffset + idx + 1
+              const podiumIndex = rank - 1
+              return (
               <div
                 key={agent.agent_id}
                 onClick={() => handleAgentClick(agent)}
@@ -2062,7 +2143,7 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
                   borderRadius: '12px',
                   cursor: 'pointer',
                   transition: 'all 0.3s ease',
-                  border: idx < 3 ? `2px solid ${['#FFD700', '#C0C0C0', '#CD7F32'][idx]}` : '1px solid var(--border-color)'
+                  border: rank <= 3 ? `2px solid ${['#FFD700', '#C0C0C0', '#CD7F32'][podiumIndex]}` : '1px solid var(--border-color)'
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
@@ -2070,15 +2151,15 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
                     width: '40px',
                     height: '40px',
                     borderRadius: '50%',
-                    background: idx < 3 ? ['linear-gradient(135deg, #FFD700, #FFA500)', 'linear-gradient(135deg, #C0C0C0, #A0A0A0)', 'linear-gradient(135deg, #CD7F32, #8B4513)'][idx] : 'var(--accent-gradient)',
+                    background: rank <= 3 ? ['linear-gradient(135deg, #FFD700, #FFA500)', 'linear-gradient(135deg, #C0C0C0, #A0A0A0)', 'linear-gradient(135deg, #CD7F32, #8B4513)'][podiumIndex] : 'var(--accent-gradient)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontWeight: 'bold',
                     fontSize: '18px',
-                    color: idx < 3 ? '#000' : '#fff'
+                    color: rank <= 3 ? '#000' : '#fff'
                   }}>
-                    {idx + 1}
+                    {rank}
                   </div>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: '16px' }}>{agent.name}</div>
@@ -2105,7 +2186,31 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
                   </div>
                 </div>
               </div>
-            ))}
+              )
+            })}
+          </div>
+        )}
+        {leaderboardTotalPages > 1 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', marginTop: '20px', flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-secondary"
+              disabled={leaderboardPage <= 1}
+              onClick={() => setLeaderboardPage((current) => Math.max(1, current - 1))}
+            >
+              {language === 'zh' ? '上一页' : 'Previous'}
+            </button>
+            <div style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>
+              {language === 'zh'
+                ? `第 ${leaderboardPage} / ${leaderboardTotalPages} 页，共 ${totalTraders} 位交易员`
+                : `Page ${leaderboardPage} / ${leaderboardTotalPages}, ${totalTraders} traders total`}
+            </div>
+            <button
+              className="btn btn-secondary"
+              disabled={leaderboardPage >= leaderboardTotalPages}
+              onClick={() => setLeaderboardPage((current) => Math.min(leaderboardTotalPages, current + 1))}
+            >
+              {language === 'zh' ? '下一页' : 'Next'}
+            </button>
           </div>
         )}
       </div>
