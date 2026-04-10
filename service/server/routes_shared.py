@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -36,13 +37,17 @@ PRICE_CACHE_KEY_PREFIX = 'price:quote'
 MENTION_PATTERN = re.compile(r'@([A-Za-z0-9_\-]{2,64})')
 
 
+def allow_sync_price_fetch_in_api() -> bool:
+    return os.getenv('ALLOW_SYNC_PRICE_FETCH_IN_API', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 @dataclass
 class RouteContext:
     grouped_signals_cache: dict[tuple[str, str, int, int], tuple[float, dict[str, Any]]] = field(default_factory=dict)
     agent_signals_cache: dict[tuple[int, str, int], tuple[float, dict[str, Any]]] = field(default_factory=dict)
     price_api_last_request: dict[int, float] = field(default_factory=dict)
     price_quote_cache: dict[tuple[str, str, str, str], tuple[float, dict[str, Any]]] = field(default_factory=dict)
-    leaderboard_cache: dict[tuple[int, int], tuple[float, dict[str, Any]]] = field(default_factory=dict)
+    leaderboard_cache: dict[tuple[int, int, int, bool], tuple[float, dict[str, Any]]] = field(default_factory=dict)
     content_rate_limit_state: dict[tuple[int, str], dict[str, Any]] = field(default_factory=dict)
     ws_connections: dict[int, WebSocket] = field(default_factory=dict)
     verification_codes: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -133,16 +138,20 @@ def position_price_cache_key(row: Any) -> tuple[str, str, str, str]:
 
 
 def resolve_position_prices(rows: list[Any], now_str: str) -> dict[tuple[str, str, str, str], Optional[float]]:
-    from price_fetcher import get_price_from_market
-
     resolved: dict[tuple[str, str, str, str], Optional[float]] = {}
+    fetch_missing = allow_sync_price_fetch_in_api()
+    get_price_from_market = None
+    if fetch_missing:
+        from price_fetcher import get_price_from_market as _get_price_from_market
+        get_price_from_market = _get_price_from_market
+
     for row in rows:
         cache_key = position_price_cache_key(row)
         if cache_key in resolved:
             continue
 
         current_price = row['current_price']
-        if current_price is None:
+        if current_price is None and get_price_from_market is not None:
             current_price = get_price_from_market(
                 row['symbol'],
                 now_str,

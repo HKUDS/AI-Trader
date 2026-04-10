@@ -6,6 +6,7 @@ Crypto: 从 Hyperliquid 获取价格（停止使用 Alpha Vantage crypto 端点�
 """
 
 import os
+import random
 import requests
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Tuple, Any
@@ -23,6 +24,11 @@ HYPERLIQUID_API_URL = os.environ.get("HYPERLIQUID_API_URL", "https://api.hyperli
 # Polymarket public endpoints (no API key required for reads)
 POLYMARKET_GAMMA_BASE_URL = os.environ.get("POLYMARKET_GAMMA_BASE_URL", "https://gamma-api.polymarket.com").strip()
 POLYMARKET_CLOB_BASE_URL = os.environ.get("POLYMARKET_CLOB_BASE_URL", "https://clob.polymarket.com").strip()
+PRICE_FETCH_TIMEOUT_SECONDS = float(os.environ.get("PRICE_FETCH_TIMEOUT_SECONDS", "10"))
+PRICE_FETCH_MAX_RETRIES = max(0, int(os.environ.get("PRICE_FETCH_MAX_RETRIES", "2")))
+PRICE_FETCH_BACKOFF_BASE_SECONDS = max(0.0, float(os.environ.get("PRICE_FETCH_BACKOFF_BASE_SECONDS", "0.35")))
+PRICE_FETCH_ERROR_COOLDOWN_SECONDS = max(0.0, float(os.environ.get("PRICE_FETCH_ERROR_COOLDOWN_SECONDS", "20")))
+PRICE_FETCH_RATE_LIMIT_COOLDOWN_SECONDS = max(0.0, float(os.environ.get("PRICE_FETCH_RATE_LIMIT_COOLDOWN_SECONDS", "60")))
 
 # 时区常量
 UTC = timezone.utc
@@ -31,6 +37,8 @@ ET_TZ = timezone(ET_OFFSET)
 
 _POLYMARKET_CONDITION_ID_RE = re.compile(r"^0x[a-fA-F0-9]{64}$")
 _POLYMARKET_TOKEN_ID_RE = re.compile(r"^\d+$")
+_RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+_provider_cooldowns: Dict[str, float] = {}
 
 # Polymarket outcome prices are probabilities in [0, 1]. Reject values outside to avoid
 # token_id/condition_id or other API noise being interpreted as price (e.g. 1.5e+73).
@@ -46,6 +54,108 @@ def _polymarket_price_valid(price: float) -> bool:
 # In-memory cache for Polymarket reference+outcome -> (token_id, expiry_epoch_s)
 _polymarket_token_cache: Dict[str, Tuple[str, float]] = {}
 _POLYMARKET_TOKEN_CACHE_TTL_S = 300.0
+
+
+def _provider_cooldown_remaining(provider: str) -> float:
+    return max(0.0, _provider_cooldowns.get(provider, 0.0) - time.time())
+
+
+def _activate_provider_cooldown(provider: str, duration_s: float, reason: str) -> None:
+    if duration_s <= 0:
+        return
+    until = time.time() + duration_s
+    previous_until = _provider_cooldowns.get(provider, 0.0)
+    _provider_cooldowns[provider] = max(previous_until, until)
+    remaining = _provider_cooldown_remaining(provider)
+    print(f"[Price API] {provider} cooldown {remaining:.1f}s ({reason})")
+
+
+def _retry_delay(attempt: int) -> float:
+    if PRICE_FETCH_BACKOFF_BASE_SECONDS <= 0:
+        return 0.0
+    base = PRICE_FETCH_BACKOFF_BASE_SECONDS * (2 ** attempt)
+    return base + random.uniform(0.0, base * 0.25)
+
+
+def _request_json_with_retry(
+    provider: str,
+    method: str,
+    url: str,
+    *,
+    params: Optional[dict] = None,
+    json_payload: Optional[dict] = None,
+) -> object:
+    remaining = _provider_cooldown_remaining(provider)
+    if remaining > 0:
+        raise RuntimeError(f"{provider} cooldown active for {remaining:.1f}s")
+
+    last_exc: Optional[Exception] = None
+    attempts = PRICE_FETCH_MAX_RETRIES + 1
+
+    for attempt in range(attempts):
+        try:
+            if method == "POST":
+                resp = requests.post(url, json=json_payload, timeout=PRICE_FETCH_TIMEOUT_SECONDS)
+            else:
+                resp = requests.get(url, params=params, timeout=PRICE_FETCH_TIMEOUT_SECONDS)
+
+            if resp.status_code in _RETRYABLE_STATUS_CODES:
+                resp.raise_for_status()
+
+            resp.raise_for_status()
+            return resp.json()
+        except requests.HTTPError as exc:
+            status_code = exc.response.status_code if exc.response is not None else None
+            retryable = status_code in _RETRYABLE_STATUS_CODES
+            last_exc = exc
+
+            if retryable and attempt < attempts - 1:
+                delay = _retry_delay(attempt)
+                print(
+                    f"[Price API] {provider} retry {attempt + 1}/{attempts - 1} "
+                    f"after HTTP {status_code}; sleeping {delay:.2f}s"
+                )
+                if delay > 0:
+                    time.sleep(delay)
+                continue
+
+            if status_code == 429:
+                _activate_provider_cooldown(
+                    provider,
+                    PRICE_FETCH_RATE_LIMIT_COOLDOWN_SECONDS,
+                    "HTTP 429"
+                )
+            elif status_code is not None and status_code >= 500:
+                _activate_provider_cooldown(
+                    provider,
+                    PRICE_FETCH_ERROR_COOLDOWN_SECONDS,
+                    f"HTTP {status_code}"
+                )
+            raise
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            last_exc = exc
+            if attempt < attempts - 1:
+                delay = _retry_delay(attempt)
+                print(
+                    f"[Price API] {provider} retry {attempt + 1}/{attempts - 1} "
+                    f"after {exc.__class__.__name__}; sleeping {delay:.2f}s"
+                )
+                if delay > 0:
+                    time.sleep(delay)
+                continue
+            _activate_provider_cooldown(
+                provider,
+                PRICE_FETCH_ERROR_COOLDOWN_SECONDS,
+                exc.__class__.__name__
+            )
+            raise
+        except requests.RequestException as exc:
+            last_exc = exc
+            raise
+
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError(f"{provider} request failed without response")
 
 
 def _polymarket_market_title(market: Optional[dict]) -> Optional[str]:
@@ -133,14 +243,20 @@ def _normalize_hyperliquid_symbol(symbol: str) -> str:
 def _hyperliquid_post(payload: dict) -> object:
     if not HYPERLIQUID_API_URL:
         raise RuntimeError("HYPERLIQUID_API_URL is empty")
-    resp = requests.post(HYPERLIQUID_API_URL, json=payload, timeout=10)
-    resp.raise_for_status()
-    return resp.json()
+    return _request_json_with_retry(
+        "hyperliquid",
+        "POST",
+        HYPERLIQUID_API_URL,
+        json_payload=payload,
+    )
 
 def _polymarket_get_json(url: str, params: Optional[dict] = None) -> object:
-    resp = requests.get(url, params=params, timeout=10)
-    resp.raise_for_status()
-    return resp.json()
+    return _request_json_with_retry(
+        "polymarket",
+        "GET",
+        url,
+        params=params,
+    )
 
 
 def _parse_string_array(value: Any) -> list[str]:
@@ -520,13 +636,22 @@ def _get_us_stock_price(symbol: str, executed_at: str) -> Optional[float]:
     }
 
     try:
-        response = requests.get(BASE_URL, params=params, timeout=10)
-        data = response.json()
+        data = _request_json_with_retry(
+            "alphavantage",
+            "GET",
+            BASE_URL,
+            params=params,
+        )
 
         if "Error Message" in data:
             print(f"[Price API] Error: {data.get('Error Message')}")
             return None
         if "Note" in data:
+            _activate_provider_cooldown(
+                "alphavantage",
+                PRICE_FETCH_RATE_LIMIT_COOLDOWN_SECONDS,
+                "body rate limit note"
+            )
             print(f"[Price API] Rate limit: {data.get('Note')}")
             return None
 

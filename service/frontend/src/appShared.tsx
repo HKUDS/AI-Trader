@@ -39,7 +39,10 @@ export const REFRESH_INTERVAL = parseInt(import.meta.env.VITE_REFRESH_INTERVAL |
 export const NOTIFICATION_POLL_INTERVAL = 60 * 1000
 export const FIVE_MINUTES_MS = 5 * 60 * 1000
 export const ONE_DAY_MS = 24 * 60 * 60 * 1000
-export const SIGNALS_FEED_PAGE_SIZE = 15
+export const SIGNALS_FEED_PAGE_SIZE = 20
+export const LEADERBOARD_PAGE_SIZE = 20
+export const COPY_TRADING_PAGE_SIZE = 20
+export const COMMUNITY_FEED_PAGE_SIZE = 20
 export const FINANCIAL_NEWS_PAGE_SIZE = 4
 export const LEADERBOARD_LINE_COLORS = ['#d66a5f', '#d49e52', '#b8b15f', '#7bb174', '#5aa7a3', '#4e88b7', '#7a78c5', '#a16cb8', '#c66f9f', '#cb7a7a']
 

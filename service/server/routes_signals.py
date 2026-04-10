@@ -21,6 +21,7 @@ from routes_shared import (
     GROUPED_SIGNALS_CACHE_KEY_PREFIX,
     GROUPED_SIGNALS_CACHE_TTL_SECONDS,
     RouteContext,
+    allow_sync_price_fetch_in_api,
     decorate_polymarket_item,
     enforce_content_rate_limit,
     extract_mentions,
@@ -49,6 +50,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         now = utc_now_iso_z()
         side = data.action
         action_lower = side.lower()
+        fetch_price_in_request = allow_sync_price_fetch_in_api()
         polymarket_token_id = None
         polymarket_outcome = None
 
@@ -69,20 +71,33 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             raise HTTPException(status_code=400, detail='Quantity too large')
 
         if data.market == 'polymarket':
-            from price_fetcher import _polymarket_resolve_reference
-
             if data.executed_at.lower() != 'now':
                 raise HTTPException(status_code=400, detail="Polymarket historical pricing is not supported. Use executed_at='now'.")
-            contract = _polymarket_resolve_reference(data.symbol, token_id=data.token_id, outcome=data.outcome)
-            if not contract:
-                raise HTTPException(
-                    status_code=400,
-                    detail='Polymarket trades require an explicit token_id or outcome that resolves to a single outcome token.',
-                )
-            polymarket_token_id = contract['token_id']
-            polymarket_outcome = contract.get('outcome')
+            if fetch_price_in_request:
+                from price_fetcher import _polymarket_resolve_reference
 
-        from price_fetcher import get_price_from_market
+                contract = _polymarket_resolve_reference(data.symbol, token_id=data.token_id, outcome=data.outcome)
+                if not contract:
+                    raise HTTPException(
+                        status_code=400,
+                        detail='Polymarket trades require an explicit token_id or outcome that resolves to a single outcome token.',
+                    )
+                polymarket_token_id = contract['token_id']
+                polymarket_outcome = contract.get('outcome')
+            else:
+                polymarket_token_id = (data.token_id or '').strip()
+                polymarket_outcome = (data.outcome or '').strip() or None
+                if not polymarket_token_id:
+                    raise HTTPException(
+                        status_code=400,
+                        detail='Polymarket trades require token_id when sync price fetch is disabled.',
+                    )
+
+        get_price_from_market = None
+        if fetch_price_in_request:
+            from price_fetcher import get_price_from_market as _get_price_from_market
+
+            get_price_from_market = _get_price_from_market
 
         if data.executed_at.lower() == 'now':
             now_utc = datetime.now(timezone.utc)
@@ -101,16 +116,19 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                     )
                 raise HTTPException(status_code=400, detail=f'{data.market} is currently closed')
 
-            actual_price = get_price_from_market(
-                data.symbol,
-                executed_at,
-                data.market,
-                token_id=polymarket_token_id,
-                outcome=polymarket_outcome,
-            )
-            if not actual_price:
-                raise HTTPException(status_code=400, detail=f'Unable to fetch current price for {data.symbol}')
-            price = actual_price
+            if get_price_from_market is not None:
+                actual_price = get_price_from_market(
+                    data.symbol,
+                    executed_at,
+                    data.market,
+                    token_id=polymarket_token_id,
+                    outcome=polymarket_outcome,
+                )
+                if not actual_price:
+                    raise HTTPException(status_code=400, detail=f'Unable to fetch current price for {data.symbol}')
+                price = actual_price
+            else:
+                price = data.price
         else:
             is_valid, error_msg = validate_executed_at(data.executed_at, data.market)
             if not is_valid:
@@ -120,19 +138,22 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             if not executed_at.endswith('Z') and '+00:00' not in executed_at:
                 executed_at = executed_at + 'Z'
 
-            actual_price = get_price_from_market(
-                data.symbol,
-                executed_at,
-                data.market,
-                token_id=polymarket_token_id,
-                outcome=polymarket_outcome,
-            )
-            if not actual_price:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f'Unable to fetch historical price for {data.symbol} at {executed_at}',
+            if get_price_from_market is not None:
+                actual_price = get_price_from_market(
+                    data.symbol,
+                    executed_at,
+                    data.market,
+                    token_id=polymarket_token_id,
+                    outcome=polymarket_outcome,
                 )
-            price = actual_price
+                if not actual_price:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f'Unable to fetch historical price for {data.symbol} at {executed_at}',
+                    )
+                price = actual_price
+            else:
+                price = data.price
 
         try:
             price = float(price)
@@ -377,7 +398,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             'outcome': polymarket_outcome,
         }
         if data.market == 'polymarket':
-            decorate_polymarket_item(payload, fetch_remote=True)
+            decorate_polymarket_item(payload, fetch_remote=fetch_price_in_request)
         return payload
 
     @app.post('/api/signals/strategy')
@@ -651,9 +672,12 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         market: str = None,
         keyword: str = None,
         limit: int = 50,
+        offset: int = 0,
         sort: str = 'new',
         authorization: str = Header(None),
     ):
+        limit = max(1, min(limit, 100))
+        offset = max(0, offset)
         viewer = None
         token = _extract_token(authorization)
         if token:
@@ -713,6 +737,16 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         else:
             order_clause = 's.created_at DESC'
 
+        count_query = f"""
+            SELECT COUNT(*) AS total
+            FROM signals s
+            JOIN agents a ON a.id = s.agent_id
+            WHERE {where_clause}
+        """
+        cursor.execute(count_query, params)
+        total_row = cursor.fetchone()
+        total = total_row['total'] if total_row else 0
+
         query = f"""
             SELECT
                 s.*,
@@ -724,9 +758,9 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             JOIN agents a ON a.id = s.agent_id
             WHERE {where_clause}
             ORDER BY {order_clause}
-            LIMIT ?
+            LIMIT ? OFFSET ?
         """
-        params.append(limit)
+        params.extend([limit, offset])
 
         cursor.execute(query, params)
         rows = cursor.fetchall()
@@ -757,10 +791,22 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             signal_dict['is_following_author'] = signal_dict['agent_id'] in followed_author_ids
             signals.append(signal_dict)
 
-        return {'signals': signals}
+        return {
+            'signals': signals,
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+            'has_more': offset + len(signals) < total,
+        }
 
     @app.get('/api/signals/following')
-    async def get_following(authorization: str = Header(None)):
+    async def get_following(
+        limit: int = 500,
+        offset: int = 0,
+        authorization: str = Header(None),
+    ):
+        limit = max(1, min(limit, 500))
+        offset = max(0, offset)
         token = _extract_token(authorization)
         agent = _get_agent_by_token(token)
         if not agent:
@@ -768,6 +814,17 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         conn = get_db_connection()
         cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM subscriptions
+            WHERE follower_id = ? AND status = 'active'
+            """,
+            (agent['id'],),
+        )
+        total_row = cursor.fetchone()
+        total = total_row['total'] if total_row else 0
+
         cursor.execute(
             """
             SELECT
@@ -790,8 +847,9 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 (SELECT MAX(sig.created_at) FROM signals sig WHERE sig.agent_id = s.leader_id),
                 s.created_at
             ) DESC
+            LIMIT ? OFFSET ?
             """,
-            (agent['id'],),
+            (agent['id'], limit, offset),
         )
         rows = cursor.fetchall()
         conn.close()
@@ -813,7 +871,13 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 'latest_discussion_title': row['latest_discussion_title'],
             })
 
-        return {'following': following}
+        return {
+            'following': following,
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+            'has_more': offset + len(following) < total,
+        }
 
     @app.get('/api/signals/subscribers')
     async def get_subscribers(authorization: str = Header(None)):

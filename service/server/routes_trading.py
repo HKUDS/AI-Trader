@@ -15,6 +15,7 @@ from routes_shared import (
     PRICE_QUOTE_CACHE_TTL_SECONDS,
     RouteContext,
     TRENDING_CACHE_KEY,
+    allow_sync_price_fetch_in_api,
     check_price_api_rate_limit,
     clamp_profit_for_display,
     decorate_polymarket_item,
@@ -29,13 +30,22 @@ from utils import _extract_token
 
 def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
     @app.get('/api/profit/history')
-    async def get_profit_history(limit: int = 10, days: int = 30):
+    async def get_profit_history(
+        limit: int = 10,
+        days: int = 30,
+        offset: int = 0,
+        include_history: bool = True,
+    ):
         days = max(1, min(days, 365))
         limit = max(1, min(limit, 50))
+        offset = max(0, offset)
 
-        cache_key = (limit, days)
+        cache_key = (limit, days, offset, include_history)
         now_ts = time.time()
-        redis_cache_key = f'{LEADERBOARD_CACHE_KEY_PREFIX}:limit={limit}:days={days}'
+        redis_cache_key = (
+            f'{LEADERBOARD_CACHE_KEY_PREFIX}:'
+            f'limit={limit}:days={days}:offset={offset}:history={int(include_history)}'
+        )
 
         cached_payload = get_json(redis_cache_key)
         if isinstance(cached_payload, dict):
@@ -52,6 +62,15 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         cutoff_dt = datetime.now(timezone.utc) - timedelta(days=days)
         cutoff = cutoff_dt.isoformat().replace('+00:00', 'Z')
         live_snapshot_recorded_at = utc_now_iso_z()
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM agents
+            """
+        )
+        total_row = cursor.fetchone()
+        total = total_row['total'] if total_row else 0
 
         cursor.execute(
             """
@@ -81,9 +100,9 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             LEFT JOIN positions p ON p.agent_id = a.id
             GROUP BY a.id, a.name, a.cash, a.deposited
             ORDER BY profit DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            (cutoff, limit),
+            (cutoff, limit, offset),
         )
         top_agents = [
             {
@@ -97,7 +116,13 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         if not top_agents:
             conn.close()
-            result = {'top_agents': []}
+            result = {
+                'top_agents': [],
+                'total': total,
+                'limit': limit,
+                'offset': offset,
+                'has_more': False,
+            }
             ctx.leaderboard_cache[cache_key] = (now_ts, result)
             set_json(redis_cache_key, result, ttl_seconds=LEADERBOARD_CACHE_TTL_SECONDS)
             return result
@@ -118,27 +143,29 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         result = []
         for agent in top_agents:
-            cursor.execute(
-                """
-                SELECT profit, recorded_at
-                FROM (
+            history_points = []
+            if include_history:
+                cursor.execute(
+                    """
                     SELECT profit, recorded_at
-                    FROM profit_history
-                    WHERE agent_id = ? AND recorded_at >= ?
-                    ORDER BY recorded_at DESC
-                    LIMIT 2000
-                ) recent_history
-                ORDER BY recorded_at ASC
-                """,
-                (agent['agent_id'], cutoff),
-            )
-            history = cursor.fetchall()
-            history_points = [
-                {'profit': clamp_profit_for_display(h['profit']), 'recorded_at': h['recorded_at']}
-                for h in history
-            ]
+                    FROM (
+                        SELECT profit, recorded_at
+                        FROM profit_history
+                        WHERE agent_id = ? AND recorded_at >= ?
+                        ORDER BY recorded_at DESC
+                        LIMIT 2000
+                    ) recent_history
+                    ORDER BY recorded_at ASC
+                    """,
+                    (agent['agent_id'], cutoff),
+                )
+                history = cursor.fetchall()
+                history_points = [
+                    {'profit': clamp_profit_for_display(h['profit']), 'recorded_at': h['recorded_at']}
+                    for h in history
+                ]
 
-            if not history_points or history_points[-1]['recorded_at'] != live_snapshot_recorded_at:
+            if include_history and (not history_points or history_points[-1]['recorded_at'] != live_snapshot_recorded_at):
                 history_points.append({
                     'profit': clamp_profit_for_display(agent['profit']),
                     'recorded_at': live_snapshot_recorded_at,
@@ -213,7 +240,13 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
                 break
 
         conn.close()
-        payload = {'top_agents': result}
+        payload = {
+            'top_agents': result,
+            'total': total,
+            'limit': limit,
+            'offset': offset,
+            'has_more': offset + len(result) < total,
+        }
         ctx.leaderboard_cache[cache_key] = (now_ts, payload)
         set_json(redis_cache_key, payload, ttl_seconds=LEADERBOARD_CACHE_TTL_SECONDS)
         return payload
@@ -322,8 +355,6 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         outcome: Optional[str] = None,
         authorization: str = Header(None),
     ):
-        from price_fetcher import get_price_from_market
-
         token = _extract_token(authorization)
         if not token:
             raise HTTPException(status_code=401, detail='Invalid token')
@@ -361,13 +392,37 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         if cached and now_ts - cached[0] < PRICE_QUOTE_CACHE_TTL_SECONDS:
             return cached[1]
 
-        price = get_price_from_market(normalized_symbol, now, market, token_id=token_id, outcome=outcome)
+        price = None
+        conn = get_db_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT current_price
+                FROM positions
+                WHERE symbol = ? AND market = ? AND COALESCE(token_id, '') = COALESCE(?, '')
+                  AND current_price IS NOT NULL
+                ORDER BY opened_at DESC
+                LIMIT 1
+                """,
+                (normalized_symbol, market, token_id),
+            )
+            row = cursor.fetchone()
+            if row:
+                price = row['current_price']
+        finally:
+            conn.close()
+
+        if price is None and allow_sync_price_fetch_in_api():
+            from price_fetcher import get_price_from_market
+
+            price = get_price_from_market(normalized_symbol, now, market, token_id=token_id, outcome=outcome)
         if price is None:
             raise HTTPException(status_code=404, detail='Price not available')
 
         payload = {'symbol': normalized_symbol, 'market': market, 'token_id': token_id, 'outcome': outcome, 'price': price}
         if market == 'polymarket':
-            decorate_polymarket_item(payload, fetch_remote=True)
+            decorate_polymarket_item(payload, fetch_remote=allow_sync_price_fetch_in_api())
         ctx.price_quote_cache[cache_key] = (now_ts, payload)
         set_json(redis_cache_key, payload, ttl_seconds=PRICE_QUOTE_CACHE_TTL_SECONDS)
         return payload

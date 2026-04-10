@@ -22,6 +22,7 @@ try:
 except ImportError:  # pragma: no cover - optional dependency in some environments
     OpenRouter = None
 
+from cache import delete_pattern, get_json, set_json
 from config import ALPHA_VANTAGE_API_KEY
 from database import get_db_connection
 
@@ -38,6 +39,19 @@ ETF_FLOW_HISTORY_LIMIT = int(os.getenv("ETF_FLOW_HISTORY_LIMIT", "96"))
 ETF_FLOW_LOOKBACK_DAYS = int(os.getenv("ETF_FLOW_LOOKBACK_DAYS", "1"))
 ETF_FLOW_BASELINE_VOLUME_DAYS = int(os.getenv("ETF_FLOW_BASELINE_VOLUME_DAYS", "5"))
 STOCK_ANALYSIS_HISTORY_LIMIT = int(os.getenv("STOCK_ANALYSIS_HISTORY_LIMIT", "120"))
+MARKET_NEWS_CACHE_TTL_SECONDS = max(30, int(os.getenv("MARKET_NEWS_REFRESH_INTERVAL", "3600")))
+MACRO_SIGNAL_CACHE_TTL_SECONDS = max(30, int(os.getenv("MACRO_SIGNAL_REFRESH_INTERVAL", "3600")))
+ETF_FLOW_CACHE_TTL_SECONDS = max(30, int(os.getenv("ETF_FLOW_REFRESH_INTERVAL", "3600")))
+STOCK_ANALYSIS_CACHE_TTL_SECONDS = max(30, int(os.getenv("STOCK_ANALYSIS_REFRESH_INTERVAL", "7200")))
+MARKET_INTEL_OVERVIEW_CACHE_TTL_SECONDS = max(
+    30,
+    min(
+        MARKET_NEWS_CACHE_TTL_SECONDS,
+        MACRO_SIGNAL_CACHE_TTL_SECONDS,
+        ETF_FLOW_CACHE_TTL_SECONDS,
+        STOCK_ANALYSIS_CACHE_TTL_SECONDS,
+    ),
+)
 FALLBACK_STOCK_ANALYSIS_SYMBOLS = [
     symbol.strip().upper()
     for symbol in os.getenv("MARKET_INTEL_STOCK_SYMBOLS", "NVDA,AAPL,MSFT,AMZN,TSLA,META").split(",")
@@ -81,6 +95,12 @@ MACRO_SYMBOLS = {
     "safe_haven": "GLD",
     "dollar": "UUP",
 }
+
+MARKET_INTEL_CACHE_PREFIX = "market_intel"
+
+
+def _cache_key(*parts: object) -> str:
+    return ":".join([MARKET_INTEL_CACHE_PREFIX, *[str(part) for part in parts]])
 
 BTC_ETF_SYMBOLS = [
     "IBIT",
@@ -995,6 +1015,9 @@ def refresh_market_news_snapshots() -> dict[str, Any]:
     finally:
         conn.close()
 
+    delete_pattern(_cache_key("news", "*"))
+    delete_pattern(_cache_key("overview"))
+
     return {
         "inserted_categories": inserted,
         "errors": errors,
@@ -1110,6 +1133,9 @@ def refresh_macro_signal_snapshot() -> dict[str, Any]:
     finally:
         conn.close()
 
+    delete_pattern(_cache_key("macro_signals"))
+    delete_pattern(_cache_key("overview"))
+
     return {
         "verdict": snapshot["verdict"],
         "bullish_count": snapshot["bullish_count"],
@@ -1119,6 +1145,11 @@ def refresh_macro_signal_snapshot() -> dict[str, Any]:
 
 
 def get_macro_signals_payload() -> dict[str, Any]:
+    cache_key = _cache_key("macro_signals")
+    cached = get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -1132,7 +1163,7 @@ def get_macro_signals_payload() -> dict[str, Any]:
         )
         row = cursor.fetchone()
         if not row:
-            return {
+            payload = {
                 "available": False,
                 "verdict": "unavailable",
                 "bullish_count": 0,
@@ -1142,7 +1173,9 @@ def get_macro_signals_payload() -> dict[str, Any]:
                 "source": {},
                 "created_at": None,
             }
-        return {
+            set_json(cache_key, payload, ttl_seconds=MACRO_SIGNAL_CACHE_TTL_SECONDS)
+            return payload
+        payload = {
             "available": True,
             "verdict": row["verdict"],
             "bullish_count": row["bullish_count"],
@@ -1152,6 +1185,8 @@ def get_macro_signals_payload() -> dict[str, Any]:
             "source": json.loads(row["source_json"] or "{}"),
             "created_at": row["created_at"],
         }
+        set_json(cache_key, payload, ttl_seconds=MACRO_SIGNAL_CACHE_TTL_SECONDS)
+        return payload
     finally:
         conn.close()
 
@@ -1181,6 +1216,9 @@ def refresh_etf_flow_snapshot() -> dict[str, Any]:
     finally:
         conn.close()
 
+    delete_pattern(_cache_key("etf_flows"))
+    delete_pattern(_cache_key("overview"))
+
     return {
         "direction": summary["direction"],
         "tracked_count": summary["tracked_count"],
@@ -1189,6 +1227,11 @@ def refresh_etf_flow_snapshot() -> dict[str, Any]:
 
 
 def get_etf_flows_payload() -> dict[str, Any]:
+    cache_key = _cache_key("etf_flows")
+    cached = get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -1202,21 +1245,25 @@ def get_etf_flows_payload() -> dict[str, Any]:
         )
         row = cursor.fetchone()
         if not row:
-            return {
+            payload = {
                 "available": False,
                 "summary": {},
                 "etfs": [],
                 "created_at": None,
                 "is_estimated": True,
             }
+            set_json(cache_key, payload, ttl_seconds=ETF_FLOW_CACHE_TTL_SECONDS)
+            return payload
         summary = json.loads(row["summary_json"] or "{}")
-        return {
+        payload = {
             "available": True,
             "summary": summary,
             "etfs": json.loads(row["etfs_json"] or "[]"),
             "created_at": row["created_at"],
             "is_estimated": bool(summary.get("is_estimated", True)),
         }
+        set_json(cache_key, payload, ttl_seconds=ETF_FLOW_CACHE_TTL_SECONDS)
+        return payload
     finally:
         conn.close()
 
@@ -1273,6 +1320,9 @@ def refresh_stock_analysis_snapshots() -> dict[str, Any]:
     finally:
         conn.close()
 
+    delete_pattern(_cache_key("stocks", "*"))
+    delete_pattern(_cache_key("overview"))
+
     return {
         "inserted_symbols": inserted,
         "errors": errors,
@@ -1282,6 +1332,11 @@ def refresh_stock_analysis_snapshots() -> dict[str, Any]:
 
 def get_stock_analysis_latest_payload(symbol: str) -> dict[str, Any]:
     symbol = symbol.strip().upper()
+    cache_key = _cache_key("stocks", "latest", symbol)
+    cached = get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -1299,8 +1354,10 @@ def get_stock_analysis_latest_payload(symbol: str) -> dict[str, Any]:
         )
         row = cursor.fetchone()
         if not row:
-            return {"available": False, "symbol": symbol}
-        return {
+            payload = {"available": False, "symbol": symbol}
+            set_json(cache_key, payload, ttl_seconds=STOCK_ANALYSIS_CACHE_TTL_SECONDS)
+            return payload
+        payload = {
             "available": True,
             "symbol": row["symbol"],
             "market": row["market"],
@@ -1318,12 +1375,20 @@ def get_stock_analysis_latest_payload(symbol: str) -> dict[str, Any]:
             "analysis": json.loads(row["analysis_json"] or "{}"),
             "created_at": row["created_at"],
         }
+        set_json(cache_key, payload, ttl_seconds=STOCK_ANALYSIS_CACHE_TTL_SECONDS)
+        return payload
     finally:
         conn.close()
 
 
 def get_stock_analysis_history_payload(symbol: str, limit: int = 10) -> dict[str, Any]:
     symbol = symbol.strip().upper()
+    normalized_limit = max(1, min(limit, 30))
+    cache_key = _cache_key("stocks", "history", symbol, normalized_limit)
+    cached = get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
     conn = get_db_connection()
     cursor = conn.cursor()
     try:
@@ -1335,10 +1400,10 @@ def get_stock_analysis_history_payload(symbol: str, limit: int = 10) -> dict[str
             ORDER BY created_at DESC, id DESC
             LIMIT ?
             """,
-            (symbol, max(1, min(limit, 30))),
+            (symbol, normalized_limit),
         )
         rows = cursor.fetchall()
-        return {
+        payload = {
             "available": bool(rows),
             "symbol": symbol,
             "history": [
@@ -1354,19 +1419,36 @@ def get_stock_analysis_history_payload(symbol: str, limit: int = 10) -> dict[str
                 for row in rows
             ],
         }
+        set_json(cache_key, payload, ttl_seconds=STOCK_ANALYSIS_CACHE_TTL_SECONDS)
+        return payload
     finally:
         conn.close()
 
 
 def get_featured_stock_analysis_payload(limit: int = 6) -> dict[str, Any]:
-    symbols = _get_hot_us_stock_symbols(limit=max(1, min(limit, 10)))
-    return {
+    normalized_limit = max(1, min(limit, 10))
+    cache_key = _cache_key("stocks", "featured", normalized_limit)
+    cached = get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
+    symbols = _get_hot_us_stock_symbols(limit=normalized_limit)
+    payload = {
         "available": True,
         "items": [get_stock_analysis_latest_payload(symbol) for symbol in symbols],
     }
+    set_json(cache_key, payload, ttl_seconds=STOCK_ANALYSIS_CACHE_TTL_SECONDS)
+    return payload
 
 
 def get_market_news_payload(category: Optional[str] = None, limit: int = 5) -> dict[str, Any]:
+    normalized_category = (category or "").strip().lower() or "all"
+    normalized_limit = max(limit, 1)
+    cache_key = _cache_key("news", normalized_category, normalized_limit)
+    cached = get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
     requested_categories = [category] if category else list(NEWS_CATEGORY_DEFINITIONS.keys())
     sections = []
 
@@ -1399,7 +1481,7 @@ def get_market_news_payload(category: Optional[str] = None, limit: int = 5) -> d
             "label_zh": definition["label_zh"],
             "description": definition["description"],
             "description_zh": definition["description_zh"],
-            "items": (snapshot["items"] or [])[: max(limit, 1)],
+            "items": (snapshot["items"] or [])[: normalized_limit],
             "summary": snapshot["summary"],
             "created_at": snapshot["created_at"],
             "available": True,
@@ -1408,15 +1490,22 @@ def get_market_news_payload(category: Optional[str] = None, limit: int = 5) -> d
     last_updated_at = max((section["created_at"] for section in sections if section.get("created_at")), default=None)
     total_items = sum(int((section.get("summary") or {}).get("item_count") or 0) for section in sections)
 
-    return {
+    payload = {
         "categories": sections,
         "last_updated_at": last_updated_at,
         "total_items": total_items,
         "available": any(section.get("available") for section in sections),
     }
+    set_json(cache_key, payload, ttl_seconds=MARKET_NEWS_CACHE_TTL_SECONDS)
+    return payload
 
 
 def get_market_intel_overview() -> dict[str, Any]:
+    cache_key = _cache_key("overview")
+    cached = get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
     macro_payload = get_macro_signals_payload()
     etf_payload = get_etf_flows_payload()
     stock_payload = get_featured_stock_analysis_payload(limit=4)
@@ -1452,7 +1541,7 @@ def get_market_intel_overview() -> dict[str, Any]:
                 latest_item_time = item_time
                 latest_headline = item.get("title")
 
-    return {
+    payload = {
         "available": bool(available_categories) or bool(macro_payload.get("available")),
         "last_updated_at": max(
             [timestamp for timestamp in (news_payload["last_updated_at"], macro_payload.get("created_at")) if timestamp],
@@ -1485,6 +1574,8 @@ def get_market_intel_overview() -> dict[str, Any]:
                 "top_source": (section.get("summary") or {}).get("top_source"),
                 "created_at": section.get("created_at"),
             }
-            for section in categories
+                for section in categories
         ],
     }
+    set_json(cache_key, payload, ttl_seconds=MARKET_INTEL_OVERVIEW_CACHE_TTL_SECONDS)
+    return payload
