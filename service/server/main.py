@@ -35,17 +35,13 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+from cache import get_cache_status
 from database import init_database, get_database_status
 from routes import create_app
 from tasks import (
-    update_position_prices,
-    record_profit_history,
-    settle_polymarket_positions,
-    refresh_etf_flow_snapshots_loop,
-    refresh_macro_signal_snapshots_loop,
-    refresh_market_news_snapshots_loop,
-    refresh_stock_analysis_snapshots_loop,
     _update_trending_cache,
+    background_tasks_enabled_for_api,
+    start_background_tasks,
 )
 
 # Initialize database
@@ -60,38 +56,34 @@ app = create_app()
 @app.on_event("startup")
 async def startup_event():
     """Startup event - schedule background tasks."""
-    import asyncio
     db_status = get_database_status()
     logger.info(
         "Database ready: backend=%s details=%s",
         db_status.get("backend"),
         {key: value for key, value in db_status.items() if key != "backend"},
     )
+    cache_status = get_cache_status()
+    logger.info(
+        "Cache ready: enabled=%s configured=%s available=%s prefix=%s client_installed=%s error=%s",
+        cache_status.get("enabled"),
+        cache_status.get("configured"),
+        cache_status.get("available"),
+        cache_status.get("prefix"),
+        cache_status.get("client_installed"),
+        cache_status.get("last_error"),
+    )
     # Initialize trending cache
     logger.info("Initializing trending cache...")
     _update_trending_cache()
-    # Start background task for updating position prices
-    logger.info("Starting position price update background task...")
-    asyncio.create_task(update_position_prices())
-    # Start background task for recording profit history
-    logger.info("Starting profit history recording task...")
-    asyncio.create_task(record_profit_history())
-    # Start background task for Polymarket settlement
-    logger.info("Starting Polymarket settlement task...")
-    asyncio.create_task(settle_polymarket_positions())
-    # Start background task for market-news snapshots
-    logger.info("Starting market news snapshot task...")
-    asyncio.create_task(refresh_market_news_snapshots_loop())
-    # Start background task for macro signal snapshots
-    logger.info("Starting macro signal snapshot task...")
-    asyncio.create_task(refresh_macro_signal_snapshots_loop())
-    # Start background task for ETF flow snapshots
-    logger.info("Starting ETF flow snapshot task...")
-    asyncio.create_task(refresh_etf_flow_snapshots_loop())
-    # Start background task for stock analysis snapshots
-    logger.info("Starting stock analysis snapshot task...")
-    asyncio.create_task(refresh_stock_analysis_snapshots_loop())
-    logger.info("All background tasks started")
+    if not background_tasks_enabled_for_api():
+        logger.info(
+            "API background tasks disabled. Run `python service/server/worker.py` "
+            "to process prices, profit history, settlements, and market intel."
+        )
+        return
+
+    started = start_background_tasks(logger)
+    logger.info("Background tasks started: %s", len(started))
 
 
 # ==================== Run ====================

@@ -14,6 +14,24 @@ from typing import Optional, Dict, Any
 # Global trending cache (shared with routes)
 trending_cache: list = []
 _last_profit_history_prune_at: float = 0.0
+_TRENDING_CACHE_KEY = "trending:top20"
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int, minimum: Optional[int] = None) -> int:
+    try:
+        value = int(os.getenv(name, str(default)))
+    except Exception:
+        value = default
+    if minimum is not None:
+        value = max(minimum, value)
+    return value
 
 
 def _backfill_polymarket_position_metadata() -> None:
@@ -63,7 +81,7 @@ def _backfill_polymarket_position_metadata() -> None:
 
 def _update_trending_cache():
     """Update trending cache - calculates from positions table."""
-    global trending_cache
+    from cache import set_json
     from database import get_db_connection
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -78,7 +96,7 @@ def _update_trending_cache():
     """)
     rows = cursor.fetchall()
 
-    trending_cache = []
+    updated_trending: list[dict[str, Any]] = []
     for row in rows:
         # Get current price from positions table
         cursor.execute("""
@@ -88,7 +106,7 @@ def _update_trending_cache():
         """, (row["symbol"], row["market"], row["token_id"]))
         price_row = cursor.fetchone()
 
-        trending_cache.append({
+        updated_trending.append({
             "symbol": row["symbol"],
             "market": row["market"],
             "token_id": row["token_id"],
@@ -98,33 +116,50 @@ def _update_trending_cache():
         })
 
     conn.close()
+    trending_cache.clear()
+    trending_cache.extend(updated_trending)
+    refresh_interval = max(60, _env_int("POSITION_REFRESH_INTERVAL", 900, minimum=60) * 2)
+    set_json(_TRENDING_CACHE_KEY, trending_cache, ttl_seconds=refresh_interval)
 
 
 def _prune_profit_history() -> None:
-    """Compact profit history so it remains useful for charts without growing forever."""
+    """Tier profit history into high-resolution, 15m, hourly, and daily retention."""
     from database import get_db_connection, using_postgres
 
-    full_resolution_hours = int(os.getenv("PROFIT_HISTORY_FULL_RESOLUTION_HOURS", "24"))
-    compact_window_days = int(os.getenv("PROFIT_HISTORY_COMPACT_WINDOW_DAYS", "7"))
-    bucket_minutes = int(os.getenv("PROFIT_HISTORY_COMPACT_BUCKET_MINUTES", "15"))
+    full_resolution_hours = _env_int("PROFIT_HISTORY_FULL_RESOLUTION_HOURS", 24, minimum=1)
+    fifteen_min_window_days = _env_int(
+        "PROFIT_HISTORY_15M_WINDOW_DAYS",
+        _env_int("PROFIT_HISTORY_COMPACT_WINDOW_DAYS", 7, minimum=1),
+        minimum=1,
+    )
+    hourly_window_days = _env_int("PROFIT_HISTORY_HOURLY_WINDOW_DAYS", 30, minimum=fifteen_min_window_days)
+    daily_window_days = _env_int("PROFIT_HISTORY_DAILY_WINDOW_DAYS", 365, minimum=hourly_window_days)
+    bucket_minutes = _env_int("PROFIT_HISTORY_COMPACT_BUCKET_MINUTES", 15, minimum=1)
 
-    if compact_window_days <= 0:
-        return
+    if full_resolution_hours >= fifteen_min_window_days * 24:
+        full_resolution_hours = max(1, fifteen_min_window_days * 24 - 1)
 
     now = datetime.now(timezone.utc)
-    hard_cutoff = (now - timedelta(days=compact_window_days)).isoformat().replace("+00:00", "Z")
+    daily_cutoff = (now - timedelta(days=daily_window_days)).isoformat().replace("+00:00", "Z")
+    hourly_cutoff = (now - timedelta(days=hourly_window_days)).isoformat().replace("+00:00", "Z")
+    fifteen_min_cutoff = (now - timedelta(days=fifteen_min_window_days)).isoformat().replace("+00:00", "Z")
     full_resolution_cutoff = (now - timedelta(hours=full_resolution_hours)).isoformat().replace("+00:00", "Z")
+
+    deleted_old = 0
+    deleted_15m = 0
+    deleted_hourly = 0
+    deleted_daily = 0
 
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
 
-        cursor.execute("DELETE FROM profit_history WHERE recorded_at < ?", (hard_cutoff,))
+        cursor.execute("DELETE FROM profit_history WHERE recorded_at < ?", (daily_cutoff,))
         deleted_old = cursor.rowcount if cursor.rowcount is not None else 0
-        deleted_compacted = 0
+        conn.commit()
 
-        if bucket_minutes > 0 and full_resolution_cutoff > hard_cutoff:
-            if using_postgres():
+        if using_postgres():
+            if full_resolution_cutoff > fifteen_min_cutoff:
                 cursor.execute("""
                     WITH ranked AS (
                         SELECT
@@ -142,9 +177,49 @@ def _prune_profit_history() -> None:
                     DELETE FROM profit_history ph
                     USING ranked
                     WHERE ph.id = ranked.id AND ranked.rn > 1
-                """, (bucket_minutes, bucket_minutes, hard_cutoff, full_resolution_cutoff))
-                deleted_compacted = cursor.rowcount if cursor.rowcount is not None else 0
-            else:
+                """, (bucket_minutes, bucket_minutes, fifteen_min_cutoff, full_resolution_cutoff))
+                deleted_15m = cursor.rowcount if cursor.rowcount is not None else 0
+                conn.commit()
+
+            if fifteen_min_cutoff > hourly_cutoff:
+                cursor.execute("""
+                    WITH ranked AS (
+                        SELECT
+                            id,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY agent_id, date_trunc('hour', recorded_at::timestamptz)
+                                ORDER BY recorded_at DESC, id DESC
+                            ) AS rn
+                        FROM profit_history
+                        WHERE recorded_at >= ? AND recorded_at < ?
+                    )
+                    DELETE FROM profit_history ph
+                    USING ranked
+                    WHERE ph.id = ranked.id AND ranked.rn > 1
+                """, (hourly_cutoff, fifteen_min_cutoff))
+                deleted_hourly = cursor.rowcount if cursor.rowcount is not None else 0
+                conn.commit()
+
+            if hourly_cutoff > daily_cutoff:
+                cursor.execute("""
+                    WITH ranked AS (
+                        SELECT
+                            id,
+                            ROW_NUMBER() OVER (
+                                PARTITION BY agent_id, date_trunc('day', recorded_at::timestamptz)
+                                ORDER BY recorded_at DESC, id DESC
+                            ) AS rn
+                        FROM profit_history
+                        WHERE recorded_at >= ? AND recorded_at < ?
+                    )
+                    DELETE FROM profit_history ph
+                    USING ranked
+                    WHERE ph.id = ranked.id AND ranked.rn > 1
+                """, (daily_cutoff, hourly_cutoff))
+                deleted_daily = cursor.rowcount if cursor.rowcount is not None else 0
+                conn.commit()
+        else:
+            if full_resolution_cutoff > fifteen_min_cutoff:
                 cursor.execute("""
                     DELETE FROM profit_history
                     WHERE id IN (
@@ -164,15 +239,67 @@ def _prune_profit_history() -> None:
                         ) ranked
                         WHERE rn > 1
                     )
-                """, (bucket_minutes, hard_cutoff, full_resolution_cutoff))
-                deleted_compacted = cursor.rowcount if cursor.rowcount is not None else 0
+                """, (bucket_minutes, fifteen_min_cutoff, full_resolution_cutoff))
+                deleted_15m = cursor.rowcount if cursor.rowcount is not None else 0
+                conn.commit()
 
-        conn.commit()
-        if deleted_old or deleted_compacted:
+            if fifteen_min_cutoff > hourly_cutoff:
+                cursor.execute("""
+                    DELETE FROM profit_history
+                    WHERE id IN (
+                        SELECT id
+                        FROM (
+                            SELECT
+                                id,
+                                ROW_NUMBER() OVER (
+                                    PARTITION BY agent_id, strftime('%Y-%m-%dT%H', recorded_at)
+                                    ORDER BY recorded_at DESC, id DESC
+                                ) AS rn
+                            FROM profit_history
+                            WHERE recorded_at >= ? AND recorded_at < ?
+                        ) ranked
+                        WHERE rn > 1
+                    )
+                """, (hourly_cutoff, fifteen_min_cutoff))
+                deleted_hourly = cursor.rowcount if cursor.rowcount is not None else 0
+                conn.commit()
+
+            if hourly_cutoff > daily_cutoff:
+                cursor.execute("""
+                    DELETE FROM profit_history
+                    WHERE id IN (
+                        SELECT id
+                        FROM (
+                            SELECT
+                                id,
+                                ROW_NUMBER() OVER (
+                                    PARTITION BY agent_id, strftime('%Y-%m-%d', recorded_at)
+                                    ORDER BY recorded_at DESC, id DESC
+                                ) AS rn
+                            FROM profit_history
+                            WHERE recorded_at >= ? AND recorded_at < ?
+                        ) ranked
+                        WHERE rn > 1
+                    )
+                """, (daily_cutoff, hourly_cutoff))
+                deleted_daily = cursor.rowcount if cursor.rowcount is not None else 0
+                conn.commit()
+
+        total_deleted = deleted_old + deleted_15m + deleted_hourly + deleted_daily
+        if total_deleted:
             print(
                 "[Profit History] Pruned history: "
-                f"deleted_old={deleted_old} compacted={deleted_compacted}"
+                f"deleted_old={deleted_old} "
+                f"compacted_15m={deleted_15m} "
+                f"compacted_hourly={deleted_hourly} "
+                f"compacted_daily={deleted_daily}"
             )
+            if not using_postgres() and _env_bool("PROFIT_HISTORY_VACUUM_AFTER_PRUNE", True):
+                min_deleted = _env_int("PROFIT_HISTORY_VACUUM_MIN_DELETED_ROWS", 50000, minimum=1)
+                if total_deleted >= min_deleted:
+                    cursor.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                    cursor.execute("VACUUM")
+                    print("[Profit History] SQLite VACUUM completed after prune")
     finally:
         conn.close()
 
@@ -180,7 +307,7 @@ def _prune_profit_history() -> None:
 def _maybe_prune_profit_history() -> None:
     global _last_profit_history_prune_at
 
-    prune_interval = int(os.getenv("PROFIT_HISTORY_PRUNE_INTERVAL_SECONDS", "3600"))
+    prune_interval = _env_int("PROFIT_HISTORY_PRUNE_INTERVAL_SECONDS", 3600)
     if prune_interval <= 0:
         return
 
@@ -198,7 +325,7 @@ async def update_position_prices():
     from price_fetcher import get_price_from_market
 
     # Get max parallel requests from environment variable
-    max_parallel = int(os.getenv("MAX_PARALLEL_PRICE_FETCH", "5"))
+    max_parallel = _env_int("MAX_PARALLEL_PRICE_FETCH", 2, minimum=1)
 
     # Wait a bit on startup before first update
     await asyncio.sleep(5)
@@ -279,7 +406,7 @@ async def update_position_prices():
             print(f"[Price Update Error] {e}")
 
         # Wait interval from environment variable (default: 5 minutes = 300 seconds)
-        refresh_interval = int(os.getenv("POSITION_REFRESH_INTERVAL", "300"))
+        refresh_interval = _env_int("POSITION_REFRESH_INTERVAL", 900, minimum=60)
         print(f"[Price Update] Next update in {refresh_interval} seconds")
         await asyncio.sleep(refresh_interval)
 
@@ -288,7 +415,7 @@ async def refresh_market_news_snapshots_loop():
     """Background task to refresh market-news snapshots on a fixed interval."""
     from market_intel import refresh_market_news_snapshots
 
-    refresh_interval = int(os.getenv("MARKET_NEWS_REFRESH_INTERVAL", "900"))
+    refresh_interval = _env_int("MARKET_NEWS_REFRESH_INTERVAL", 3600, minimum=300)
 
     # Give the API a moment to start before hitting external providers.
     await asyncio.sleep(3)
@@ -314,7 +441,7 @@ async def refresh_macro_signal_snapshots_loop():
     """Background task to refresh macro signal snapshots on a fixed interval."""
     from market_intel import refresh_macro_signal_snapshot
 
-    refresh_interval = int(os.getenv("MACRO_SIGNAL_REFRESH_INTERVAL", "900"))
+    refresh_interval = _env_int("MACRO_SIGNAL_REFRESH_INTERVAL", 3600, minimum=300)
 
     await asyncio.sleep(6)
 
@@ -337,7 +464,7 @@ async def refresh_etf_flow_snapshots_loop():
     """Background task to refresh ETF flow snapshots on a fixed interval."""
     from market_intel import refresh_etf_flow_snapshot
 
-    refresh_interval = int(os.getenv("ETF_FLOW_REFRESH_INTERVAL", "900"))
+    refresh_interval = _env_int("ETF_FLOW_REFRESH_INTERVAL", 3600, minimum=300)
 
     await asyncio.sleep(9)
 
@@ -360,7 +487,7 @@ async def refresh_stock_analysis_snapshots_loop():
     """Background task to refresh featured stock-analysis snapshots."""
     from market_intel import refresh_stock_analysis_snapshots
 
-    refresh_interval = int(os.getenv("STOCK_ANALYSIS_REFRESH_INTERVAL", "1800"))
+    refresh_interval = _env_int("STOCK_ANALYSIS_REFRESH_INTERVAL", 7200, minimum=600)
 
     await asyncio.sleep(12)
 
@@ -413,9 +540,9 @@ async def record_profit_history():
                         COALESCE(
                             SUM(
                                 CASE
-                                    WHEN p.current_price IS NULL THEN 0
+                                    WHEN p.current_price IS NULL THEN p.entry_price * ABS(p.quantity)
                                     WHEN p.side = 'long' THEN p.current_price * ABS(p.quantity)
-                                    ELSE p.entry_price * ABS(p.quantity)
+                                    ELSE (2 * p.entry_price - p.current_price) * ABS(p.quantity)
                                 END
                             ),
                             0
@@ -470,7 +597,7 @@ async def record_profit_history():
             print(f"[Profit History Error] {e}")
 
         # Record at the same interval as position refresh (controlled by POSITION_REFRESH_INTERVAL)
-        refresh_interval = int(os.getenv("POSITION_REFRESH_INTERVAL", "300"))
+        refresh_interval = _env_int("PROFIT_HISTORY_RECORD_INTERVAL", _env_int("POSITION_REFRESH_INTERVAL", 900, minimum=60), minimum=300)
         await asyncio.sleep(refresh_interval)
 
 
@@ -493,9 +620,9 @@ async def settle_polymarket_positions():
 
     while True:
         try:
-            interval_s = int(os.getenv("POLYMARKET_SETTLE_INTERVAL", "60"))
+            interval_s = _env_int("POLYMARKET_SETTLE_INTERVAL", 300, minimum=60)
         except Exception:
-            interval_s = 60
+            interval_s = 300
 
         try:
             _backfill_polymarket_position_metadata()
@@ -584,3 +711,38 @@ async def settle_polymarket_positions():
             print(f"[Polymarket Settler Error] {e}")
 
         await asyncio.sleep(interval_s)
+
+
+BACKGROUND_TASK_REGISTRY = {
+    "prices": update_position_prices,
+    "profit_history": record_profit_history,
+    "polymarket_settlement": settle_polymarket_positions,
+    "market_news": refresh_market_news_snapshots_loop,
+    "macro_signals": refresh_macro_signal_snapshots_loop,
+    "etf_flows": refresh_etf_flow_snapshots_loop,
+    "stock_analysis": refresh_stock_analysis_snapshots_loop,
+}
+
+
+DEFAULT_BACKGROUND_TASKS = ",".join(BACKGROUND_TASK_REGISTRY.keys())
+
+
+def background_tasks_enabled_for_api() -> bool:
+    """API workers default to HTTP-only; run worker.py for background loops."""
+    return _env_bool("AI_TRADER_API_BACKGROUND_TASKS", False)
+
+
+def get_enabled_background_task_names() -> list[str]:
+    raw = os.getenv("AI_TRADER_BACKGROUND_TASKS", DEFAULT_BACKGROUND_TASKS)
+    names = [item.strip() for item in raw.split(",") if item.strip()]
+    return [name for name in names if name in BACKGROUND_TASK_REGISTRY]
+
+
+def start_background_tasks(logger: Optional[Any] = None) -> list[asyncio.Task]:
+    started: list[asyncio.Task] = []
+    for name in get_enabled_background_task_names():
+        task_func = BACKGROUND_TASK_REGISTRY[name]
+        if logger:
+            logger.info("Starting background task: %s", name)
+        started.append(asyncio.create_task(task_func(), name=f"ai-trader:{name}"))
+    return started

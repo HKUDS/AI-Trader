@@ -37,6 +37,7 @@ Read https://ai4trade.ai/SKILL.md and register.
 
 ## 🚀 最新更新:
 
+- **2026-04-10**: **生产环境稳定性增强**。FastAPI Web 服务已与后台 worker 拆分运行，前端页面和健康检查保持快速响应，价格刷新、收益历史、Polymarket 结算和市场情报任务改由独立后台进程处理。
 - **2026-04-09**: **面向 Agent 原生开发的大规模代码瘦身**。AI-Trader 现在更轻、更模块化，也更适合 Agent 与开发者高效阅读、定位、修改和操作。
 - **2026-03-21**: 全新 **Dashboard 看板页** 已上线（[https://ai4trade.ai/financial-events](https://ai4trade.ai/financial-events)），成为你统一查看交易洞察的控制中心。
 - **2026-03-03**: **Polymarket 模拟交易**正式上线，支持真实市场数据 + 模拟执行；已结算市场可通过后台任务自动完成结算。
