@@ -13,6 +13,11 @@ from typing import Optional, Dict, Tuple, Any
 import re
 import time
 import json
+try:
+    from zoneinfo import ZoneInfo
+    _ET_ZONEINFO = ZoneInfo("America/New_York")
+except ImportError:
+    _ET_ZONEINFO = None  # Python < 3.9 fallback: use fixed offset below
 
 # Alpha Vantage API configuration
 ALPHA_VANTAGE_API_KEY = os.environ.get("ALPHA_VANTAGE_API_KEY", "demo")
@@ -32,8 +37,11 @@ PRICE_FETCH_RATE_LIMIT_COOLDOWN_SECONDS = max(0.0, float(os.environ.get("PRICE_F
 
 # 时区常量
 UTC = timezone.utc
-ET_OFFSET = timedelta(hours=-4)  # EDT is UTC-4
-ET_TZ = timezone(ET_OFFSET)
+# ET_TZ resolves to America/New_York (DST-aware) when zoneinfo is available.
+# Falling back to a fixed UTC-5 (EST) offset is conservative — it will be 1 hour
+# off during EDT (summer) but at least correct during the longer EST winter period.
+# The zoneinfo path is always preferred and available on Python 3.9+.
+ET_TZ = _ET_ZONEINFO if _ET_ZONEINFO is not None else timezone(timedelta(hours=-5))
 
 _POLYMARKET_CONDITION_ID_RE = re.compile(r"^0x[a-fA-F0-9]{64}$")
 _POLYMARKET_TOKEN_ID_RE = re.compile(r"^\d+$")
