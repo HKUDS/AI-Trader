@@ -233,10 +233,14 @@ def _update_position_from_signal(
         if current_qty < 0:
             # Add to existing short
             new_qty = current_qty - quantity
+            current_short_qty = abs(current_qty)
+            new_entry_price = (
+                (current_short_qty * row["entry_price"]) + (quantity * price)
+            ) / abs(new_qty)
             cursor.execute("""
-                UPDATE positions SET quantity = ?, opened_at = ?
+                UPDATE positions SET quantity = ?, entry_price = ?, opened_at = ?
                 WHERE id = ?
-            """, (new_qty, executed_at, position_id))
+            """, (new_qty, new_entry_price, executed_at, position_id))
             print(f"[Position] {symbol}: increased short position to {new_qty}")
         else:
             # Create new short position (negative quantity for short)
