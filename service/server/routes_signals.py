@@ -21,7 +21,6 @@ from routes_shared import (
     GROUPED_SIGNALS_CACHE_KEY_PREFIX,
     GROUPED_SIGNALS_CACHE_TTL_SECONDS,
     RouteContext,
-    allow_sync_price_fetch_in_api,
     decorate_polymarket_item,
     enforce_content_rate_limit,
     extract_mentions,
@@ -31,6 +30,7 @@ from routes_shared import (
     is_market_open,
     notify_followers_of_post,
     push_agent_message,
+    should_fetch_server_trade_price,
     utc_now_iso_z,
     validate_executed_at,
 )
@@ -50,7 +50,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         now = utc_now_iso_z()
         side = data.action
         action_lower = side.lower()
-        fetch_price_in_request = allow_sync_price_fetch_in_api()
+        fetch_price_in_request = should_fetch_server_trade_price(data.market)
         polymarket_token_id = None
         polymarket_outcome = None
 
