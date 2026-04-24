@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
 from collections import Counter
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time as datetime_time, timedelta, timezone
 from typing import Any, Optional
 import re
 
@@ -21,6 +23,10 @@ try:
     from openrouter import OpenRouter
 except ImportError:  # pragma: no cover - optional dependency in some environments
     OpenRouter = None
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover - Python < 3.9 fallback
+    ZoneInfo = None
 
 from cache import delete_pattern, get_json, set_json
 from config import ALPHA_VANTAGE_API_KEY
@@ -43,6 +49,14 @@ MARKET_NEWS_CACHE_TTL_SECONDS = max(30, int(os.getenv("MARKET_NEWS_REFRESH_INTER
 MACRO_SIGNAL_CACHE_TTL_SECONDS = max(30, int(os.getenv("MACRO_SIGNAL_REFRESH_INTERVAL", "3600")))
 ETF_FLOW_CACHE_TTL_SECONDS = max(30, int(os.getenv("ETF_FLOW_REFRESH_INTERVAL", "3600")))
 STOCK_ANALYSIS_CACHE_TTL_SECONDS = max(30, int(os.getenv("STOCK_ANALYSIS_REFRESH_INTERVAL", "7200")))
+STOCK_ANALYSIS_LATEST_CACHE_TTL_SECONDS = max(30, int(os.getenv("MARKET_INTEL_STOCK_LATEST_CACHE_TTL", "60")))
+STOCK_ANALYSIS_FEATURED_CACHE_TTL_SECONDS = max(30, int(os.getenv("MARKET_INTEL_STOCK_FEATURED_CACHE_TTL", "300")))
+STOCK_QUOTE_CACHE_TTL_SECONDS = max(30, int(os.getenv("MARKET_INTEL_STOCK_QUOTE_CACHE_TTL", "300")))
+STOCK_QUOTE_FAILURE_CACHE_TTL_SECONDS = max(30, int(os.getenv("MARKET_INTEL_STOCK_QUOTE_FAILURE_CACHE_TTL", "60")))
+STOCK_QUOTE_STALE_AFTER_SECONDS = max(
+    STOCK_QUOTE_CACHE_TTL_SECONDS,
+    int(os.getenv("MARKET_INTEL_STOCK_QUOTE_STALE_AFTER_SECONDS", "900")),
+)
 MARKET_INTEL_OVERVIEW_CACHE_TTL_SECONDS = max(
     30,
     min(
@@ -114,6 +128,11 @@ BTC_ETF_SYMBOLS = [
 ]
 
 US_STOCK_SYMBOL_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
+US_MARKET_OPEN_TIME = datetime_time(9, 30)
+US_MARKET_CLOSE_TIME = datetime_time(16, 0)
+US_EASTERN_TZ = ZoneInfo("America/New_York") if ZoneInfo is not None else timezone(timedelta(hours=-5))
+_stock_quote_cache_lock = threading.Lock()
+_stock_quote_cache_local: dict[str, tuple[float, Optional[dict[str, Any]]]] = {}
 
 
 def _utc_now() -> datetime:
@@ -122,6 +141,207 @@ def _utc_now() -> datetime:
 
 def _utc_now_iso_z() -> str:
     return _utc_now().isoformat().replace("+00:00", "Z")
+
+
+def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
+    if not value or not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+    if cleaned.endswith("Z"):
+        cleaned = cleaned[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(cleaned)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _datetime_to_iso_z(value: datetime) -> str:
+    return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _parse_alpha_intraday_timestamp(raw: Optional[str]) -> Optional[str]:
+    if not raw or not isinstance(raw, str):
+        return None
+    try:
+        parsed = datetime.strptime(raw.strip(), "%Y-%m-%d %H:%M:%S").replace(tzinfo=US_EASTERN_TZ)
+    except ValueError:
+        return None
+    return _datetime_to_iso_z(parsed)
+
+
+def _daily_close_as_of_iso(raw_date: Optional[str]) -> Optional[str]:
+    if not raw_date or not isinstance(raw_date, str):
+        return None
+    try:
+        parsed_date = datetime.strptime(raw_date.strip(), "%Y-%m-%d")
+    except ValueError:
+        return None
+    close_dt = datetime(
+        parsed_date.year,
+        parsed_date.month,
+        parsed_date.day,
+        US_MARKET_CLOSE_TIME.hour,
+        US_MARKET_CLOSE_TIME.minute,
+        tzinfo=US_EASTERN_TZ,
+    )
+    return _datetime_to_iso_z(close_dt)
+
+
+def _is_us_market_open(now_utc: Optional[datetime] = None) -> bool:
+    reference = (now_utc or _utc_now()).astimezone(US_EASTERN_TZ)
+    if reference.weekday() >= 5:
+        return False
+    current_time = reference.time()
+    return US_MARKET_OPEN_TIME <= current_time < US_MARKET_CLOSE_TIME
+
+
+def _stock_quote_cache_get(symbol: str) -> Optional[dict[str, Any]]:
+    now = time.time()
+    with _stock_quote_cache_lock:
+        cached = _stock_quote_cache_local.get(symbol)
+        if cached and cached[0] > now:
+            return dict(cached[1]) if isinstance(cached[1], dict) else None
+        if cached:
+            _stock_quote_cache_local.pop(symbol, None)
+
+    redis_cached = get_json(_cache_key("stocks", "quote_v1", symbol))
+    if isinstance(redis_cached, dict):
+        ttl_seconds = STOCK_QUOTE_FAILURE_CACHE_TTL_SECONDS if redis_cached.get("available") is False else STOCK_QUOTE_CACHE_TTL_SECONDS
+        _stock_quote_cache_set(symbol, redis_cached, ttl_seconds=ttl_seconds)
+        return dict(redis_cached)
+    return None
+
+
+def _stock_quote_cache_set(symbol: str, payload: dict[str, Any], ttl_seconds: int) -> None:
+    expires_at = time.time() + max(1, ttl_seconds)
+    with _stock_quote_cache_lock:
+        _stock_quote_cache_local[symbol] = (expires_at, dict(payload))
+    set_json(_cache_key("stocks", "quote_v1", symbol), payload, ttl_seconds=ttl_seconds)
+
+
+def _extract_intraday_quote(payload: dict[str, Any]) -> Optional[dict[str, Any]]:
+    meta = payload.get("Meta Data") if isinstance(payload, dict) else None
+    time_series = payload.get("Time Series (1min)") if isinstance(payload, dict) else None
+    if not isinstance(time_series, dict) or not time_series:
+        return None
+
+    last_refreshed = meta.get("3. Last Refreshed") if isinstance(meta, dict) else None
+    if not isinstance(last_refreshed, str) or last_refreshed not in time_series:
+        last_refreshed = max(time_series.keys())
+    values = time_series.get(last_refreshed)
+    if not isinstance(values, dict):
+        return None
+
+    try:
+        current_price = float(values.get("4. close") or values.get("1. open"))
+    except (TypeError, ValueError):
+        return None
+
+    price_as_of = _parse_alpha_intraday_timestamp(last_refreshed)
+    if not price_as_of:
+        return None
+
+    return {
+        "available": True,
+        "current_price": round(current_price, 2),
+        "price_as_of": price_as_of,
+        "price_source": "alpha_vantage_time_series_intraday",
+    }
+
+
+def _fetch_stock_quote_payload(symbol: str) -> Optional[dict[str, Any]]:
+    if not ALPHA_VANTAGE_API_KEY or ALPHA_VANTAGE_API_KEY == "demo":
+        return None
+    payload = _alpha_vantage_get({
+        "function": "TIME_SERIES_INTRADAY",
+        "symbol": symbol,
+        "interval": "1min",
+        "outputsize": "compact",
+        "entitlement": "realtime",
+    })
+    return _extract_intraday_quote(payload)
+
+
+def _get_stock_quote_payload(symbol: str) -> Optional[dict[str, Any]]:
+    cached = _stock_quote_cache_get(symbol)
+    if isinstance(cached, dict):
+        if cached.get("available") is False:
+            return None
+        return cached
+
+    try:
+        quote = _fetch_stock_quote_payload(symbol)
+    except Exception:
+        quote = None
+
+    if quote:
+        _stock_quote_cache_set(symbol, quote, ttl_seconds=STOCK_QUOTE_CACHE_TTL_SECONDS)
+        return quote
+
+    unavailable = {"available": False}
+    _stock_quote_cache_set(symbol, unavailable, ttl_seconds=STOCK_QUOTE_FAILURE_CACHE_TTL_SECONDS)
+    return None
+
+
+def _build_stock_price_metadata(price_as_of: Optional[str], price_source: Optional[str]) -> dict[str, Any]:
+    parsed_as_of = _parse_iso_datetime(price_as_of)
+    if parsed_as_of is None:
+        return {
+            "price_stale": True,
+            "price_status": "stale",
+            "price_age_seconds": None,
+        }
+
+    now_utc = _utc_now()
+    age_seconds = max(0, int((now_utc - parsed_as_of).total_seconds()))
+    stale = True
+    status = "stale"
+
+    if price_source == "alpha_vantage_time_series_intraday":
+        market_open = _is_us_market_open(now_utc)
+        quote_et = parsed_as_of.astimezone(US_EASTERN_TZ)
+        now_et = now_utc.astimezone(US_EASTERN_TZ)
+        if market_open:
+            stale = age_seconds > STOCK_QUOTE_STALE_AFTER_SECONDS
+            status = "realtime" if not stale else "stale"
+        else:
+            stale = quote_et.date() != now_et.date()
+            status = "session_close" if not stale else "stale"
+
+    return {
+        "price_stale": stale,
+        "price_status": status,
+        "price_age_seconds": age_seconds,
+    }
+
+
+def _decorate_stock_analysis_with_quote(base_payload: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(base_payload)
+    if not payload.get("available"):
+        return payload
+
+    analysis = payload.get("analysis") if isinstance(payload.get("analysis"), dict) else {}
+    fallback_price_as_of = (
+        _daily_close_as_of_iso(analysis.get("as_of"))
+        or _parse_alpha_timestamp(analysis.get("as_of"))
+        or payload.get("created_at")
+    )
+    fallback_quote = {
+        "current_price": payload.get("current_price"),
+        "price_as_of": fallback_price_as_of,
+        "price_source": "alpha_vantage_time_series_daily_adjusted",
+    }
+    quote_payload = _get_stock_quote_payload(payload["symbol"]) or fallback_quote
+    payload["current_price"] = quote_payload.get("current_price")
+    payload["price_as_of"] = quote_payload.get("price_as_of")
+    payload["price_source"] = quote_payload.get("price_source")
+    payload.update(_build_stock_price_metadata(payload.get("price_as_of"), payload.get("price_source")))
+    return payload
 
 
 def _parse_alpha_timestamp(raw: Optional[str]) -> Optional[str]:
@@ -1330,9 +1550,9 @@ def refresh_stock_analysis_snapshots() -> dict[str, Any]:
     }
 
 
-def get_stock_analysis_latest_payload(symbol: str) -> dict[str, Any]:
+def _get_stock_analysis_snapshot_payload(symbol: str) -> dict[str, Any]:
     symbol = symbol.strip().upper()
-    cache_key = _cache_key("stocks", "latest", symbol)
+    cache_key = _cache_key("stocks", "snapshot_v1", symbol)
     cached = get_json(cache_key)
     if isinstance(cached, dict):
         return cached
@@ -1357,7 +1577,7 @@ def get_stock_analysis_latest_payload(symbol: str) -> dict[str, Any]:
             payload = {"available": False, "symbol": symbol}
             set_json(cache_key, payload, ttl_seconds=STOCK_ANALYSIS_CACHE_TTL_SECONDS)
             return payload
-        payload = {
+        snapshot_payload = {
             "available": True,
             "symbol": row["symbol"],
             "market": row["market"],
@@ -1375,10 +1595,22 @@ def get_stock_analysis_latest_payload(symbol: str) -> dict[str, Any]:
             "analysis": json.loads(row["analysis_json"] or "{}"),
             "created_at": row["created_at"],
         }
-        set_json(cache_key, payload, ttl_seconds=STOCK_ANALYSIS_CACHE_TTL_SECONDS)
-        return payload
+        set_json(cache_key, snapshot_payload, ttl_seconds=STOCK_ANALYSIS_CACHE_TTL_SECONDS)
+        return snapshot_payload
     finally:
         conn.close()
+
+
+def get_stock_analysis_latest_payload(symbol: str) -> dict[str, Any]:
+    symbol = symbol.strip().upper()
+    cache_key = _cache_key("stocks", "latest_v2", symbol)
+    cached = get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
+    payload = _decorate_stock_analysis_with_quote(_get_stock_analysis_snapshot_payload(symbol))
+    set_json(cache_key, payload, ttl_seconds=STOCK_ANALYSIS_LATEST_CACHE_TTL_SECONDS)
+    return payload
 
 
 def get_stock_analysis_history_payload(symbol: str, limit: int = 10) -> dict[str, Any]:
@@ -1427,7 +1659,7 @@ def get_stock_analysis_history_payload(symbol: str, limit: int = 10) -> dict[str
 
 def get_featured_stock_analysis_payload(limit: int = 6) -> dict[str, Any]:
     normalized_limit = max(1, min(limit, 10))
-    cache_key = _cache_key("stocks", "featured", normalized_limit)
+    cache_key = _cache_key("stocks", "featured_v2", normalized_limit)
     cached = get_json(cache_key)
     if isinstance(cached, dict):
         return cached
@@ -1435,9 +1667,9 @@ def get_featured_stock_analysis_payload(limit: int = 6) -> dict[str, Any]:
     symbols = _get_hot_us_stock_symbols(limit=normalized_limit)
     payload = {
         "available": True,
-        "items": [get_stock_analysis_latest_payload(symbol) for symbol in symbols],
+        "items": [_get_stock_analysis_snapshot_payload(symbol) for symbol in symbols],
     }
-    set_json(cache_key, payload, ttl_seconds=STOCK_ANALYSIS_CACHE_TTL_SECONDS)
+    set_json(cache_key, payload, ttl_seconds=STOCK_ANALYSIS_FEATURED_CACHE_TTL_SECONDS)
     return payload
 
 

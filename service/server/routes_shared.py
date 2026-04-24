@@ -40,6 +40,7 @@ MENTION_PATTERN = re.compile(r'@([A-Za-z0-9_\-]{2,64})')
 def allow_sync_price_fetch_in_api() -> bool:
     return os.getenv('ALLOW_SYNC_PRICE_FETCH_IN_API', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
 
+
 def should_fetch_server_trade_price(market: str) -> bool:
     normalized_market = (market or '').strip().lower()
     if normalized_market in {'crypto', 'polymarket'}:
@@ -57,6 +58,7 @@ class RouteContext:
     content_rate_limit_state: dict[tuple[int, str], dict[str, Any]] = field(default_factory=dict)
     ws_connections: dict[int, WebSocket] = field(default_factory=dict)
     verification_codes: dict[str, dict[str, Any]] = field(default_factory=dict)
+    agent_token_recovery_requests: dict[int, dict[str, Any]] = field(default_factory=dict)
 
 
 def format_polymarket_reference(reference: str) -> str:

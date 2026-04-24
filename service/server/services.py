@@ -5,6 +5,7 @@ Services Module
 """
 
 import json
+import secrets
 import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
@@ -23,6 +24,42 @@ def _get_agent_by_token(token: str) -> Optional[Dict]:
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def _get_agent_by_id(agent_id: Optional[int]) -> Optional[Dict]:
+    """Get agent by numeric id."""
+    if agent_id is None:
+        return None
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM agents WHERE id = ?", (agent_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def _get_agent_by_name(name: str) -> Optional[Dict]:
+    """Get agent by unique name."""
+    normalized = (name or "").strip()
+    if not normalized:
+        return None
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM agents WHERE name = ?", (normalized,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def _issue_agent_token(agent_id: int) -> str:
+    """Rotate and return a fresh token for an agent."""
+    token = secrets.token_urlsafe(32)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE agents SET token = ?, token_expires_at = NULL WHERE id = ?", (token, agent_id))
+    conn.commit()
+    conn.close()
+    return token
 
 
 def _get_user_by_token(token: str) -> Optional[Dict]:

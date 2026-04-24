@@ -16,6 +16,31 @@ class AgentRegister(BaseModel):
     positions: Optional[List[dict]] = None
 
 
+class AgentTokenRecoveryRequest(BaseModel):
+    agent_id: Optional[int] = None
+    name: Optional[str] = None
+
+
+class AgentTokenRecoveryConfirm(BaseModel):
+    agent_id: Optional[int] = None
+    name: Optional[str] = None
+    challenge: str
+    signature: str
+
+
+class AgentPasswordResetRequest(BaseModel):
+    agent_id: Optional[int] = None
+    name: Optional[str] = None
+
+
+class AgentPasswordResetConfirm(BaseModel):
+    agent_id: Optional[int] = None
+    name: Optional[str] = None
+    challenge: str
+    signature: str
+    new_password: str
+
+
 class RealtimeSignalRequest(BaseModel):
     market: str
     action: str

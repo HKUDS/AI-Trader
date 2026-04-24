@@ -518,6 +518,7 @@ export function FinancialEventsPage() {
   const [macro, setMacro] = useState<any | null>(null)
   const [etfFlows, setEtfFlows] = useState<any | null>(null)
   const [featuredStocks, setFeaturedStocks] = useState<any | null>(null)
+  const [stockDetailsBySymbol, setStockDetailsBySymbol] = useState<Record<string, any>>({})
   const [news, setNews] = useState<any | null>(null)
   const [newsPages, setNewsPages] = useState<Record<string, number>>({})
   const [activeNewsCategory, setActiveNewsCategory] = useState<string>('')
@@ -584,7 +585,9 @@ export function FinancialEventsPage() {
   const categories: MarketIntelNewsCategory[] = news?.categories || []
   const stockItems = (featuredStocks?.items || []).filter((item: any) => item?.available)
   const currentCategory = categories.find((section) => section.category === activeNewsCategory) || categories[0] || null
-  const currentStock = stockItems.find((item: any) => item.symbol === activeStockSymbol) || stockItems[0] || null
+  const currentStockBase = stockItems.find((item: any) => item.symbol === activeStockSymbol) || stockItems[0] || null
+  const currentStockSymbol = currentStockBase?.symbol || ''
+  const currentStock = (currentStockSymbol && stockDetailsBySymbol[currentStockSymbol]) || currentStockBase || null
   const currentCategoryTitle = currentCategory
     ? ((currentCategory.category === 'equities')
       ? (language === 'zh' ? '最新新闻' : 'Latest News')
@@ -610,6 +613,41 @@ export function FinancialEventsPage() {
       setActiveStockSymbol(stockItems[0].symbol)
     }
   }, [stockItems, activeStockSymbol])
+
+  useEffect(() => {
+    if (!currentStockSymbol) {
+      return
+    }
+
+    let cancelled = false
+
+    const loadStockDetail = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/market-intel/stocks/${currentStockSymbol}/latest`)
+        if (!res.ok) {
+          throw new Error('stock_detail_load_failed')
+        }
+        const data = await res.json()
+        if (cancelled || !data?.available) {
+          return
+        }
+        setStockDetailsBySymbol((prev) => ({
+          ...prev,
+          [currentStockSymbol]: data
+        }))
+      } catch {
+        // Keep rendering the snapshot payload from the featured list when live detail fails.
+      }
+    }
+
+    loadStockDetail()
+    const timer = setInterval(loadStockDetail, 60 * 1000)
+
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [currentStockSymbol])
 
   const toggleStockHistory = async (symbol: string) => {
     const nextExpanded = !expandedStockHistory[symbol]
@@ -710,6 +748,13 @@ export function FinancialEventsPage() {
                       const resistanceLevels = item.resistance_levels || analysis.resistance_levels || []
                       const bullishFactors = item.bullish_factors || analysis.bullish_factors || []
                       const riskFactors = item.risk_factors || analysis.risk_factors || []
+                      const isRealtimeQuote = item.price_source === 'alpha_vantage_time_series_intraday' && !item.price_stale
+                      const priceStatusLabel = item.price_stale
+                        ? (language === 'zh' ? '延迟报价' : 'Delayed quote')
+                        : (language === 'zh' ? '盘中报价' : 'Live quote')
+                      const priceAsOfLabel = item.price_stale
+                        ? (language === 'zh' ? '报价时间' : 'Quote as of')
+                        : (language === 'zh' ? '实时更新' : 'Live as of')
 
                       return (
                         <div className="intel-stock-detail">
@@ -722,13 +767,28 @@ export function FinancialEventsPage() {
                             </div>
                             <div className={`intel-activity-badge ${item.trend_status || 'quiet'}`}>{item.signal}</div>
                           </div>
-                          <div className="intel-stock-price">${item.current_price}</div>
+                          <div className="intel-stock-price-row">
+                            <div className="intel-stock-price">${item.current_price}</div>
+                            <span className={`intel-price-badge ${isRealtimeQuote ? 'live' : 'stale'}`}>
+                              {priceStatusLabel}
+                            </span>
+                          </div>
                           <div className="intel-news-item-summary">{item.summary}</div>
                           <div className="intel-chip-row">
                             <span className="intel-chip">{language === 'zh' ? '评分' : 'Score'} {item.signal_score}</span>
                             <span className="intel-chip">{language === 'zh' ? '趋势' : 'Trend'} {item.trend_status}</span>
+                            {item.price_as_of && (
+                              <span className={`intel-chip ${item.price_stale ? 'intel-chip-warn' : 'intel-chip-live'}`}>
+                                {priceAsOfLabel} {formatIntelTimestamp(item.price_as_of, language)}
+                              </span>
+                            )}
+                            {item.price_source && (
+                              <span className="intel-chip">
+                                {language === 'zh' ? '报价源' : 'Quote source'} {item.price_source === 'alpha_vantage_time_series_intraday' ? 'Alpha Vantage Intraday' : 'Alpha Vantage Daily'}
+                              </span>
+                            )}
                             {analysis.as_of && (
-                              <span className="intel-chip">{language === 'zh' ? '数据日期' : 'As of'} {analysis.as_of}</span>
+                              <span className="intel-chip">{language === 'zh' ? '分析基准日' : 'Analysis as of'} {analysis.as_of}</span>
                             )}
                           </div>
 
