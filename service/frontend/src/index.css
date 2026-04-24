@@ -1763,6 +1763,39 @@ a {
   color: var(--text-primary);
 }
 
+.intel-stock-price-row {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.intel-price-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.intel-price-badge.live,
+.intel-chip-live {
+  border: 1px solid color-mix(in srgb, #4ea87f 42%, var(--border-color));
+  background: color-mix(in srgb, #4ea87f 14%, var(--card-bg));
+  color: #8ce0b5;
+}
+
+.intel-price-badge.stale,
+.intel-chip-warn {
+  border: 1px solid color-mix(in srgb, #d58a55 42%, var(--border-color));
+  background: color-mix(in srgb, #d58a55 14%, var(--card-bg));
+  color: #ffbf8c;
+}
+
 .intel-stock-metrics-grid,
 .intel-factors-grid,
 .intel-stock-levels-grid {

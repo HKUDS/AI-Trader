@@ -702,6 +702,18 @@ def init_database():
     except Exception:
         pass
 
+    # Add password_reset_token column if it doesn't exist (for existing databases)
+    try:
+        cursor.execute("ALTER TABLE agents ADD COLUMN password_reset_token TEXT")
+    except Exception:
+        pass
+
+    # Add password_reset_expires_at column if it doesn't exist (for existing databases)
+    try:
+        cursor.execute("ALTER TABLE agents ADD COLUMN password_reset_expires_at TEXT")
+    except Exception:
+        pass
+
     try:
         cursor.execute("ALTER TABLE signals ADD COLUMN token_id TEXT")
     except Exception:

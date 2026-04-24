@@ -1,22 +1,62 @@
 import json
 import secrets
+from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Header, HTTPException, WebSocket
 
 from database import get_db_connection
 from routes_models import (
+    AgentTokenRecoveryConfirm,
+    AgentTokenRecoveryRequest,
     AgentLogin,
     AgentMessageCreate,
     AgentMessagesMarkReadRequest,
+    AgentPasswordResetConfirm,
+    AgentPasswordResetRequest,
     AgentRegister,
     AgentTaskCreate,
 )
 from routes_shared import RouteContext, push_agent_message, utc_now_iso_z
-from services import _get_agent_by_token, _get_agent_points
-from utils import _extract_token, hash_password, validate_address, verify_password
+from services import _get_agent_by_id, _get_agent_by_name, _get_agent_by_token, _get_agent_points, _issue_agent_token
+from utils import (
+    _extract_token,
+    build_agent_token_recovery_challenge,
+    build_agent_password_reset_challenge,
+    hash_password,
+    recover_signed_address,
+    validate_address,
+    verify_password,
+)
 
 
 def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
+    def _resolve_agent_recovery_target(agent_id: int | None, name: str | None) -> dict:
+        normalized_name = (name or '').strip()
+        if agent_id is None and not normalized_name:
+            raise HTTPException(status_code=400, detail='agent_id or name is required')
+
+        agent = _get_agent_by_id(agent_id) if agent_id is not None else None
+        if agent_id is not None and not agent:
+            raise HTTPException(status_code=404, detail='Agent not found')
+
+        if normalized_name:
+            named_agent = _get_agent_by_name(normalized_name)
+            if not named_agent:
+                raise HTTPException(status_code=404, detail='Agent not found')
+            if agent and named_agent['id'] != agent['id']:
+                raise HTTPException(status_code=400, detail='agent_id and name refer to different agents')
+            agent = named_agent
+
+        if not agent:
+            raise HTTPException(status_code=404, detail='Agent not found')
+
+        wallet_address = validate_address(agent.get('wallet_address') or '')
+        if not wallet_address:
+            raise HTTPException(status_code=400, detail='Agent has no wallet-based recovery configured')
+
+        agent['wallet_address'] = wallet_address
+        return agent
+
     @app.websocket('/ws/notify/{client_id}')
     async def websocket_endpoint(websocket: WebSocket, client_id: str):
         await websocket.accept()
@@ -374,23 +414,143 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
 
     @app.post('/api/claw/agents/login')
     async def agent_login(data: AgentLogin):
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT * FROM agents WHERE name = ?', (data.name,))
-        row = cursor.fetchone()
-        conn.close()
+        row = _get_agent_by_name(data.name)
 
         if not row or not verify_password(data.password, row['password_hash']):
             raise HTTPException(status_code=401, detail='Invalid credentials')
 
-        token = secrets.token_urlsafe(32)
+        token = _issue_agent_token(row['id'])
+
+        return {'token': token, 'agent_id': row['id'], 'name': row['name']}
+
+    @app.post('/api/claw/agents/token-recovery/request')
+    async def request_agent_token_recovery(data: AgentTokenRecoveryRequest):
+        agent = _resolve_agent_recovery_target(data.agent_id, data.name)
+        expires_at_dt = datetime.now(timezone.utc) + timedelta(minutes=10)
+        expires_at = expires_at_dt.isoformat().replace('+00:00', 'Z')
+        nonce = secrets.token_urlsafe(18)
+        challenge = build_agent_token_recovery_challenge(
+            agent_id=agent['id'],
+            agent_name=agent['name'],
+            wallet_address=agent['wallet_address'],
+            nonce=nonce,
+            expires_at=expires_at,
+        )
+        ctx.agent_token_recovery_requests[agent['id']] = {
+            'challenge': challenge,
+            'expires_at': expires_at_dt,
+        }
+
+        return {
+            'success': True,
+            'agent_id': agent['id'],
+            'name': agent['name'],
+            'challenge': challenge,
+            'expires_at': expires_at,
+        }
+
+    @app.post('/api/claw/agents/token-recovery/confirm')
+    async def confirm_agent_token_recovery(data: AgentTokenRecoveryConfirm):
+        agent = _resolve_agent_recovery_target(data.agent_id, data.name)
+        recovery_request = ctx.agent_token_recovery_requests.get(agent['id'])
+        if not recovery_request:
+            raise HTTPException(status_code=400, detail='No active token recovery request')
+
+        expires_at_dt = recovery_request.get('expires_at')
+        if not expires_at_dt or expires_at_dt < datetime.now(timezone.utc):
+            ctx.agent_token_recovery_requests.pop(agent['id'], None)
+            raise HTTPException(status_code=400, detail='Token recovery challenge expired')
+
+        expected_challenge = recovery_request.get('challenge')
+        if expected_challenge != data.challenge:
+            raise HTTPException(status_code=400, detail='Token recovery challenge mismatch')
+
+        recovered_address = recover_signed_address(data.challenge, data.signature)
+        if recovered_address != agent['wallet_address']:
+            raise HTTPException(status_code=401, detail='Wallet signature verification failed')
+
+        token = _issue_agent_token(agent['id'])
+        ctx.agent_token_recovery_requests.pop(agent['id'], None)
+        return {'token': token, 'agent_id': agent['id'], 'name': agent['name']}
+
+    @app.post('/api/claw/agents/password-reset/request')
+    async def request_password_reset(data: AgentPasswordResetRequest):
+        agent = _resolve_agent_recovery_target(data.agent_id, data.name)
+        expires_at_dt = datetime.now(timezone.utc) + timedelta(minutes=10)
+        expires_at = expires_at_dt.isoformat().replace('+00:00', 'Z')
+        nonce = secrets.token_urlsafe(18)
+        challenge = build_agent_password_reset_challenge(
+            agent_id=agent['id'],
+            agent_name=agent['name'],
+            wallet_address=agent['wallet_address'],
+            nonce=nonce,
+            expires_at=expires_at,
+        )
+
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('UPDATE agents SET token = ? WHERE id = ?', (token, row['id']))
+        cursor.execute(
+            'UPDATE agents SET password_reset_token = ?, password_reset_expires_at = ? WHERE id = ?',
+            (challenge, expires_at, agent['id']),
+        )
         conn.commit()
         conn.close()
 
-        return {'token': token, 'agent_id': row['id'], 'name': row['name']}
+        return {
+            'success': True,
+            'agent_id': agent['id'],
+            'name': agent['name'],
+            'challenge': challenge,
+            'expires_at': expires_at,
+        }
+
+    @app.post('/api/claw/agents/password-reset/confirm')
+    async def confirm_password_reset(data: AgentPasswordResetConfirm):
+        agent = _resolve_agent_recovery_target(data.agent_id, data.name)
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            'SELECT password_reset_token, password_reset_expires_at FROM agents WHERE id = ?',
+            (agent['id'],),
+        )
+        row = cursor.fetchone()
+        if not row:
+            conn.close()
+            raise HTTPException(status_code=400, detail='Agent not found')
+
+        stored_challenge = row['password_reset_token']
+        stored_expires_at = row['password_reset_expires_at']
+        conn.close()
+
+        if not stored_challenge or stored_challenge != data.challenge:
+            raise HTTPException(status_code=400, detail='Invalid password reset challenge')
+
+        if not stored_expires_at:
+            raise HTTPException(status_code=400, detail='No active password reset request')
+
+        expires_at_dt = datetime.fromisoformat(stored_expires_at.replace('Z', '+00:00'))
+        if expires_at_dt < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail='Password reset challenge expired')
+
+        recovered_address = recover_signed_address(data.challenge, data.signature)
+        if recovered_address != agent['wallet_address']:
+            raise HTTPException(status_code=401, detail='Wallet signature verification failed')
+
+        if len(data.new_password) < 8:
+            raise HTTPException(status_code=400, detail='Password must be at least 8 characters')
+
+        new_password_hash = hash_password(data.new_password)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            'UPDATE agents SET password_hash = ?, password_reset_token = NULL, password_reset_expires_at = NULL WHERE id = ?',
+            (new_password_hash, agent['id']),
+        )
+        conn.commit()
+        conn.close()
+
+        return {'success': True, 'message': 'Password has been reset successfully'}
 
     @app.get('/api/claw/agents/me')
     async def get_agent_info(authorization: str = Header(None)):

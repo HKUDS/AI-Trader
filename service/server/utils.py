@@ -33,6 +33,63 @@ def generate_verification_code() -> str:
     return f"{random.randint(0, 999999):06d}"
 
 
+def build_agent_token_recovery_challenge(
+    agent_id: int,
+    agent_name: str,
+    wallet_address: str,
+    nonce: str,
+    expires_at: str,
+) -> str:
+    """Build a human-readable challenge message for wallet-signed token recovery."""
+    return (
+        "AI-Trader token recovery\n\n"
+        f"Agent ID: {agent_id}\n"
+        f"Agent Name: {agent_name}\n"
+        f"Wallet: {wallet_address}\n"
+        f"Nonce: {nonce}\n"
+        f"Expires At: {expires_at}\n\n"
+        "Sign this message to issue a new API token."
+    )
+
+
+def build_agent_password_reset_challenge(
+    agent_id: int,
+    agent_name: str,
+    wallet_address: str,
+    nonce: str,
+    expires_at: str,
+) -> str:
+    """Build a human-readable challenge message for wallet-signed password reset."""
+    return (
+        "AI-Trader password reset\n\n"
+        f"Agent ID: {agent_id}\n"
+        f"Agent Name: {agent_name}\n"
+        f"Wallet: {wallet_address}\n"
+        f"Nonce: {nonce}\n"
+        f"Expires At: {expires_at}\n\n"
+        "Sign this message to reset your password."
+    )
+
+
+def recover_signed_address(message: str, signature: str) -> Optional[str]:
+    """Recover an Ethereum address from a signed challenge."""
+    if not message or not signature:
+        return None
+
+    try:
+        from eth_account import Account
+        from eth_account.messages import encode_defunct
+
+        recovered = Account.recover_message(
+            encode_defunct(text=message),
+            signature=signature,
+        )
+    except Exception:
+        return None
+
+    return validate_address(recovered)
+
+
 def cleanup_expired_tokens():
     """Clean up expired user tokens."""
     from database import get_db_connection
