@@ -40,6 +40,12 @@ MENTION_PATTERN = re.compile(r'@([A-Za-z0-9_\-]{2,64})')
 def allow_sync_price_fetch_in_api() -> bool:
     return os.getenv('ALLOW_SYNC_PRICE_FETCH_IN_API', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
 
+def should_fetch_server_trade_price(market: str) -> bool:
+    normalized_market = (market or '').strip().lower()
+    if normalized_market in {'crypto', 'polymarket'}:
+        return True
+    return allow_sync_price_fetch_in_api()
+
 
 @dataclass
 class RouteContext:
