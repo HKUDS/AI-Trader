@@ -5,8 +5,8 @@ Utils Module
 """
 
 import hashlib
+import hmac
 import secrets
-import random
 import time
 import re
 from typing import Optional, Dict, Any
@@ -20,17 +20,20 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    """Verify a password against its hash."""
-    try:
-        salt, hashed = password_hash.split("$")
-        return hashlib.sha256((password + salt).encode()).hexdigest() == hashed
-    except:
+    """Verify a password against its hash with constant-time comparison."""
+    if not isinstance(password, str) or not isinstance(password_hash, str):
         return False
+    try:
+        salt, hashed = password_hash.split("$", 1)
+    except ValueError:
+        return False
+    candidate = hashlib.sha256((password + salt).encode()).hexdigest()
+    return hmac.compare_digest(candidate, hashed)
 
 
 def generate_verification_code() -> str:
-    """Generate a 6-digit verification code."""
-    return f"{random.randint(0, 999999):06d}"
+    """Generate a cryptographically random 6-digit verification code."""
+    return f"{secrets.randbelow(1_000_000):06d}"
 
 
 def build_agent_token_recovery_challenge(

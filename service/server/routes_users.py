@@ -1,4 +1,5 @@
-import random
+import hmac
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import FastAPI, Header, HTTPException
@@ -18,14 +19,30 @@ from utils import _extract_token, hash_password, verify_password
 
 EXCHANGE_RATE = 1000
 
+# Bounds the brute-force budget for the 6-digit (1M-space) verification code:
+# attackers who blow past MAX_CODE_ATTEMPTS must request a fresh code, and the
+# CODE_RESEND_COOLDOWN_SECONDS throttle stops them from cycling codes faster
+# than humans actually need.
+MAX_CODE_ATTEMPTS = 5
+CODE_RESEND_COOLDOWN_SECONDS = 30
+
 
 def register_user_routes(app: FastAPI, ctx: RouteContext) -> None:
     @app.post('/api/users/send-code')
     async def send_verification_code(data: UserSendCodeRequest):
-        code = f'{random.randint(0, 999999):06d}'
+        now = datetime.now(timezone.utc)
+        existing = ctx.verification_codes.get(data.email)
+        if existing:
+            last_sent_at = existing.get('last_sent_at')
+            if last_sent_at and (now - last_sent_at).total_seconds() < CODE_RESEND_COOLDOWN_SECONDS:
+                raise HTTPException(status_code=429, detail='Please wait before requesting another code')
+
+        code = f'{secrets.randbelow(1_000_000):06d}'
         ctx.verification_codes[data.email] = {
             'code': code,
-            'expires_at': datetime.now(timezone.utc) + timedelta(minutes=5),
+            'expires_at': now + timedelta(minutes=5),
+            'attempts': 0,
+            'last_sent_at': now,
         }
         print(f'[Email] Verification code for {data.email}: {code}')
         return {'success': True, 'message': 'Code sent'}
@@ -37,8 +54,15 @@ def register_user_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         stored = ctx.verification_codes[data.email]
         if stored['expires_at'] < datetime.now(timezone.utc):
+            del ctx.verification_codes[data.email]
             raise HTTPException(status_code=400, detail='Code expired')
-        if stored['code'] != data.code:
+
+        stored['attempts'] = stored.get('attempts', 0) + 1
+        if stored['attempts'] > MAX_CODE_ATTEMPTS:
+            del ctx.verification_codes[data.email]
+            raise HTTPException(status_code=429, detail='Too many attempts. Request a new code.')
+
+        if not hmac.compare_digest(str(stored['code']), str(data.code or '')):
             raise HTTPException(status_code=400, detail='Invalid code')
 
         conn = get_db_connection()
