@@ -14,7 +14,7 @@ import os
 import threading
 import time
 from collections import Counter
-from datetime import datetime, time as datetime_time, timedelta, timezone
+from datetime import date, datetime, time as datetime_time, timedelta, timezone
 from typing import Any, Optional
 import re
 
@@ -200,6 +200,26 @@ def _is_us_market_open(now_utc: Optional[datetime] = None) -> bool:
     return US_MARKET_OPEN_TIME <= current_time < US_MARKET_CLOSE_TIME
 
 
+def _last_us_session_date(now_et: datetime) -> date:
+    """Return the date of the most-recent US trading session that has closed.
+
+    Walks backward from ``now_et`` (US Eastern time) skipping weekends. If the
+    reference moment is on a weekday and at-or-after the regular-session
+    close (16:00 ET), the same day's session has closed and counts as the
+    most-recent session. Otherwise the most-recent session is the previous
+    weekday. Holidays are not modelled — quotes from a holiday-shortened or
+    closed weekday may still be classified as ``session_close`` rather than
+    ``stale``; that is conservative for the freshness signal.
+    """
+    candidate = now_et
+    if candidate.weekday() < 5 and candidate.time() >= US_MARKET_CLOSE_TIME:
+        return candidate.date()
+    candidate = candidate - timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate = candidate - timedelta(days=1)
+    return candidate.date()
+
+
 def _stock_quote_cache_get(symbol: str) -> Optional[dict[str, Any]]:
     now = time.time()
     with _stock_quote_cache_lock:
@@ -310,7 +330,13 @@ def _build_stock_price_metadata(price_as_of: Optional[str], price_source: Option
             stale = age_seconds > STOCK_QUOTE_STALE_AFTER_SECONDS
             status = "realtime" if not stale else "stale"
         else:
-            stale = quote_et.date() != now_et.date()
+            # The market is closed (weekend, pre-market, or post-close). The
+            # most-recent intraday quote is `session_close` only if its date
+            # matches or post-dates the most-recent fully-closed US trading
+            # session. The previous date-equality check incorrectly marked
+            # Friday's close as `stale` on Saturday/Sunday and Monday's close
+            # as `stale` during Tuesday's pre-market.
+            stale = quote_et.date() < _last_us_session_date(now_et)
             status = "session_close" if not stale else "stale"
 
     return {

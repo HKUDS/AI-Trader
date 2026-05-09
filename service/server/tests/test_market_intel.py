@@ -115,5 +115,129 @@ class MarketIntelLatestPayloadTests(unittest.TestCase):
         self.assertEqual([item["symbol"] for item in payload["items"]], ["AAPL", "MSFT"])
 
 
+class StockPriceMetadataTests(unittest.TestCase):
+    """Coverage for _build_stock_price_metadata staleness classification.
+
+    The intent of `price_status="session_close"` is "the latest US session has
+    closed; this intraday quote is the most-recent available data until the
+    next open". The staleness check must therefore accept Friday's close as
+    `session_close` on Saturday/Sunday, and accept the previous trading day's
+    close as `session_close` during the next day's pre-market hours.
+    """
+
+    def _intraday(self, price_as_of: str) -> dict:
+        return {
+            "price_as_of": price_as_of,
+            "price_source": "alpha_vantage_time_series_intraday",
+        }
+
+    def test_metadata_during_market_open_realtime(self) -> None:
+        # Tuesday 14:35 ET, quote from 14:34 ET (1 min ago) → realtime.
+        with patch(
+            "market_intel._utc_now",
+            return_value=datetime(2026, 4, 21, 18, 35, tzinfo=timezone.utc),
+        ):
+            meta = market_intel._build_stock_price_metadata(
+                "2026-04-21T18:34:00Z",
+                "alpha_vantage_time_series_intraday",
+            )
+        self.assertFalse(meta["price_stale"])
+        self.assertEqual(meta["price_status"], "realtime")
+
+    def test_metadata_post_close_same_day_session_close(self) -> None:
+        # Tuesday 18:00 ET (after 16:00 close), quote from Tuesday 16:00 ET.
+        with patch(
+            "market_intel._utc_now",
+            return_value=datetime(2026, 4, 21, 22, 0, tzinfo=timezone.utc),
+        ):
+            meta = market_intel._build_stock_price_metadata(
+                "2026-04-21T20:00:00Z",
+                "alpha_vantage_time_series_intraday",
+            )
+        self.assertFalse(meta["price_stale"])
+        self.assertEqual(meta["price_status"], "session_close")
+
+    def test_metadata_friday_close_on_saturday_is_session_close(self) -> None:
+        # Saturday 10:00 ET, quote from Friday 16:00 ET.
+        # Friday's close IS the latest available real-time data until Monday's
+        # open — current behavior incorrectly classifies it as `stale`.
+        with patch(
+            "market_intel._utc_now",
+            return_value=datetime(2026, 4, 25, 14, 0, tzinfo=timezone.utc),
+        ):
+            meta = market_intel._build_stock_price_metadata(
+                "2026-04-24T20:00:00Z",
+                "alpha_vantage_time_series_intraday",
+            )
+        self.assertFalse(meta["price_stale"])
+        self.assertEqual(meta["price_status"], "session_close")
+
+    def test_metadata_friday_close_on_sunday_is_session_close(self) -> None:
+        # Sunday 12:00 ET, quote from Friday 16:00 ET.
+        with patch(
+            "market_intel._utc_now",
+            return_value=datetime(2026, 4, 26, 16, 0, tzinfo=timezone.utc),
+        ):
+            meta = market_intel._build_stock_price_metadata(
+                "2026-04-24T20:00:00Z",
+                "alpha_vantage_time_series_intraday",
+            )
+        self.assertFalse(meta["price_stale"])
+        self.assertEqual(meta["price_status"], "session_close")
+
+    def test_metadata_premarket_next_day_is_session_close(self) -> None:
+        # Tuesday 08:00 ET (pre-market), quote from Monday 16:00 ET.
+        with patch(
+            "market_intel._utc_now",
+            return_value=datetime(2026, 4, 21, 12, 0, tzinfo=timezone.utc),
+        ):
+            meta = market_intel._build_stock_price_metadata(
+                "2026-04-20T20:00:00Z",
+                "alpha_vantage_time_series_intraday",
+            )
+        self.assertFalse(meta["price_stale"])
+        self.assertEqual(meta["price_status"], "session_close")
+
+    def test_metadata_premarket_monday_uses_friday_close(self) -> None:
+        # Monday 08:00 ET pre-market, quote from previous Friday 16:00 ET.
+        with patch(
+            "market_intel._utc_now",
+            return_value=datetime(2026, 4, 27, 12, 0, tzinfo=timezone.utc),
+        ):
+            meta = market_intel._build_stock_price_metadata(
+                "2026-04-24T20:00:00Z",
+                "alpha_vantage_time_series_intraday",
+            )
+        self.assertFalse(meta["price_stale"])
+        self.assertEqual(meta["price_status"], "session_close")
+
+    def test_metadata_quote_older_than_last_session_is_stale(self) -> None:
+        # Saturday 10:00 ET, quote from Wednesday 16:00 ET (2 sessions stale).
+        with patch(
+            "market_intel._utc_now",
+            return_value=datetime(2026, 4, 25, 14, 0, tzinfo=timezone.utc),
+        ):
+            meta = market_intel._build_stock_price_metadata(
+                "2026-04-22T20:00:00Z",
+                "alpha_vantage_time_series_intraday",
+            )
+        self.assertTrue(meta["price_stale"])
+        self.assertEqual(meta["price_status"], "stale")
+
+    def test_metadata_daily_fallback_remains_stale(self) -> None:
+        meta = market_intel._build_stock_price_metadata(
+            "2026-04-17T20:00:00Z",
+            "alpha_vantage_time_series_daily_adjusted",
+        )
+        self.assertTrue(meta["price_stale"])
+        self.assertEqual(meta["price_status"], "stale")
+
+    def test_metadata_unparseable_timestamp_is_stale(self) -> None:
+        meta = market_intel._build_stock_price_metadata(None, None)
+        self.assertTrue(meta["price_stale"])
+        self.assertEqual(meta["price_status"], "stale")
+        self.assertIsNone(meta["price_age_seconds"])
+
+
 if __name__ == "__main__":
     unittest.main()
