@@ -9,23 +9,38 @@ import secrets
 import random
 import time
 import re
+import bcrypt
 from typing import Optional, Dict, Any
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using SHA256 with salt."""
-    salt = secrets.token_hex(16)
-    hashed = hashlib.sha256((password + salt).encode()).hexdigest()
-    return f"{salt}${hashed}"
+    """Hash a password using bcrypt."""
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode(), salt)
+    return hashed.decode()
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    """Verify a password against its hash."""
-    try:
-        salt, hashed = password_hash.split("$")
-        return hashlib.sha256((password + salt).encode()).hexdigest() == hashed
-    except:
+    """Verify a password against its hash (supports bcrypt and legacy SHA256)."""
+    if not password_hash:
         return False
+
+    # Check for bcrypt hash
+    if password_hash.startswith("$2b$") or password_hash.startswith("$2a$"):
+        try:
+            return bcrypt.checkpw(password.encode(), password_hash.encode())
+        except Exception:
+            return False
+
+    # Fallback to legacy SHA256 salt$hash format
+    try:
+        if "$" in password_hash:
+            salt, hashed = password_hash.split("$", 1)
+            return hashlib.sha256((password + salt).encode()).hexdigest() == hashed
+    except Exception:
+        pass
+
+    return False
 
 
 def generate_verification_code() -> str:

@@ -301,7 +301,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             followers = cursor.fetchall()
 
             for follower in followers:
-                follower_id = follower['follower_id']
+                follower_id = int(follower['follower_id'])
                 try:
                     cursor.execute(f'SAVEPOINT follower_{follower_id}')
                     follower_position = None
@@ -1143,7 +1143,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         title = signal_row['title'] or signal_row['symbol'] or f"signal {signal_row['signal_id']}"
         reply_message_type = 'strategy_reply' if signal_row['message_type'] == 'strategy' else 'discussion_reply'
         mention_message_type = 'strategy_mention' if signal_row['message_type'] == 'strategy' else 'discussion_mention'
-        reply_target_label = f'"{title}"' if signal_row['title'] else title
+        reply_target_label = f'\"{title}\"' if signal_row['title'] else title
 
         if original_author_id != agent_id:
             await push_agent_message(
