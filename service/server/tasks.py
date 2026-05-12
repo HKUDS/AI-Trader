@@ -785,6 +785,13 @@ async def settle_team_missions_loop():
         await asyncio.sleep(interval_s)
 
 
+from scheduler import (
+    tw_daily_settlement_loop,
+    tw_intraday_price_loop,
+    tw_pre_open_research_loop,
+)
+
+
 BACKGROUND_TASK_REGISTRY = {
     "prices": update_position_prices,
     "profit_history": record_profit_history,
@@ -797,10 +804,20 @@ BACKGROUND_TASK_REGISTRY = {
     "macro_signals": refresh_macro_signal_snapshots_loop,
     "etf_flows": refresh_etf_flow_snapshots_loop,
     "stock_analysis": refresh_stock_analysis_snapshots_loop,
+    # TW-market-aware loops — opt in via AI_TRADER_BACKGROUND_TASKS env var.
+    "tw_pre_open_research": tw_pre_open_research_loop,
+    "tw_intraday_prices": tw_intraday_price_loop,
+    "tw_daily_settlement": tw_daily_settlement_loop,
 }
 
 
-DEFAULT_BACKGROUND_TASKS = ",".join(BACKGROUND_TASK_REGISTRY.keys())
+# The TW scheduler loops are opt-in: they overlap with existing generic
+# loops (prices, profit_history) and need explicit enable to avoid double
+# work. Operators flip them on via AI_TRADER_BACKGROUND_TASKS.
+_OPT_IN_TASKS = {"tw_pre_open_research", "tw_intraday_prices", "tw_daily_settlement"}
+DEFAULT_BACKGROUND_TASKS = ",".join(
+    name for name in BACKGROUND_TASK_REGISTRY.keys() if name not in _OPT_IN_TASKS
+)
 
 
 def background_tasks_enabled_for_api() -> bool:

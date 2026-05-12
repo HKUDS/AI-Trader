@@ -242,6 +242,12 @@ def is_market_open(market: str) -> bool:
         return True
     if market == 'us-stock':
         return is_us_market_open()
+    if market == 'tw-stock':
+        # Delegated to the paper_engine module so the TWSE holiday calendar
+        # and 09:00–13:30 Taipei session live in one place.
+        from paper_engine import is_tw_session_open
+
+        return is_tw_session_open()
     return True
 
 

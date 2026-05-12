@@ -2,6 +2,8 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, EmailStr
 
+import config
+
 
 class AgentLogin(BaseModel):
     name: str
@@ -12,7 +14,7 @@ class AgentRegister(BaseModel):
     name: str
     password: str
     wallet_address: Optional[str] = None
-    initial_balance: float = 100000.0
+    initial_balance: float = config.DEFAULT_PAPER_BALANCE_NTD
     positions: Optional[List[dict]] = None
 
 
@@ -51,6 +53,11 @@ class RealtimeSignalRequest(BaseModel):
     executed_at: str
     token_id: Optional[str] = None
     outcome: Optional[str] = None
+    # Brian's no-auto-trade red line: every realtime signal is paper-only.
+    # The field defaults to True and is enforced by the
+    # `enforce_no_auto_trade` dependency — explicit `paper: false` payloads
+    # are rejected with HTTP 403.
+    paper: bool = True
 
 
 class StrategyRequest(BaseModel):

@@ -28,7 +28,11 @@ from services import _get_agent_by_token
 from utils import _extract_token
 
 
-INITIAL_CAPITAL = 100000.0
+# Paper-trading sandbox starting capital. Default is NT$1,000,000; override
+# via DEFAULT_PAPER_BALANCE_NTD env var (see config.py). The constant stays
+# named INITIAL_CAPITAL for backward-compatibility with the leaderboard
+# math in `profit_percent_for_display`.
+from config import DEFAULT_PAPER_BALANCE_NTD as INITIAL_CAPITAL
 
 
 def profit_percent_for_display(profit: float, deposited: float) -> float:
@@ -290,6 +294,79 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         set_json(redis_cache_key, payload, ttl_seconds=LEADERBOARD_CACHE_TTL_SECONDS)
         return payload
 
+    @app.get('/api/leaderboard/metrics')
+    async def get_leaderboard_metrics(limit: int = 10):
+        """Per-agent paper-trading scorecard with TW-context metrics.
+
+        Returns cumulative return, monthly win rate, max drawdown, and a
+        coarse Sharpe ratio for each agent. Sourced from `profit_history`
+        rows; agents with fewer than 2 recorded snapshots get zero-filled
+        analytics rather than being dropped (frontend can render a "no
+        history yet" state).
+        """
+        from paper_engine import (
+            coarse_sharpe,
+            cumulative_return,
+            max_drawdown,
+            monthly_win_rate,
+        )
+
+        limit = max(1, min(limit, 50))
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT id, name, cash, deposited FROM agents')
+        agents = cursor.fetchall()
+
+        result = []
+        for agent in agents:
+            agent_id = agent['id']
+            cursor.execute(
+                """
+                SELECT total_value, profit, recorded_at
+                FROM profit_history
+                WHERE agent_id = ?
+                ORDER BY recorded_at ASC
+                """,
+                (agent_id,),
+            )
+            rows = cursor.fetchall()
+            equity = [float(r['total_value']) for r in rows if r['total_value'] is not None]
+            profits = [float(r['profit']) for r in rows if r['profit'] is not None]
+
+            # Daily returns: pct change between successive equity snapshots.
+            # Snapshots aren't perfectly daily — the worker may write multiple
+            # in a session — but the noise is acceptable for a coarse Sharpe.
+            daily_returns: list[float] = []
+            for i in range(1, len(equity)):
+                prev = equity[i - 1]
+                if prev > 0:
+                    daily_returns.append((equity[i] - prev) / prev)
+
+            # Monthly buckets keyed by recorded_at YYYY-MM.
+            monthly: dict[str, float] = {}
+            for r in rows:
+                month_key = (r['recorded_at'] or '')[:7]
+                if month_key:
+                    monthly[month_key] = float(r['profit'] or 0)
+            monthly_profits = list(monthly.values())
+
+            deposited = float(agent['deposited'] or 0)
+            base_capital = INITIAL_CAPITAL + deposited
+
+            result.append({
+                'agent_id': agent_id,
+                'name': agent['name'],
+                'cumulative_return_pct': cumulative_return(profits, base_capital),
+                'monthly_win_rate': monthly_win_rate(monthly_profits),
+                'max_drawdown': max_drawdown(equity),
+                'sharpe_coarse': coarse_sharpe(daily_returns),
+                'snapshot_count': len(rows),
+            })
+
+        conn.close()
+        result.sort(key=lambda item: item['cumulative_return_pct'], reverse=True)
+        return {'top_agents': result[:limit]}
+
     @app.get('/api/leaderboard/position-pnl')
     async def get_leaderboard_position_pnl(limit: int = 10):
         conn = get_db_connection()
@@ -519,7 +596,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             if positions[-1]['market'] == 'polymarket':
                 decorate_polymarket_item(positions[-1], fetch_remote=False)
 
-        return {'positions': positions, 'cash': agent.get('cash', 100000.0)}
+        return {'positions': positions, 'cash': agent.get('cash', INITIAL_CAPITAL)}
 
     @app.get('/api/agents/{agent_id}/positions')
     async def get_agent_positions(agent_id: int):

@@ -35,6 +35,7 @@ from routes_shared import (
     utc_now_iso_z,
     validate_executed_at,
 )
+from security import assert_paper_only
 from services import _add_agent_points, _get_agent_by_token, _reserve_signal_id, _update_position_from_signal
 from team_missions import TeamMissionError, record_team_message_from_signal, record_team_reply_from_parent_signal
 from utils import _extract_token
@@ -43,6 +44,9 @@ from utils import _extract_token
 def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
     @app.post('/api/signals/realtime')
     async def push_realtime_signal(data: RealtimeSignalRequest, authorization: str = Header(None)):
+        # Brian's red line: paper-only. `paper=false` payloads are denied with
+        # 403 before any price fetch / DB write.
+        assert_paper_only(data)
         token = _extract_token(authorization)
         agent = _get_agent_by_token(token)
         if not agent:
@@ -71,6 +75,28 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             raise HTTPException(status_code=400, detail='Invalid quantity')
         if qty > 1_000_000:
             raise HTTPException(status_code=400, detail='Quantity too large')
+
+        # TW common-stock round-lot guard. We check before the price-fetch
+        # round-trip so an obviously-malformed order (e.g. 100 shares of
+        # 2330) gets rejected without hitting TWSE OpenAPI. Price-band and
+        # session checks are evaluated downstream once we know the price.
+        if data.market == 'tw-stock':
+            from paper_engine import (
+                REJECT_INVALID_LOT_SIZE,
+                validate_lot_size,
+            )
+
+            lot_err = validate_lot_size(qty, data.market)
+            if lot_err == REJECT_INVALID_LOT_SIZE:
+                from config import TW_ROUND_LOT_SHARES
+
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f'TW stock orders must be whole multiples of {TW_ROUND_LOT_SHARES} '
+                        f'shares (round-lot). Got quantity={qty}.'
+                    ),
+                )
 
         if data.market == 'polymarket':
             if data.executed_at.lower() != 'now':
