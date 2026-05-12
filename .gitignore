@@ -131,3 +131,5 @@ change.md
 
 # Local agent config symlink
 .codex
+# local audit logs (never commit)
+.claude/audit/
