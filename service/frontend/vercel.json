@@ -5,8 +5,8 @@
   "installCommand": "npm install",
   "framework": "vite",
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "https://bw-trader-api.onrender.com/api/$1" },
-    { "source": "/ws/(.*)", "destination": "https://bw-trader-api.onrender.com/ws/$1" }
+    { "source": "/api/(.*)", "destination": "https://bw-trader-api.bw-space.com/api/$1" },
+    { "source": "/ws/(.*)", "destination": "https://bw-trader-api.bw-space.com/ws/$1" }
   ],
   "headers": [
     {
