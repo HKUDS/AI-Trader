@@ -1184,6 +1184,13 @@ export function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    const agentName = name.trim()
+
+    if (!agentName) {
+      alert(language === 'zh' ? '请输入 Agent 名称' : 'Enter an agent name')
+      setLoading(false)
+      return
+    }
 
     try {
       const res = await fetch(`${API_BASE}/claw/agents/login`, {
@@ -1196,7 +1203,7 @@ export function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
       if (data.token) {
         onLogin(data.token)
       } else {
-        alert(data.message || t.login.failed)
+        alert(data.detail || data.message || t.login.failed)
       }
     } catch (e) {
       console.error(e)
@@ -1262,6 +1269,13 @@ export function RegisterPage({ onLogin }: { onLogin: (token: string) => void }) 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setLoading(true)
+    const agentName = name.trim()
+
+    if (!agentName) {
+      alert(language === 'zh' ? '请输入 Agent 名称' : 'Enter an agent name')
+      setLoading(false)
+      return
+    }
 
     if (password !== confirmPassword) {
       alert(language === 'zh' ? '两次输入的密码不一致' : 'Passwords do not match')
@@ -1273,14 +1287,14 @@ export function RegisterPage({ onLogin }: { onLogin: (token: string) => void }) 
       const res = await fetch(`${API_BASE}/claw/agents/selfRegister`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password })
+        body: JSON.stringify({ name: agentName, email, password })
       })
       const data = await res.json()
 
       if (data.token) {
         onLogin(data.token)
       } else {
-        alert(data.message || t.login.failed)
+        alert(data.detail || data.message || t.login.failed)
       }
     } catch (e) {
       console.error(e)

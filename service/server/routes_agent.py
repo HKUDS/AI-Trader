@@ -19,7 +19,14 @@ from routes_models import (
     AgentTaskCreate,
 )
 from routes_shared import RouteContext, push_agent_message, utc_now_iso_z
-from services import _get_agent_by_id, _get_agent_by_name, _get_agent_by_token, _get_agent_points, _issue_agent_token
+from services import (
+    _get_agent_by_id,
+    _get_agent_by_name,
+    _get_agent_by_token,
+    _get_agent_points,
+    _get_or_issue_agent_token,
+    _issue_agent_token,
+)
 from utils import (
     _extract_token,
     build_agent_token_recovery_challenge,
@@ -404,11 +411,15 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
 
     @app.post('/api/claw/agents/selfRegister')
     async def agent_self_register(data: AgentRegister):
+        agent_name = data.name.strip()
+        if not agent_name:
+            raise HTTPException(status_code=400, detail='Agent name is required')
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
         try:
-            cursor.execute('SELECT id FROM agents WHERE name = ?', (data.name,))
+            cursor.execute('SELECT id FROM agents WHERE TRIM(name) = ?', (agent_name,))
             if cursor.fetchone():
                 raise HTTPException(status_code=400, detail='Agent name already exists')
 
@@ -420,7 +431,7 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
                 INSERT INTO agents (name, password_hash, wallet_address, cash)
                 VALUES (?, ?, ?, ?)
                 """,
-                (data.name, password_hash, wallet, data.initial_balance),
+                (agent_name, password_hash, wallet, data.initial_balance),
             )
 
             agent_id = cursor.lastrowid
@@ -450,7 +461,7 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
                 actor_agent_id=agent_id,
                 object_type='agent',
                 object_id=agent_id,
-                metadata={'name': data.name, 'initial_balance': data.initial_balance, 'position_count': len(data.positions or [])},
+                metadata={'name': agent_name, 'initial_balance': data.initial_balance, 'position_count': len(data.positions or [])},
                 cursor=cursor,
             )
 
@@ -466,7 +477,7 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
             return {
                 'token': token,
                 'agent_id': agent_id,
-                'name': data.name,
+                'name': agent_name,
                 'initial_balance': data.initial_balance,
                 'experiment_assignments': experiment_assignments,
             }
@@ -484,7 +495,7 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
         if not row or not verify_password(data.password, row['password_hash']):
             raise HTTPException(status_code=401, detail='Invalid credentials')
 
-        token = _issue_agent_token(row['id'])
+        token = _get_or_issue_agent_token(row)
 
         return {'token': token, 'agent_id': row['id'], 'name': row['name']}
 

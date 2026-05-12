@@ -39,14 +39,23 @@ def _get_agent_by_id(agent_id: Optional[int]) -> Optional[Dict]:
 
 
 def _get_agent_by_name(name: str) -> Optional[Dict]:
-    """Get agent by unique name."""
-    normalized = (name or "").strip()
+    """Get agent by unique name.
+
+    Prefer an exact match for backward compatibility with any legacy rows that
+    may contain leading/trailing spaces, then fall back to the normalized name.
+    """
+    raw_name = name or ""
+    normalized = raw_name.strip()
     if not normalized:
         return None
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM agents WHERE name = ?", (normalized,))
-    row = cursor.fetchone()
+    row = None
+    for candidate in dict.fromkeys([raw_name, normalized]):
+        cursor.execute("SELECT * FROM agents WHERE name = ?", (candidate,))
+        row = cursor.fetchone()
+        if row:
+            break
     conn.close()
     return dict(row) if row else None
 
@@ -60,6 +69,14 @@ def _issue_agent_token(agent_id: int) -> str:
     conn.commit()
     conn.close()
     return token
+
+
+def _get_or_issue_agent_token(agent: Dict) -> str:
+    """Return the current agent API token, issuing one only for legacy empty rows."""
+    token = (agent.get("token") or "").strip()
+    if token:
+        return token
+    return _issue_agent_token(agent["id"])
 
 
 def _get_user_by_token(token: str) -> Optional[Dict]:
