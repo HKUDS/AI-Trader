@@ -9,7 +9,9 @@ small, load-bearing guardrails that the rest of the code base has to clear.
 from .no_auto_trade import (
     LiveTradingDeniedError,
     assert_paper_only,
+    assert_user_consent_or_no_trade,
     enforce_no_auto_trade,
+    log_audit,
     reject_broker_webhook,
     queue_copy_trade_notification,
 )
@@ -17,7 +19,9 @@ from .no_auto_trade import (
 __all__ = [
     "LiveTradingDeniedError",
     "assert_paper_only",
+    "assert_user_consent_or_no_trade",
     "enforce_no_auto_trade",
+    "log_audit",
     "reject_broker_webhook",
     "queue_copy_trade_notification",
 ]

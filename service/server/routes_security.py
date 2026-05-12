@@ -29,16 +29,25 @@ def register_security_routes(app: FastAPI) -> None:
     @app.get('/api/policy/no-auto-trade')
     async def describe_policy():
         return {
-            'policy': 'no_auto_trade',
+            'policy': 'no_system_autonomous_trade',
+            'last_revised': '2026-05-12',
             'allowed': [
                 'paper_trading_ntd_sandbox',
                 'signal_publication',
                 'copy_trade_notification_to_follower_queue',
+                'copy_trade_mirror_with_explicit_user_consent_and_risk_disclosure',
             ],
             'denied': [
-                'direct_broker_order_execution',
+                'agent_autonomous_broker_execution',
                 'broker_webhook_triggered_fills',
-                'copy_trade_auto_mirroring',
+                'scheduled_or_system_initiated_mirror_trade',
+                'copy_trade_mirror_without_explicit_consent',
             ],
-            'enforcement': 'fastapi_dependency_layer',
+            'consent_endpoint': '/api/copytrade/follow',
+            'consent_requirements': [
+                'explicit_consent=true',
+                'risk_disclosure_accepted=true',
+                'audit_log_record_written',
+            ],
+            'enforcement': 'fastapi_dependency_layer + assert_user_consent_or_no_trade',
         }

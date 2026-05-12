@@ -1,15 +1,22 @@
 """Enforce Brian's no-auto-trade policy.
 
+Brian 2026-05-12 校正：copy trading WITH explicit user opt-in is NOT a red line.
+The red line is *autonomous* execution — i.e. trades the user did not deliberately
+authorize. User-initiated copy trades remain allowed once consent + risk disclosure
+have been recorded in the audit log.
+
 ALLOWED:
 - Paper trading against the simulated NT$ sandbox.
 - Signal publication (strategy / operation / discussion text).
 - Copy-trade *notifications* dispatched to the follower's message queue so the
   user can manually execute through their own broker.
+- Copy-trade *mirroring* when the user has explicitly opted in via
+  /api/copytrade/follow and accepted the risk disclosure (`assert_user_consent_or_no_trade`).
 
 DENIED:
-- Direct broker order execution from server-side code.
-- Auto-fill triggered by broker / exchange webhooks.
-- Copy-trade auto-mirroring (server forwarding fills to a real account).
+- Direct broker order execution from server-side code without user consent.
+- Auto-fill triggered by broker / exchange webhooks (no user-consent flow → 403).
+- Agent-autonomous mirror trades (no `explicit_follow_action` audit marker → 403).
 
 The policy is enforced at the FastAPI dependency layer so any route that
 needs the guard can declare it with `Depends(enforce_no_auto_trade)` and rely
@@ -141,6 +148,71 @@ def reject_broker_webhook(source: str) -> None:
             f"Broker webhook from {source} cannot trigger trades. "
             "Webhooks are accepted for read-only reconciliation only."
         ),
+    )
+
+
+def _audit_log_path() -> "Path":
+    from datetime import date
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[3] / ".claude" / "audit"
+    root.mkdir(parents=True, exist_ok=True)
+    return root / f"copytrade-{date.today().isoformat()}.jsonl"
+
+
+def log_audit(event: str, action: str, meta: Mapping[str, Any]) -> None:
+    """Append an audit record for any consented live-trade action.
+
+    Format mirrors the harness eng audit pattern: one JSON object per line,
+    keyed by absolute timestamp. The file is the durable trail for
+    compliance review — never edit it manually.
+    """
+    import json
+    from datetime import datetime, timezone
+
+    record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event": event,
+        "action": action,
+        **dict(meta),
+    }
+    try:
+        path = _audit_log_path()
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception as exc:  # pragma: no cover — never let audit break the path
+        logger.error("audit-log-write-failed: %s", exc)
+
+
+def assert_user_consent_or_no_trade(
+    action: str,
+    user_consent: bool,
+    audit_meta: Mapping[str, Any],
+) -> None:
+    """Brian 2026-05-12 校正:
+
+    - Blocks system-initiated trades (webhook / scheduled / agent-autonomous).
+    - Allows user-consented copy trades, with an audit log entry on every call.
+
+    `user_consent` must be the literal boolean True (no truthy coercion) AND
+    `audit_meta` must carry the `explicit_follow_action` marker that the
+    copytrade follow handler stamps onto its request. Anything else → 403.
+    """
+    if user_consent is True and bool(audit_meta.get("explicit_follow_action")):
+        log_audit("user_consent_trade", action, audit_meta)
+        return
+    logger.warning("no-auto-trade: %s denied (no user consent)", action)
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail={
+            "reason": "no_system_autonomous_trade",
+            "policy": (
+                "User must explicitly opt-in via /api/copytrade/follow before "
+                "any mirror trade. System / webhook / scheduled paths cannot "
+                "trigger live execution."
+            ),
+            "audit_endpoint": "/api/policy/no-auto-trade",
+        },
     )
 
 
