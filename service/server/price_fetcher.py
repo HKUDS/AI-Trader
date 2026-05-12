@@ -596,12 +596,27 @@ def get_price_from_market(
             # We use the current orderbook mid price (paper trading).
             price = _get_polymarket_mid_price(symbol, token_id=token_id, outcome=outcome)
         elif market == "tw-stock":
-            # BW-Trader TW path: TWSE OpenAPI for latest daily close,
-            # FinMind as historical fallback.
+            # BW-Trader TW path. Probe order, cheapest+freshest first:
+            #   1. twstock realtime (intraday, ~current trade price)
+            #   2. TWSE OpenAPI STOCK_DAY_ALL (latest closed trading day)
+            #   3. FinMind TaiwanStockPrice (historical, covers older dates)
+            # twstock is best-effort: if the package isn't installed yet (e.g.
+            # CI image hasn't run `pip install -r requirements.txt` after the
+            # twstock addition) we skip it silently and the existing path
+            # behaves exactly as before.
             from tw_market import get_tw_stock_price
             from finmind_client import get_tw_stock_price_finmind
 
-            price = get_tw_stock_price(symbol, executed_at)
+            price = None
+            try:
+                from data_sources.tw_market_twstock import get_realtime_close
+                price = get_realtime_close(symbol)
+            except ImportError:
+                pass
+            except Exception as exc:  # don't let an upstream blip kill the call
+                print(f"[Price API] twstock realtime probe failed for {symbol}: {exc}")
+            if price is None:
+                price = get_tw_stock_price(symbol, executed_at)
             if price is None:
                 price = get_tw_stock_price_finmind(symbol, executed_at)
         else:

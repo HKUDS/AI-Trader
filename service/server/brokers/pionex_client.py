@@ -1,198 +1,163 @@
-"""Pionex (派網) broker client.
+"""Pionex broker client — read-only first.
 
-Two interaction patterns:
+Scope on this PR:
+- Public market data endpoints (klines, ticker) — no auth, no signing.
+- Authenticated account balance — HMAC-SHA256 signing scaffolding.
 
-1. WebSocket subscribe to `wss://ws.pionex.com/wsPub` for live price ticks.
-   The streaming side is best-effort and stays in `_subscribe_ws`; the
-   copytrade mirror path only depends on REST.
-2. REST orders against `https://api.pionex.com/api/v1` using HMAC-SHA256
-   signing on `key + timestamp + path + body`.
+NOT shipped here (deliberate — Phase-3 copytrade work):
+- place / cancel order
+- withdraw / transfer
+- subaccount admin
 
-The client is deliberately stateless aside from credentials so it can be
-swapped between live and mock in tests via `requests_session=` injection.
+API docs: https://pionex-doc.gitbook.io/apidocs/
+
+IMPORTANT — signing-format caveat
+---------------------------------
+The exact concatenation order Pionex requires for HMAC signing varies by
+endpoint family. This file implements the most-commonly-documented format:
+
+    payload = METHOD + PATH_WITH_SORTED_QUERY + TIMESTAMP_MS + BODY
+
+…using HMAC-SHA256(secret, payload) -> hex. Before the first real
+authenticated call lands in production, the developer **must** smoke-test
+`fetch_balance()` against a live Pionex API key, compare the signing against
+the current docs (signing formats have changed historically), and adjust
+`_sign_payload` if needed. The client raises `ValueError` if keys are missing
+so call sites can't accidentally fire unsigned requests.
 """
 
 from __future__ import annotations
 
 import hashlib
 import hmac
-import logging
 import time
-import uuid
 from typing import Any, Optional
-from urllib.parse import urlencode
 
-from .base import (
-    BrokerAuthError,
-    BrokerOrder,
-    BrokerOrderResult,
-    BrokerRateLimitError,
-)
+import requests
 
-logger = logging.getLogger(__name__)
-
-REST_BASE = "https://api.pionex.com"
-WS_URL = "wss://ws.pionex.com/wsPub"
+PIONEX_API_BASE = "https://api.pionex.com"
 
 
 class PionexClient:
-    name = "pionex"
+    """Read-only Pionex client.
+
+    Construct with a key + secret obtained from the user's Pionex account.
+    The constructor refuses empty values to keep unsigned auth requests
+    from leaking through.
+    """
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        api_secret: Optional[str] = None,
-        rest_base: str = REST_BASE,
-        requests_session: Any = None,
-        ws_factory: Any = None,
+        api_key: str,
+        api_secret: str,
+        base_url: str = PIONEX_API_BASE,
+        timeout: float = 10.0,
     ) -> None:
-        self._key = api_key
-        self._secret = api_secret
-        self._rest_base = rest_base
-        self._session = requests_session
-        self._ws_factory = ws_factory
+        if not api_key or not api_key.strip():
+            raise ValueError("api_key is required")
+        if not api_secret or not api_secret.strip():
+            raise ValueError("api_secret is required")
+        self.api_key = api_key.strip()
+        self._secret_bytes = api_secret.strip().encode("utf-8")
+        self.base_url = base_url.rstrip("/")
+        self.timeout = timeout
 
     # ------------------------------------------------------------------
-    # Auth + signing
+    # Signing
     # ------------------------------------------------------------------
+    def _timestamp_ms(self) -> str:
+        return str(int(time.time() * 1000))
 
-    def _require_creds(self) -> None:
-        if not self._key or not self._secret:
-            raise BrokerAuthError(
-                "PIONEX_API_KEY / PIONEX_API_SECRET not configured"
-            )
+    def _sign_payload(self, method: str, path: str, params: dict[str, Any], body: str, ts: str) -> str:
+        """HMAC-SHA256 over METHOD + PATH(+query) + TS + BODY → hex digest.
 
-    def _sign(self, method: str, path: str, params: dict[str, Any], body: str) -> dict[str, str]:
-        self._require_creds()
-        ts = str(int(time.time() * 1000))
-        query = urlencode(sorted(params.items())) if params else ""
-        payload = f"{method.upper()}{path}{query}{ts}{body}"
-        signature = hmac.new(
-            self._secret.encode("utf-8"),
-            payload.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
+        Query parameters are sorted lexicographically by key for deterministic
+        signing. Per docstring caveat, verify this matches current Pionex
+        docs before using authenticated endpoints in production.
+        """
+        if params:
+            query = "&".join(f"{k}={params[k]}" for k in sorted(params))
+            path_with_query = f"{path}?{query}"
+        else:
+            path_with_query = path
+        message = f"{method.upper()}{path_with_query}{ts}{body}"
+        return hmac.new(self._secret_bytes, message.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    def _auth_headers(self, method: str, path: str, params: dict[str, Any], body: str = "") -> dict[str, str]:
+        ts = self._timestamp_ms()
+        signature = self._sign_payload(method, path, params, body, ts)
         return {
-            "PIONEX-KEY": self._key,
+            "PIONEX-KEY": self.api_key,
             "PIONEX-SIGNATURE": signature,
             "PIONEX-TIMESTAMP": ts,
-            "Content-Type": "application/json",
         }
 
     # ------------------------------------------------------------------
-    # HTTP plumbing
+    # Public market data — no auth
     # ------------------------------------------------------------------
-
-    def _request(
+    def fetch_klines(
         self,
-        method: str,
-        path: str,
-        params: Optional[dict[str, Any]] = None,
-        body: Optional[dict[str, Any]] = None,
-    ) -> dict[str, Any]:
-        import json as _json
+        symbol: str,
+        interval: str = "1H",
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Public klines / OHLCV. Returns [] on error.
 
-        params = params or {}
-        body_str = _json.dumps(body) if body else ""
-        headers = self._sign(method, path, params, body_str)
-        url = self._rest_base + path
-
-        if self._session is None:
-            import requests
-
-            self._session = requests.Session()
-
-        resp = self._session.request(
-            method=method,
-            url=url,
-            params=params,
-            data=body_str if body else None,
-            headers=headers,
-            timeout=10,
-        )
-
-        if resp.status_code == 401 or resp.status_code == 403:
-            raise BrokerAuthError(f"pionex auth rejected: {resp.text[:200]}")
-        if resp.status_code == 429:
-            raise BrokerRateLimitError("pionex rate limit hit")
-        if resp.status_code >= 400:
-            raise RuntimeError(f"pionex {resp.status_code}: {resp.text[:200]}")
-
-        return resp.json()
-
-    # ------------------------------------------------------------------
-    # Public broker interface
-    # ------------------------------------------------------------------
-
-    def place_order(self, order: BrokerOrder) -> BrokerOrderResult:
-        cid = order.client_order_id or f"bw-{uuid.uuid4().hex[:12]}"
-        body = {
-            "symbol": order.symbol,
-            "side": order.side.upper(),
-            "type": order.order_type.upper(),
-            "size": str(order.quantity),
-            "clientOrderId": cid,
-        }
-        if order.order_type.lower() == "limit":
-            if order.price is None:
-                raise ValueError("limit order requires price")
-            body["price"] = str(order.price)
-
-        data = self._request("POST", "/api/v1/trade/order", body=body)
-        result = data.get("data") or {}
-        return BrokerOrderResult(
-            order_ref=str(result.get("orderId") or cid),
-            status=str(result.get("status", "accepted")).lower(),
-            filled_quantity=float(result.get("filledSize", 0)),
-            average_price=float(result["avgPrice"]) if result.get("avgPrice") else None,
-            broker=self.name,
-            raw=data,
-        )
-
-    def cancel_order(self, order_ref: str) -> bool:
-        data = self._request(
-            "DELETE",
-            "/api/v1/trade/order",
-            params={"orderId": order_ref},
-        )
-        return bool(data.get("result"))
-
-    def get_account_status(self) -> dict[str, Any]:
-        try:
-            data = self._request("GET", "/api/v1/account/balances")
-            return {"broker": self.name, "connected": True, "balances": data.get("data", [])}
-        except BrokerAuthError as exc:
-            return {"broker": self.name, "connected": False, "error": str(exc)}
-
-    # ------------------------------------------------------------------
-    # WebSocket price stream (best-effort, not on the order path)
-    # ------------------------------------------------------------------
-
-    def subscribe_price(self, symbols: list[str], on_tick) -> None:
-        """Start a background WS subscription. Adapter-only — copytrade
-        mirror path uses REST orders, not the stream. Tests inject a fake
-        `ws_factory` so we never open a real socket in CI.
+        `symbol` example: `BTC_USDT`. `interval` is one of Pionex's documented
+        granularities (`1M`, `5M`, `15M`, `30M`, `1H`, `4H`, `1D`, etc.).
         """
-        import json as _json
-        import threading
+        path = "/api/v1/market/klines"
+        params = {"symbol": symbol, "interval": interval, "limit": str(limit)}
+        try:
+            resp = requests.get(f"{self.base_url}{path}", params=params, timeout=self.timeout)
+            resp.raise_for_status()
+            payload = resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            print(f"[Pionex] klines {symbol} {interval} failed: {exc}")
+            return []
+        if not isinstance(payload, dict):
+            return []
+        data = payload.get("data")
+        if isinstance(data, dict):
+            data = data.get("klines") or data.get("data")
+        return data if isinstance(data, list) else []
 
-        def _run() -> None:
-            ws = (self._ws_factory or _make_ws)(WS_URL)
-            sub = {"op": "SUBSCRIBE", "topic": "TRADE", "symbols": symbols}
-            ws.send(_json.dumps(sub))
-            for raw in ws:
-                try:
-                    on_tick(_json.loads(raw))
-                except Exception as exc:  # pragma: no cover
-                    logger.warning("pionex ws tick error: %s", exc)
+    # ------------------------------------------------------------------
+    # Authenticated — read-only
+    # ------------------------------------------------------------------
+    def fetch_balance(self) -> Optional[dict[str, Any]]:
+        """Account balance (READ-ONLY).
 
-        threading.Thread(target=_run, daemon=True).start()
+        Returns the parsed JSON payload, or None on network / auth failure.
+        Authenticated — requires a valid key/secret pair. No state mutation.
+        """
+        path = "/api/v1/account/balances"
+        params: dict[str, Any] = {}
+        headers = self._auth_headers("GET", path, params, body="")
+        try:
+            resp = requests.get(
+                f"{self.base_url}{path}",
+                params=params,
+                headers=headers,
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.RequestException, ValueError) as exc:
+            print(f"[Pionex] fetch_balance failed: {exc}")
+            return None
 
+    # ------------------------------------------------------------------
+    # Phase-3 deliberately-omitted endpoints — guard rails
+    # ------------------------------------------------------------------
+    def place_order(self, *args: Any, **kwargs: Any) -> None:
+        raise NotImplementedError(
+            "place_order is intentionally not implemented in the read-only client. "
+            "It must go through the Phase-3 copytrade user-consent flow."
+        )
 
-def _make_ws(url: str):  # pragma: no cover — exercised only in live mode
-    try:
-        from websocket import create_connection  # type: ignore
-
-        return create_connection(url)
-    except ImportError as exc:
-        raise RuntimeError("websocket-client not installed; pip install websocket-client") from exc
+    def cancel_order(self, *args: Any, **kwargs: Any) -> None:
+        raise NotImplementedError(
+            "cancel_order is intentionally not implemented in the read-only client. "
+            "It must go through the Phase-3 copytrade user-consent flow."
+        )

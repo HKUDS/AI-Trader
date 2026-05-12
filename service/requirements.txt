@@ -5,6 +5,7 @@ pydantic>=2.5.3
 python-dotenv>=1.0.0
 web3>=6.15.1
 requests>=2.31.0
+twstock>=1.5.0
 aiohttp>=3.9.1
 python-multipart>=0.0.6
 openai>=1.50.0

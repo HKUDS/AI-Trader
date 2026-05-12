@@ -16,6 +16,13 @@ from news import fetch_all_sources
 from research import is_backend_available, research
 from routes_shared import utc_now_iso_z
 
+try:
+    from data_sources import institutional_flows as _institutional_flows
+    from data_sources import tw_market_twstock as _tw_twstock
+except ImportError:  # data_sources only ships in the real-TW-data PR
+    _institutional_flows = None
+    _tw_twstock = None
+
 
 # 12-hour TTL: research synthesis decays slowly relative to price, and the
 # upstream skill is expensive (multiple network round trips). Keys are
@@ -28,6 +35,52 @@ _RESEARCH_CACHE_TTL_SECONDS = 12 * 60 * 60
 # headlines.
 _TW_NEWS_CACHE_PREFIX = "market_intel:tw_news"
 _TW_NEWS_CACHE_TTL_SECONDS = 5 * 60
+
+
+def _build_research_enrichment(symbol: str) -> dict:
+    """Best-effort enrich research output with realtime quote + 5-day 三大法人.
+
+    Every leaf is wrapped in try/except so a single source failing never
+    breaks the research endpoint. Each section reports its own `status`
+    so the UI can show a clear "data unavailable" hint per pane.
+    """
+    import datetime as _dt
+
+    enrichment: dict = {}
+
+    if _tw_twstock is not None:
+        try:
+            quote = _tw_twstock.fetch_realtime(symbol)
+            enrichment["realtime"] = {"status": "ok", "data": quote}
+        except Exception as exc:  # pragma: no cover — defensive
+            enrichment["realtime"] = {"status": "error", "error": type(exc).__name__}
+    else:
+        enrichment["realtime"] = {"status": "unavailable"}
+
+    if _institutional_flows is not None:
+        try:
+            end = _dt.date.today()
+            start = end - _dt.timedelta(days=10)
+            rows = _institutional_flows.fetch_institutional_flows(
+                symbol, start.isoformat(), end.isoformat()
+            )
+            if rows is None:
+                enrichment["institutional"] = {"status": "error", "rows": []}
+            else:
+                enrichment["institutional"] = {
+                    "status": "ok",
+                    "rows": rows[-5:],
+                }
+        except Exception as exc:  # pragma: no cover — defensive
+            enrichment["institutional"] = {
+                "status": "error",
+                "error": type(exc).__name__,
+                "rows": [],
+            }
+    else:
+        enrichment["institutional"] = {"status": "unavailable", "rows": []}
+
+    return enrichment
 
 
 def register_market_routes(app: FastAPI) -> None:
@@ -144,6 +197,7 @@ def register_market_routes(app: FastAPI) -> None:
         payload["symbol"] = normalized
         payload["fetched_at"] = utc_now_iso_z()
         payload["cache_hit"] = False
+        payload["enrichment"] = _build_research_enrichment(normalized)
         if result.status == "ok":
             set_json(cache_key, payload, ttl_seconds=_RESEARCH_CACHE_TTL_SECONDS)
         return payload
