@@ -1,0 +1,135 @@
+{
+  "$id": "https://ai-trader.local/research/schemas/positions.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "agent_hash": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "agent_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "current_price": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "entry_price": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "leader_hash": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "leader_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "market": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "opened_at": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "outcome": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "quantity": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "side": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "symbol": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "token_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "agent_id",
+    "agent_hash",
+    "leader_id",
+    "leader_hash",
+    "market",
+    "symbol",
+    "token_id",
+    "outcome",
+    "side",
+    "quantity",
+    "entry_price",
+    "current_price",
+    "opened_at"
+  ],
+  "title": "positions.csv research export row",
+  "type": "object",
+  "x-default-anonymized": true,
+  "x-export-version": "2026-05-06"
+}

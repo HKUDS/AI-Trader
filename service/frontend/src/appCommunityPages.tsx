@@ -251,6 +251,31 @@ function SignalCard({
         </div>
       )}
 
+      {(signal.quality_score !== null && signal.quality_score !== undefined) || signal.reward_reason || signal.accepted_reply_count ? (
+        <div className="experiment-signal-badges">
+          {signal.quality_score !== null && signal.quality_score !== undefined && (
+            <span className="experiment-signal-badge">
+              {language === 'zh' ? '质量' : 'Quality'} {Number(signal.quality_score || 0).toFixed(2)}
+            </span>
+          )}
+          {signal.accepted_reply_count ? (
+            <span className="experiment-signal-badge">
+              {language === 'zh' ? '已采纳' : 'Accepted'} {signal.accepted_reply_count}
+            </span>
+          ) : null}
+          {signal.reward_reason && (
+            <span className="experiment-signal-badge">
+              {signal.reward_reason} {signal.reward_points ? `+${signal.reward_points}` : ''}
+            </span>
+          )}
+          {signal.reward_experiment_key && (
+            <span className="experiment-signal-badge">
+              {signal.reward_experiment_key}/{signal.reward_variant_key || '-'}
+            </span>
+          )}
+        </div>
+      ) : null}
+
       <p className="signal-content">{signal.content}</p>
 
       <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', fontSize: '12px', color: 'var(--text-muted)', marginTop: '8px' }}>

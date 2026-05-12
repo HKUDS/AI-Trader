@@ -109,6 +109,67 @@ class ChallengeSettleRequest(BaseModel):
     force: bool = False
 
 
+class ExperimentCreateRequest(BaseModel):
+    experiment_key: Optional[str] = None
+    title: str
+    description: Optional[str] = None
+    status: str = "active"
+    unit_type: str = "agent"
+    variants_json: Optional[List[Dict[str, Any]]] = None
+    start_at: Optional[str] = None
+    end_at: Optional[str] = None
+
+
+class ExperimentStatusRequest(BaseModel):
+    status: str
+
+
+class ExperimentNotificationRequest(BaseModel):
+    message_type: str
+    title: str
+    content: str
+    variant_key: Optional[str] = None
+    agent_ids: Optional[List[int]] = None
+    dry_run: bool = True
+    limit: int = 500
+    data: Optional[Dict[str, Any]] = None
+    create_task: bool = False
+    task_type: Optional[str] = None
+    input_data: Optional[Dict[str, Any]] = None
+    challenge_key: Optional[str] = None
+    mission_key: Optional[str] = None
+    team_key: Optional[str] = None
+    target: Optional[str] = None
+
+
+class ExperimentTaskRequest(BaseModel):
+    task_type: str
+    input_data: Optional[Dict[str, Any]] = None
+    experiment_key: Optional[str] = None
+    variant_key: Optional[str] = None
+    challenge_key: Optional[str] = None
+    mission_key: Optional[str] = None
+    team_key: Optional[str] = None
+    agent_ids: Optional[List[int]] = None
+    target: Optional[str] = None
+    dry_run: bool = True
+    limit: int = 500
+
+
+class RewardReverseRequest(BaseModel):
+    reason: str = "reversed"
+
+
+class ResearchExportRequest(BaseModel):
+    start_at: Optional[str] = None
+    end_at: Optional[str] = None
+    experiment_key: Optional[str] = None
+    variant_key: Optional[str] = None
+    market: Optional[str] = None
+    limit: int = 100000
+    offset: int = 0
+
+
 class TeamMissionCreateRequest(BaseModel):
     mission_key: Optional[str] = None
     title: str

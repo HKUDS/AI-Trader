@@ -99,7 +99,17 @@ def _create_user_session(user_id: int) -> str:
     return token
 
 
-def _add_agent_points(agent_id: int, points: int, reason: str = "reward") -> bool:
+def _add_agent_points(
+    agent_id: int,
+    points: int,
+    reason: str = "reward",
+    *,
+    source_type: Optional[str] = None,
+    source_id: Optional[Any] = None,
+    experiment_key: Optional[str] = None,
+    variant_key: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
+) -> bool:
     """Add points to an agent's account through the reward ledger."""
     if points <= 0:
         return False
@@ -110,7 +120,16 @@ def _add_agent_points(agent_id: int, points: int, reason: str = "reward") -> boo
         try:
             from rewards import grant_agent_reward
 
-            result = grant_agent_reward(agent_id, points, reason)
+            result = grant_agent_reward(
+                agent_id,
+                points,
+                reason,
+                source_type=source_type,
+                source_id=source_id,
+                experiment_key=experiment_key,
+                variant_key=variant_key,
+                metadata=metadata,
+            )
             return bool(result.get("success"))
         except Exception as e:
             if is_retryable_db_error(e) and attempt < max_retries - 1:

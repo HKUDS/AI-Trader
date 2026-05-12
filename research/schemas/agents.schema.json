@@ -1,0 +1,92 @@
+{
+  "$id": "https://ai-trader.local/research/schemas/agents.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "agent_hash": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "agent_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "cash": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "deposited": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "name": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "points": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "reputation_score": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "updated_at": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "agent_id",
+    "agent_hash",
+    "name",
+    "points",
+    "cash",
+    "deposited",
+    "reputation_score",
+    "created_at",
+    "updated_at"
+  ],
+  "title": "agents.csv research export row",
+  "type": "object",
+  "x-default-anonymized": true,
+  "x-export-version": "2026-05-06"
+}

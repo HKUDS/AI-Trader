@@ -18,9 +18,16 @@ from challenges import (
     list_challenges,
     settle_challenge,
 )
+from experiment_notifications import (
+    ExperimentNotificationError,
+    build_experiment_target_rule,
+    resolve_challenge_notification_targets,
+    send_agent_notifications,
+)
 from routes_models import (
     ChallengeCreateRequest,
     ChallengeJoinRequest,
+    ExperimentNotificationRequest,
     ChallengeSettleRequest,
     ChallengeSubmissionRequest,
 )
@@ -32,7 +39,7 @@ from utils import _extract_token
 def _to_http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, ChallengeNotFound):
         return HTTPException(status_code=404, detail=str(exc))
-    if isinstance(exc, ChallengeError):
+    if isinstance(exc, (ChallengeError, ExperimentNotificationError)):
         return HTTPException(status_code=400, detail=str(exc))
     return HTTPException(status_code=500, detail=f'Challenge request failed: {exc}')
 
@@ -134,6 +141,48 @@ def register_challenge_routes(app: FastAPI, ctx: RouteContext) -> None:
         agent = _require_agent(authorization)
         try:
             return cancel_challenge(challenge_key, agent['id'])
+        except Exception as exc:
+            raise _to_http_error(exc)
+
+    @app.post('/api/challenges/{challenge_key}/notify')
+    async def api_notify_challenge(
+        challenge_key: str,
+        data: ExperimentNotificationRequest,
+        authorization: str = Header(None),
+    ):
+        agent = _require_agent(authorization)
+        try:
+            challenge = get_challenge(challenge_key)
+            experiment_key = challenge.get('experiment_key') or (data.data or {}).get('experiment_key') or ''
+            targets = resolve_challenge_notification_targets(
+                challenge_key,
+                variant_key=data.variant_key,
+                agent_ids=data.agent_ids,
+                limit=data.limit,
+            )
+            target_rule = build_experiment_target_rule(
+                experiment_key=experiment_key,
+                variant_key=data.variant_key,
+                agent_ids=data.agent_ids,
+                limit=data.limit,
+                challenge_key=challenge_key,
+                target='challenge',
+            )
+            return await send_agent_notifications(
+                ctx,
+                targets,
+                actor_agent_id=agent['id'],
+                message_type=data.message_type,
+                title=data.title,
+                content=data.content,
+                experiment_key=experiment_key or None,
+                variant_key=data.variant_key,
+                challenge_key=challenge_key,
+                data=data.data,
+                dry_run=data.dry_run,
+                event_type='challenge_notification_sent',
+                target_rule=target_rule,
+            )
         except Exception as exc:
             raise _to_http_error(exc)
 

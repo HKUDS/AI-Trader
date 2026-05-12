@@ -1,0 +1,137 @@
+{
+  "$id": "https://ai-trader.local/research/schemas/challenge_trades.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "agent_hash": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "agent_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "challenge_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "challenge_key": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "executed_at": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "experiment_key": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "market": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "price": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "quantity": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "side": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "source_signal_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "symbol": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "challenge_id",
+    "challenge_key",
+    "agent_id",
+    "agent_hash",
+    "source_signal_id",
+    "market",
+    "symbol",
+    "side",
+    "price",
+    "quantity",
+    "executed_at",
+    "created_at",
+    "experiment_key"
+  ],
+  "title": "challenge_trades.csv research export row",
+  "type": "object",
+  "x-default-anonymized": true,
+  "x-export-version": "2026-05-06"
+}

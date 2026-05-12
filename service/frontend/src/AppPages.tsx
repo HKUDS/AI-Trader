@@ -1990,6 +1990,7 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
   const [leaderboardPage, setLeaderboardPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [chartRange, setChartRange] = useState<LeaderboardChartRange>('24h')
+  const [metric, setMetric] = useState<'return' | 'risk' | 'collaboration' | 'quality'>('return')
   const [activeChallengeCount, setActiveChallengeCount] = useState(0)
   const { language } = useLanguage()
   const navigate = useNavigate()
@@ -2000,7 +2001,7 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
       loadProfitHistory(leaderboardPage)
     }, REFRESH_INTERVAL)
     return () => clearInterval(interval)
-  }, [chartRange, leaderboardPage])
+  }, [chartRange, leaderboardPage, metric])
 
   useEffect(() => {
     const loadActiveChallengeCount = async () => {
@@ -2021,7 +2022,7 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
     try {
       const days = getLeaderboardDays(chartRange)
       const offset = (pageToLoad - 1) * LEADERBOARD_PAGE_SIZE
-      const res = await fetch(`${API_BASE}/profit/history?limit=${LEADERBOARD_PAGE_SIZE}&offset=${offset}&days=${days}`)
+      const res = await fetch(`${API_BASE}/profit/history?limit=${LEADERBOARD_PAGE_SIZE}&offset=${offset}&days=${days}&metric=${metric}`)
       const data = await res.json()
       setProfitHistory(data.top_agents || [])
       setTotalTraders(data.total || 0)
@@ -2043,6 +2044,19 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
   const leaderboardTotalPages = Math.max(1, Math.ceil(totalTraders / LEADERBOARD_PAGE_SIZE))
   const leaderboardOffset = (leaderboardPage - 1) * LEADERBOARD_PAGE_SIZE
   const formatReturnPercent = (value: any) => `${Number(value || 0).toFixed(2)}%`
+  const metricOptions = [
+    ['return', language === 'zh' ? '收益' : 'Return'],
+    ['risk', language === 'zh' ? '风险调整' : 'Risk Adjusted'],
+    ['collaboration', language === 'zh' ? '协作' : 'Collaboration'],
+    ['quality', language === 'zh' ? '质量评分' : 'Quality']
+  ] as const
+
+  const metricValue = (agent: any) => {
+    if (metric === 'risk') return Number(agent.risk_adjusted_score || 0).toFixed(2)
+    if (metric === 'collaboration') return Number(agent.collaboration_score || 0).toFixed(0)
+    if (metric === 'quality') return Number(agent.quality_score_avg || 0).toFixed(2)
+    return formatReturnPercent(agent.total_profit_percent)
+  }
 
   if (loading) {
     return <div className="loading"><div className="spinner"></div></div>
@@ -2086,6 +2100,21 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
           </button>
         </div>
       )}
+
+      <div className="leaderboard-metric-tabs">
+        {metricOptions.map(([value, label]) => (
+          <button
+            key={value}
+            className={metric === value ? 'active' : ''}
+            onClick={() => {
+              setMetric(value)
+              setLeaderboardPage(1)
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* Profit Chart */}
       {chartData.length > 0 && (
@@ -2279,8 +2308,11 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
                     </span>
                   </div>
                   <div>
-                    <span style={{ color: 'var(--text-secondary)' }}>{language === 'zh' ? '交易次数' : 'Trades'}: </span>
-                    <span style={{ fontWeight: 600 }}>{agent.trade_count || 0}</span>
+                    <span style={{ color: 'var(--text-secondary)' }}>
+                      {metric === 'return'
+                        ? (language === 'zh' ? '交易次数' : 'Trades')
+                        : metricOptions.find(([value]) => value === metric)?.[1]}: </span>
+                    <span style={{ fontWeight: 600 }}>{metric === 'return' ? (agent.trade_count || 0) : metricValue(agent)}</span>
                   </div>
                 </div>
               </div>

@@ -1,0 +1,6 @@
+pandas>=2.2.0
+numpy>=1.26.0
+scipy>=1.12.0
+statsmodels>=0.14.0
+networkx>=3.2.0
+matplotlib>=3.8.0

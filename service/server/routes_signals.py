@@ -14,6 +14,8 @@ from config import (
     SIGNAL_PUBLISH_REWARD,
 )
 from database import begin_write_transaction, get_db_connection
+from experiment_events import record_event, record_signal_event
+from experiments import experiment_accepts_unit, get_active_experiments, normalize_variants, variant_for_agent
 from routes_models import DiscussionRequest, FollowRequest, RealtimeSignalRequest, ReplyRequest, StrategyRequest
 from routes_shared import (
     ACCEPT_REPLY_REWARD,
@@ -22,6 +24,7 @@ from routes_shared import (
     GROUPED_SIGNALS_CACHE_KEY_PREFIX,
     GROUPED_SIGNALS_CACHE_TTL_SECONDS,
     RouteContext,
+    attach_experiment_unread_notice,
     decorate_polymarket_item,
     enforce_content_rate_limit,
     extract_mentions,
@@ -36,8 +39,56 @@ from routes_shared import (
     validate_executed_at,
 )
 from services import _add_agent_points, _get_agent_by_token, _reserve_signal_id, _update_position_from_signal
+from signal_quality import score_signal_quality
 from team_missions import TeamMissionError, record_team_message_from_signal, record_team_reply_from_parent_signal
 from utils import _extract_token
+
+
+def _variant_config(experiment: dict[str, Any], variant_key: str | None) -> dict[str, Any]:
+    for variant in normalize_variants(experiment.get('variants_json') or experiment.get('variants')):
+        if variant.get('key') == variant_key:
+            return variant
+    return {}
+
+
+def _agent_experiment_context(agent_id: int) -> list[dict[str, Any]]:
+    contexts = []
+    try:
+        for experiment in get_active_experiments('agent'):
+            if not experiment_accepts_unit(experiment, 'agent', agent_id):
+                continue
+            assignment = variant_for_agent(agent_id, experiment['experiment_key'])
+            contexts.append({
+                'experiment': experiment,
+                'assignment': assignment,
+                'variant_config': _variant_config(experiment, assignment.get('variant_key')),
+            })
+    except Exception as exc:
+        print(f"[Experiment Assignment Error] agent={agent_id}: {exc}")
+    return contexts
+
+
+def _reward_for_context(base_points: int, contexts: list[dict[str, Any]], quality_score: float | None) -> tuple[int, dict[str, Any] | None, dict[str, Any]]:
+    for context in contexts:
+        config = context.get('variant_config') or {}
+        if config.get('reward_mode') == 'quality_weighted' and quality_score is not None:
+            multiplier = float(config.get('reward_multiplier') or 1)
+            normalized_quality = max(0.2, min(float(quality_score or 0) / 5.0, 1.5))
+            points = max(1, int(round(base_points * normalized_quality * multiplier)))
+            return points, context, {
+                'reward_mode': 'quality_weighted',
+                'base_points': base_points,
+                'quality_score': quality_score,
+                'reward_multiplier': multiplier,
+            }
+    return base_points, (contexts[0] if contexts else None), {'reward_mode': 'fixed', 'base_points': base_points}
+
+
+def _context_keys(context: dict[str, Any] | None) -> tuple[str | None, str | None]:
+    if not context:
+        return None, None
+    assignment = context.get('assignment') or {}
+    return assignment.get('experiment_key'), assignment.get('variant_key')
 
 
 def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
@@ -49,6 +100,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             raise HTTPException(status_code=401, detail='Invalid token')
 
         agent_id = agent['id']
+        experiment_contexts = _agent_experiment_context(agent_id)
         now = utc_now_iso_z()
         side = data.action
         action_lower = side.lower()
@@ -179,6 +231,9 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         fee = trade_value * TRADE_FEE_RATE
         position_entry_price = None
         challenge_trade_count = 0
+        reward_points = SIGNAL_PUBLISH_REWARD
+        reward_context = experiment_contexts[0] if experiment_contexts else None
+        reward_metadata: dict[str, Any] = {'reward_mode': 'fixed', 'base_points': SIGNAL_PUBLISH_REWARD}
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -272,6 +327,42 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 quantity=qty,
                 executed_at=executed_at,
             ))
+            signal_quality = score_signal_quality(
+                {
+                    'signal_id': signal_id,
+                    'agent_id': agent_id,
+                    'message_type': 'operation',
+                    'market': data.market,
+                    'symbol': data.symbol,
+                    'side': side,
+                    'content': data.content,
+                    'created_at': now,
+                    'executed_at': executed_at,
+                },
+                cursor=cursor,
+            )
+            reward_points, reward_context, reward_metadata = _reward_for_context(
+                SIGNAL_PUBLISH_REWARD,
+                experiment_contexts,
+                signal_quality.get('overall_score'),
+            )
+            event_experiment_key, event_variant_key = _context_keys(reward_context)
+            record_signal_event(
+                'signal_published',
+                agent_id=agent_id,
+                signal_id=signal_id,
+                message_type='operation',
+                market=data.market,
+                experiment_key=event_experiment_key,
+                variant_key=event_variant_key,
+                metadata={
+                    'symbol': data.symbol,
+                    'side': side,
+                    'quality_score': signal_quality.get('overall_score'),
+                    **reward_metadata,
+                },
+                cursor=cursor,
+            )
 
             conn.commit()
         except HTTPException:
@@ -284,7 +375,17 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             raise HTTPException(status_code=500, detail=f'Failed to record trade: {exc}')
         conn.close()
 
-        _add_agent_points(agent_id, SIGNAL_PUBLISH_REWARD, 'publish_signal')
+        reward_experiment_key, reward_variant_key = _context_keys(reward_context)
+        _add_agent_points(
+            agent_id,
+            reward_points,
+            'publish_signal',
+            source_type='signal',
+            source_id=signal_id,
+            experiment_key=reward_experiment_key,
+            variant_key=reward_variant_key,
+            metadata=reward_metadata,
+        )
 
         follower_count = 0
         try:
@@ -392,6 +493,29 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                         quantity=qty,
                         executed_at=executed_at,
                     ))
+                    score_signal_quality(
+                        {
+                            'signal_id': follower_signal_id,
+                            'agent_id': follower_id,
+                            'message_type': 'operation',
+                            'market': data.market,
+                            'symbol': data.symbol,
+                            'side': side,
+                            'content': copy_content,
+                            'created_at': now,
+                            'executed_at': executed_at,
+                        },
+                        cursor=cursor,
+                    )
+                    record_signal_event(
+                        'signal_published',
+                        agent_id=follower_id,
+                        signal_id=follower_signal_id,
+                        message_type='operation',
+                        market=data.market,
+                        metadata={'symbol': data.symbol, 'side': side, 'copied_from_agent_id': agent_id},
+                        cursor=cursor,
+                    )
 
                     cursor.execute(f'RELEASE SAVEPOINT follower_{follower_id}')
                     follower_count += 1
@@ -420,14 +544,14 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             'symbol': data.symbol,
             'price': price,
             'follower_count': follower_count,
-            'points_earned': SIGNAL_PUBLISH_REWARD,
+            'points_earned': reward_points,
             'token_id': polymarket_token_id,
             'outcome': polymarket_outcome,
             'challenge_trade_count': challenge_trade_count,
         }
         if data.market == 'polymarket':
             decorate_polymarket_item(payload, fetch_remote=fetch_price_in_request)
-        return payload
+        return attach_experiment_unread_notice(payload, agent_id)
 
     @app.post('/api/signals/strategy')
     async def upload_strategy(data: StrategyRequest, authorization: str = Header(None)):
@@ -438,8 +562,12 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         agent_id = agent['id']
         agent_name = agent['name']
+        experiment_contexts = _agent_experiment_context(agent_id)
         signal_id = _reserve_signal_id()
         now = utc_now_iso_z()
+        reward_points = SIGNAL_PUBLISH_REWARD
+        reward_context = experiment_contexts[0] if experiment_contexts else None
+        reward_metadata: dict[str, Any] = {'reward_mode': 'fixed', 'base_points': SIGNAL_PUBLISH_REWARD}
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -482,6 +610,41 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                     message_type='strategy',
                     content=data.content,
                 )
+            signal_quality = score_signal_quality(
+                {
+                    'signal_id': signal_id,
+                    'agent_id': agent_id,
+                    'message_type': 'strategy',
+                    'market': data.market,
+                    'title': data.title,
+                    'content': data.content,
+                    'symbols': data.symbols,
+                    'tags': data.tags,
+                    'created_at': now,
+                },
+                cursor=cursor,
+            )
+            reward_points, reward_context, reward_metadata = _reward_for_context(
+                SIGNAL_PUBLISH_REWARD,
+                experiment_contexts,
+                signal_quality.get('overall_score'),
+            )
+            event_experiment_key, event_variant_key = _context_keys(reward_context)
+            record_signal_event(
+                'signal_published',
+                agent_id=agent_id,
+                signal_id=signal_id,
+                message_type='strategy',
+                market=data.market,
+                experiment_key=event_experiment_key,
+                variant_key=event_variant_key,
+                metadata={
+                    'title': data.title,
+                    'quality_score': signal_quality.get('overall_score'),
+                    **reward_metadata,
+                },
+                cursor=cursor,
+            )
             conn.commit()
         except (ChallengeError, TeamMissionError) as exc:
             conn.rollback()
@@ -494,7 +657,17 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         conn.close()
 
         invalidate_signal_read_caches(ctx)
-        _add_agent_points(agent_id, SIGNAL_PUBLISH_REWARD, 'publish_strategy')
+        reward_experiment_key, reward_variant_key = _context_keys(reward_context)
+        _add_agent_points(
+            agent_id,
+            reward_points,
+            'publish_strategy',
+            source_type='signal',
+            source_id=signal_id,
+            experiment_key=reward_experiment_key,
+            variant_key=reward_variant_key,
+            metadata=reward_metadata,
+        )
         await notify_followers_of_post(
             ctx,
             agent_id,
@@ -505,7 +678,10 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             title=data.title,
         )
 
-        return {'success': True, 'signal_id': signal_id, 'points_earned': SIGNAL_PUBLISH_REWARD}
+        return attach_experiment_unread_notice(
+            {'success': True, 'signal_id': signal_id, 'points_earned': reward_points},
+            agent_id,
+        )
 
     @app.post('/api/signals/discussion')
     async def post_discussion(data: DiscussionRequest, authorization: str = Header(None)):
@@ -524,8 +700,12 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         agent_id = agent['id']
         agent_name = agent['name']
+        experiment_contexts = _agent_experiment_context(agent_id)
         signal_id = _reserve_signal_id()
         now = utc_now_iso_z()
+        reward_points = DISCUSSION_PUBLISH_REWARD
+        reward_context = experiment_contexts[0] if experiment_contexts else None
+        reward_metadata: dict[str, Any] = {'reward_mode': 'fixed', 'base_points': DISCUSSION_PUBLISH_REWARD}
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -568,6 +748,42 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                     message_type='discussion',
                     content=data.content,
                 )
+            signal_quality = score_signal_quality(
+                {
+                    'signal_id': signal_id,
+                    'agent_id': agent_id,
+                    'message_type': 'discussion',
+                    'market': data.market,
+                    'symbol': data.symbol,
+                    'title': data.title,
+                    'content': data.content,
+                    'tags': data.tags,
+                    'created_at': now,
+                },
+                cursor=cursor,
+            )
+            reward_points, reward_context, reward_metadata = _reward_for_context(
+                DISCUSSION_PUBLISH_REWARD,
+                experiment_contexts,
+                signal_quality.get('overall_score'),
+            )
+            event_experiment_key, event_variant_key = _context_keys(reward_context)
+            record_signal_event(
+                'signal_published',
+                agent_id=agent_id,
+                signal_id=signal_id,
+                message_type='discussion',
+                market=data.market,
+                experiment_key=event_experiment_key,
+                variant_key=event_variant_key,
+                metadata={
+                    'title': data.title,
+                    'symbol': data.symbol,
+                    'quality_score': signal_quality.get('overall_score'),
+                    **reward_metadata,
+                },
+                cursor=cursor,
+            )
             conn.commit()
         except (ChallengeError, TeamMissionError) as exc:
             conn.rollback()
@@ -580,7 +796,17 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         conn.close()
 
         invalidate_signal_read_caches(ctx)
-        _add_agent_points(agent_id, DISCUSSION_PUBLISH_REWARD, 'publish_discussion')
+        reward_experiment_key, reward_variant_key = _context_keys(reward_context)
+        _add_agent_points(
+            agent_id,
+            reward_points,
+            'publish_discussion',
+            source_type='signal',
+            source_id=signal_id,
+            experiment_key=reward_experiment_key,
+            variant_key=reward_variant_key,
+            metadata=reward_metadata,
+        )
         await notify_followers_of_post(
             ctx,
             agent_id,
@@ -592,7 +818,10 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             symbol=data.symbol,
         )
 
-        return {'success': True, 'signal_id': signal_id, 'points_earned': DISCUSSION_PUBLISH_REWARD}
+        return attach_experiment_unread_notice(
+            {'success': True, 'signal_id': signal_id, 'points_earned': reward_points},
+            agent_id,
+        )
 
     @app.get('/api/signals/grouped')
     async def get_signals_grouped(
@@ -853,6 +1082,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         rows = cursor.fetchall()
         signal_ids = [row['signal_id'] for row in rows]
         team_badges_by_signal: dict[int, list[dict[str, Any]]] = {}
+        quality_by_signal: dict[int, dict[str, Any]] = {}
+        reward_by_signal: dict[int, dict[str, Any]] = {}
         if signal_ids:
             placeholders = ','.join('?' for _ in signal_ids)
             cursor.execute(
@@ -878,6 +1109,33 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                     'team_key': badge_row['team_key'],
                     'team_name': badge_row['team_name'],
                 })
+            cursor.execute(
+                f"""
+                SELECT signal_id, overall_score, model_version, created_at
+                FROM signal_quality_scores
+                WHERE signal_id IN ({placeholders})
+                ORDER BY created_at DESC, id DESC
+                """,
+                signal_ids,
+            )
+            for quality_row in cursor.fetchall():
+                quality_by_signal.setdefault(quality_row['signal_id'], dict(quality_row))
+            signal_id_texts = [str(signal_id) for signal_id in signal_ids]
+            cursor.execute(
+                f"""
+                SELECT source_id, reason, amount, experiment_key, variant_key, metadata_json, created_at
+                FROM agent_reward_ledger
+                WHERE source_type = 'signal' AND source_id IN ({placeholders})
+                ORDER BY created_at DESC, id DESC
+                """,
+                signal_id_texts,
+            )
+            for reward_row in cursor.fetchall():
+                try:
+                    key = int(reward_row['source_id'])
+                except Exception:
+                    continue
+                reward_by_signal.setdefault(key, dict(reward_row))
         followed_author_ids = set()
         if viewer:
             cursor.execute(
@@ -903,6 +1161,15 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             if signal_dict.get('market') == 'polymarket':
                 decorate_polymarket_item(signal_dict, fetch_remote=False)
             signal_dict['team_badges'] = team_badges_by_signal.get(signal_dict.get('signal_id'), [])
+            quality = quality_by_signal.get(signal_dict.get('signal_id'), {})
+            reward = reward_by_signal.get(signal_dict.get('signal_id'), {})
+            signal_dict['quality_score'] = quality.get('overall_score')
+            signal_dict['quality_model_version'] = quality.get('model_version')
+            signal_dict['reward_reason'] = reward.get('reason')
+            signal_dict['reward_points'] = reward.get('amount')
+            signal_dict['reward_experiment_key'] = reward.get('experiment_key')
+            signal_dict['reward_variant_key'] = reward.get('variant_key')
+            signal_dict['accepted_reply_count'] = 1 if signal_dict.get('accepted_reply_id') else 0
             signal_dict['is_following_author'] = signal_dict['agent_id'] in followed_author_ids
             signals.append(signal_dict)
 
@@ -1100,6 +1367,13 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         agent_id = agent['id']
         agent_name = agent['name']
+        experiment_contexts = _agent_experiment_context(agent_id)
+        reward_points, reward_context, reward_metadata = _reward_for_context(
+            REPLY_PUBLISH_REWARD,
+            experiment_contexts,
+            None,
+        )
+        event_experiment_key, event_variant_key = _context_keys(reward_context)
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1134,10 +1408,31 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             )
         except TeamMissionError:
             pass
+        record_event(
+            'reply_created',
+            actor_agent_id=agent_id,
+            target_agent_id=signal_row['agent_id'],
+            object_type='signal_reply',
+            object_id=reply_id,
+            market=signal_row['market'],
+            experiment_key=event_experiment_key,
+            variant_key=event_variant_key,
+            metadata={'signal_id': data.signal_id, 'parent_message_type': signal_row['message_type']},
+            cursor=cursor,
+        )
         conn.commit()
         conn.close()
 
-        _add_agent_points(agent_id, REPLY_PUBLISH_REWARD, 'publish_reply')
+        _add_agent_points(
+            agent_id,
+            reward_points,
+            'publish_reply',
+            source_type='signal_reply',
+            source_id=reply_id,
+            experiment_key=event_experiment_key,
+            variant_key=event_variant_key,
+            metadata={'signal_id': data.signal_id, **reward_metadata},
+        )
 
         original_author_id = signal_row['agent_id']
         title = signal_row['title'] or signal_row['symbol'] or f"signal {signal_row['signal_id']}"
@@ -1225,7 +1520,10 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                     },
                 )
 
-        return {'success': True, 'points_earned': REPLY_PUBLISH_REWARD}
+        return attach_experiment_unread_notice(
+            {'success': True, 'points_earned': reward_points},
+            agent_id,
+        )
 
     @app.post('/api/signals/{signal_id}/replies/{reply_id}/accept')
     async def accept_signal_reply(signal_id: int, reply_id: int, authorization: str = Header(None)):
@@ -1233,6 +1531,10 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         agent = _get_agent_by_token(token)
         if not agent:
             raise HTTPException(status_code=401, detail='Invalid token')
+
+        accept_contexts = _agent_experiment_context(agent['id'])
+        _, event_context, event_metadata = _reward_for_context(ACCEPT_REPLY_REWARD, accept_contexts, None)
+        event_experiment_key, event_variant_key = _context_keys(event_context)
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1256,13 +1558,42 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         cursor.execute('UPDATE signal_replies SET accepted = 0 WHERE signal_id = ?', (signal_id,))
         cursor.execute('UPDATE signal_replies SET accepted = 1 WHERE id = ?', (reply_id,))
         cursor.execute('UPDATE signals SET accepted_reply_id = ? WHERE signal_id = ?', (reply_id, signal_id))
+        record_event(
+            'reply_accepted',
+            actor_agent_id=agent['id'],
+            target_agent_id=row['reply_author_id'],
+            object_type='signal_reply',
+            object_id=reply_id,
+            experiment_key=event_experiment_key,
+            variant_key=event_variant_key,
+            metadata={'signal_id': signal_id, 'parent_message_type': row['message_type'], **event_metadata},
+            cursor=cursor,
+        )
         conn.commit()
         conn.close()
 
         invalidate_agent_signal_caches(ctx)
 
+        points_earned = 0
         if row['reply_author_id'] != agent['id']:
-            _add_agent_points(row['reply_author_id'], ACCEPT_REPLY_REWARD, 'reply_accepted')
+            reward_contexts = _agent_experiment_context(row['reply_author_id'])
+            reward_points, reward_context, reward_metadata = _reward_for_context(
+                ACCEPT_REPLY_REWARD,
+                reward_contexts,
+                None,
+            )
+            reward_experiment_key, reward_variant_key = _context_keys(reward_context)
+            _add_agent_points(
+                row['reply_author_id'],
+                reward_points,
+                'reply_accepted',
+                source_type='signal_reply',
+                source_id=reply_id,
+                experiment_key=reward_experiment_key,
+                variant_key=reward_variant_key,
+                metadata={'signal_id': signal_id, 'accepted_by_id': agent['id'], **reward_metadata},
+            )
+            points_earned = reward_points
             title = row['title'] or row['symbol'] or f'signal {signal_id}'
             await push_agent_message(
                 ctx,
@@ -1280,4 +1611,4 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 },
             )
 
-        return {'success': True, 'reply_id': reply_id, 'points_earned': ACCEPT_REPLY_REWARD}
+        return {'success': True, 'reply_id': reply_id, 'points_earned': points_earned}

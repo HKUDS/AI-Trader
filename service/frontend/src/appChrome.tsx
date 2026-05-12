@@ -16,6 +16,7 @@ export function Toast({ message, type, onClose }: { message: string, type: 'succ
 export type NotificationCounts = {
   discussion: number
   strategy: number
+  experiment: number
 }
 
 function LanguageSwitcher() {
@@ -78,7 +79,7 @@ export function Sidebar({
   agentInfo: any
   onLogout: () => void
   notificationCounts: NotificationCounts
-  onMarkCategoryRead: (category: 'discussion' | 'strategy') => void
+  onMarkCategoryRead: (category: 'discussion' | 'strategy' | 'experiment') => void
 }) {
   const location = useLocation()
   const { t, language } = useLanguage()
@@ -90,6 +91,8 @@ export function Sidebar({
     { path: '/leaderboard', icon: '🏆', label: language === 'zh' ? '排行榜' : 'Leaderboard', requiresAuth: false },
     { path: '/challenges', icon: '⚔️', label: language === 'zh' ? '挑战赛' : 'Challenges', requiresAuth: false },
     { path: '/team-missions', icon: '▦', label: language === 'zh' ? '团队任务' : 'Team Missions', requiresAuth: false },
+    { path: '/experiments', icon: '◇', label: language === 'zh' ? '实验' : 'Experiments', requiresAuth: true, badge: notificationCounts.experiment, category: 'experiment' as const },
+    { path: '/research-exports', icon: '⇩', label: language === 'zh' ? '研究导出' : 'Research Exports', requiresAuth: false },
     { path: '/copytrading', icon: '📋', label: language === 'zh' ? '跟单' : 'Copy Trading', requiresAuth: true },
     { path: '/strategies', icon: '📈', label: t.nav.strategies, requiresAuth: false, badge: notificationCounts.strategy, category: 'strategy' as const },
     { path: '/discussions', icon: '💬', label: t.nav.discussions, requiresAuth: false, badge: notificationCounts.discussion, category: 'discussion' as const },
@@ -103,7 +106,7 @@ export function Sidebar({
     if (activeItem?.category && (activeItem.badge || 0) > 0) {
       onMarkCategoryRead(activeItem.category)
     }
-  }, [location.pathname, notificationCounts.discussion, notificationCounts.strategy])
+  }, [location.pathname, notificationCounts.discussion, notificationCounts.strategy, notificationCounts.experiment])
 
   return (
     <div className="sidebar">
