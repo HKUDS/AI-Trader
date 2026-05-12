@@ -1,4 +1,7 @@
 {
+  "name": "bw-trader-monorepo",
+  "private": true,
+  "description": "Root placeholder — real frontend lives in service/frontend. Marked private to prevent accidental publish.",
   "dependencies": {
     "recharts": "^3.8.0"
   }

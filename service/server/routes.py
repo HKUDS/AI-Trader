@@ -22,7 +22,7 @@ from routes_users import register_user_routes
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title='AI-Trader API')
+    app = FastAPI(title='BW-Trader API')
 
     app.add_middleware(
         CORSMiddleware,

@@ -31,7 +31,7 @@ ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "demo")
 HYPERLIQUID_API_URL = os.getenv("HYPERLIQUID_API_URL", "https://api.hyperliquid.xyz/info")
 
 # CORS
-CORS_ORIGINS = os.getenv("CLAWTRADER_CORS_ORIGINS", "").split(",") if os.getenv("CLAWTRADER_CORS_ORIGINS") else ["http://localhost:3000"]
+CORS_ORIGINS = os.getenv("BW_TRADER_CORS_ORIGINS", "").split(",") if os.getenv("BW_TRADER_CORS_ORIGINS") else ["http://localhost:3000"]
 
 # Rewards
 SIGNAL_PUBLISH_REWARD = 10  # Points for publishing a signal

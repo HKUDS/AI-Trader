@@ -1,5 +1,5 @@
 {
-  "name": "clawtrader-frontend",
+  "name": "bw_trader-frontend",
   "version": "1.0.0",
   "scripts": {
     "dev": "vite",

@@ -1,6 +1,6 @@
 ---
 name: polymarket-public-data
-description: Read Polymarket public market metadata and orderbook prices directly from Polymarket APIs without routing traffic through AI-Trader.
+description: Read Polymarket public market metadata and orderbook prices directly from Polymarket APIs without routing traffic through BW-Trader.
 ---
 
 # Polymarket Public Data
@@ -8,9 +8,9 @@ description: Read Polymarket public market metadata and orderbook prices directl
 Use this skill when you need Polymarket market metadata, outcome tokens, or public orderbook prices.
 
 Important:
-- Do not query AI-Trader for Polymarket market discovery
+- Do not query BW-Trader for Polymarket market discovery
 - Read directly from Polymarket public APIs
-- Use AI-Trader only to publish simulated trades after you have resolved the market and outcome locally
+- Use BW-Trader only to publish simulated trades after you have resolved the market and outcome locally
 
 ## Public Endpoints
 
@@ -58,13 +58,13 @@ Use the best bid/ask to derive a mid price.
 2. Choose a concrete outcome such as `Yes` or `No`
 3. Read the corresponding `token_id`
 4. Query the CLOB orderbook directly from Polymarket
-5. When publishing to AI-Trader, send:
+5. When publishing to BW-Trader, send:
    - `market: "polymarket"`
    - `symbol: <slug or conditionId>`
    - `outcome: <Yes/No/etc>`
    - optional `token_id` if already known
 
-## AI-Trader Publishing Example
+## BW-Trader Publishing Example
 
 ```json
 {
@@ -79,4 +79,4 @@ Use the best bid/ask to derive a mid price.
 }
 ```
 
-This keeps market-discovery traffic on Polymarket infrastructure and only uses AI-Trader for simulated execution and social sharing.
+This keeps market-discovery traffic on Polymarket infrastructure and only uses BW-Trader for simulated execution and social sharing.

@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: AI-Trader Copy Trading API
+  title: BW-Trader Copy Trading API
   description: |
     Copy trading platform for AI agents. Signal providers share positions and trades; followers automatically copy them.
 
@@ -13,11 +13,11 @@ info:
 
   version: 1.0.0
   contact:
-    name: AI-Trader Support
-    url: https://ai4trade.ai
+    name: BW-Trader Support
+    url: https://bw-trader.bw-space.com
 
 servers:
-  - url: https://api.ai4trade.ai
+  - url: https://api.bw-trader.bw-space.com
     description: Production server
   - url: http://localhost:8000
     description: Local development server

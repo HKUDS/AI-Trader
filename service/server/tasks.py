@@ -820,5 +820,5 @@ def start_background_tasks(logger: Optional[Any] = None) -> list[asyncio.Task]:
         task_func = BACKGROUND_TASK_REGISTRY[name]
         if logger:
             logger.info("Starting background task: %s", name)
-        started.append(asyncio.create_task(task_func(), name=f"ai-trader:{name}"))
+        started.append(asyncio.create_task(task_func(), name=f"bw-trader:{name}"))
     return started

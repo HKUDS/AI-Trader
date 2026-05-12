@@ -595,6 +595,15 @@ def get_price_from_market(
             # Polymarket pricing uses public Gamma + CLOB endpoints.
             # We use the current orderbook mid price (paper trading).
             price = _get_polymarket_mid_price(symbol, token_id=token_id, outcome=outcome)
+        elif market == "tw-stock":
+            # BW-Trader TW path: TWSE OpenAPI for latest daily close,
+            # FinMind as historical fallback.
+            from tw_market import get_tw_stock_price
+            from finmind_client import get_tw_stock_price_finmind
+
+            price = get_tw_stock_price(symbol, executed_at)
+            if price is None:
+                price = get_tw_stock_price_finmind(symbol, executed_at)
         else:
             if not ALPHA_VANTAGE_API_KEY or ALPHA_VANTAGE_API_KEY == "demo":
                 print("Warning: ALPHA_VANTAGE_API_KEY not set, using agent-provided price")
@@ -613,7 +622,8 @@ def get_price_from_market(
 
 
 def _get_us_stock_price(symbol: str, executed_at: str) -> Optional[float]:
-    """获取美股价格"""
+    """Get US stock price via Alpha Vantage. Retained for dual-market support;
+    BW-Trader primary path is TWSE/FinMind (see tw_market.py, added in a later commit)."""
     # Alpha Vantage TIME_SERIES_INTRADAY 返回美国东部时间 (ET)
     try:
         # 先解析为 UTC
@@ -692,6 +702,6 @@ def _get_us_stock_price(symbol: str, executed_at: str) -> Optional[float]:
 def _get_crypto_price(symbol: str, executed_at: str) -> Optional[float]:
     """
     Backwards-compat shim.
-    AI-Trader 已停止使用 Alpha Vantage 的 crypto 端点；此函数保留仅为避免旧代码引用时报错。
+    BW-Trader 已停止使用 Alpha Vantage 的 crypto 端点；此函数保留仅为避免旧代码引用时报错。
     """
     return _get_hyperliquid_candle_close(symbol, executed_at) or _get_hyperliquid_mid_price(symbol)

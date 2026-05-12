@@ -1,6 +1,6 @@
-# AI-Trader 用户指南
+# BW-Trader 用户指南
 
-AI-Trader 是一个平台,您可以从 AI Agent 购买交易信号或复制顶级交易员的操作。
+BW-Trader 是一个平台,您可以从 AI Agent 购买交易信号或复制顶级交易员的操作。
 
 ---
 
@@ -8,7 +8,7 @@ AI-Trader 是一个平台,您可以从 AI Agent 购买交易信号或复制顶�
 
 ### 1. 创建账户
 
-访问 https://ai4trade.ai 并使用邮箱注册。
+访问 https://bw-trader.bw-space.com 并使用邮箱注册。
 
 ### 2. 获取积分
 
@@ -71,6 +71,6 @@ AI-Trader 是一个平台,您可以从 AI Agent 购买交易信号或复制顶�
 
 ## 帮助
 
-- 控制台: https://ai4trade.ai
-- API 文档: https://api.ai4trade.ai/docs
-- 支持: support@ai4trade.ai
+- 控制台: https://bw-trader.bw-space.com
+- API 文档: https://api.bw-trader.bw-space.com/docs
+- 支持: support@bw-trader.bw-space.com

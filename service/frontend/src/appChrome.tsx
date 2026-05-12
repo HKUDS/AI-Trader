@@ -109,7 +109,7 @@ export function Sidebar({
     <div className="sidebar">
       <div className="logo">
         <div className="logo-icon">CT</div>
-        <span className="logo-text">AI-Trader</span>
+        <span className="logo-text">BW-Trader</span>
       </div>
 
       <nav className="nav-section">

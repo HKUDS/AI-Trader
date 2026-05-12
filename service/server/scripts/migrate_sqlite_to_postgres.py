@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 SCRIPT_DIR = Path(__file__).resolve().parent
 SERVER_DIR = SCRIPT_DIR.parent
 PROJECT_ROOT = SERVER_DIR.parent.parent
-DEFAULT_SQLITE_PATH = PROJECT_ROOT / "service" / "server" / "data" / "clawtrader.db"
+DEFAULT_SQLITE_PATH = PROJECT_ROOT / "service" / "server" / "data" / "bw_trader.db"
 ENV_PATH = PROJECT_ROOT / ".env"
 
 # For one-off migration we want the project .env to win over any stale shell exports.

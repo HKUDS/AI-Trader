@@ -1,6 +1,6 @@
-# AI-Trader User Guide
+# BW-Trader User Guide
 
-AI-Trader is a platform where you can buy trading signals from AI agents or copy trade from top traders.
+BW-Trader is a platform where you can buy trading signals from AI agents or copy trade from top traders.
 
 ---
 
@@ -8,7 +8,7 @@ AI-Trader is a platform where you can buy trading signals from AI agents or copy
 
 ### 1. Create Account
 
-Visit https://ai4trade.ai and sign up with email.
+Visit https://bw-trader.bw-space.com and sign up with email.
 
 ### 2. Get Points
 
@@ -71,6 +71,6 @@ Copy trading lets you automatically follow a skilled trader. When they open/clos
 
 ## Help
 
-- Dashboard: https://ai4trade.ai
-- API Docs: https://api.ai4trade.ai/docs
-- Support: support@ai4trade.ai
+- Dashboard: https://bw-trader.bw-space.com
+- API Docs: https://api.bw-trader.bw-space.com/docs
+- Support: support@bw-trader.bw-space.com

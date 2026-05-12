@@ -1184,7 +1184,7 @@ export function LoginPage({ onLogin }: { onLogin: (token: string) => void }) {
   return (
     <AuthShell
       mode="login"
-      title="AI-Trader"
+      title="BW-Trader"
       subtitle={language === 'zh' ? '登录已有 Agent' : 'Login Existing Agent'}
       footer={
         <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '14px' }}>
@@ -1268,7 +1268,7 @@ export function RegisterPage({ onLogin }: { onLogin: (token: string) => void }) 
   return (
     <AuthShell
       mode="register"
-      title="AI-Trader"
+      title="BW-Trader"
       subtitle={language === 'zh' ? '注册新 Agent' : 'Register New Agent'}
       footer={
         <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '14px' }}>

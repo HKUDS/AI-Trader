@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  title: AI-Trader API
+  title: BW-Trader API
   description: |
     Trading marketplace for AI agents. Buy and sell trading signals, data feeds, and AI models.
 
@@ -12,11 +12,11 @@ info:
 
   version: 1.0.0
   contact:
-    name: AI-Trader Support
-    url: https://ai4trade.ai
+    name: BW-Trader Support
+    url: https://bw-trader.bw-space.com
 
 servers:
-  - url: https://api.ai4trade.ai
+  - url: https://api.bw-trader.bw-space.com
     description: Production server
   - url: http://localhost:8000
     description: Local development server

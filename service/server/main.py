@@ -1,5 +1,5 @@
 """
-AI-Trader Backend Server
+BW-Trader Backend Server
 
 项目结构：
 - config.py   : 配置和环境变量

@@ -1,4 +1,4 @@
-// i18n translations for AI-Trader
+// i18n translations for BW-Trader
 
 export type Language = 'zh' | 'en'
 
@@ -113,99 +113,99 @@ export interface Translations {
 export const translations: Record<Language, Translations> = {
   zh: {
     nav: {
-      signals: '交易市场',
+      signals: '交易市場',
       strategies: '策略',
-      discussions: '讨论',
-      positions: '持仓',
+      discussions: '討論',
+      positions: '持倉',
       trade: '交易',
-      exchange: '兑换',
-      create: '发布'
+      exchange: '兌換',
+      create: '發布'
     },
     common: {
-      login: '登录',
+      login: '登入',
       logout: '登出',
-      connected: '已连接',
-      balance: '余额',
+      connected: '已連線',
+      balance: '餘額',
       claw: 'CLAW',
-      points: '积分',
-      loading: '加载中...',
+      points: '點數',
+      loading: '載入中...',
       cancel: '取消',
-      confirm: '确认',
-      submit: '提交',
-      close: '关闭',
+      confirm: '確認',
+      submit: '送出',
+      close: '關閉',
       back: '返回',
       next: '下一步',
-      refresh: '刷新'
+      refresh: '重新整理'
     },
     signals: {
-      operations: '操作信号',
-      noSignals: '暂无信号',
-      publish: '发布'
+      operations: '操作訊號',
+      noSignals: '目前無訊號',
+      publish: '發布'
     },
     strategies: {
       title: '策略',
-      market: '市场',
-      noStrategies: '暂无策略',
-      publish: '发布策略',
-      publishSuccess: '策略发布成功！',
-      submit: '发布',
-      content: '策略内容',
-      symbols: '相关标的',
-      tags: '标签'
+      market: '市場',
+      noStrategies: '目前無策略',
+      publish: '發布策略',
+      publishSuccess: '策略發布成功！',
+      submit: '發布',
+      content: '策略內容',
+      symbols: '相關標的',
+      tags: '標籤'
     },
     discussions: {
-      title: '讨论',
-      market: '市场',
-      noDiscussions: '暂无讨论',
-      post: '发布讨论',
-      postSuccess: '讨论发布成功！',
-      submit: '发布',
-      content: '讨论内容',
-      tags: '标签'
+      title: '討論',
+      market: '市場',
+      noDiscussions: '目前無討論',
+      post: '發布討論',
+      postSuccess: '討論發布成功！',
+      submit: '發布',
+      content: '討論內容',
+      tags: '標籤'
     },
     positions: {
-      title: '我的持仓',
-      noPositions: '暂无持仓'
+      title: '我的持倉',
+      noPositions: '目前無持倉'
     },
     trade: {
-      title: '下单',
-      market: '市场',
+      title: '下單',
+      market: '市場',
       action: '操作',
-      symbol: '标的',
-      price: '价格',
-      quantity: '数量',
-      content: '备注',
-      executedAt: '交易时间',
-      submit: '下单',
-      success: '下单成功！',
-      buy: '买入',
-      sell: '卖出',
+      symbol: '標的',
+      price: '價格',
+      quantity: '數量',
+      content: '備註',
+      executedAt: '交易時間',
+      submit: '下單',
+      success: '下單成功！',
+      buy: '買入',
+      sell: '賣出',
       short: '做空',
       cover: '平空'
     },
     exchange: {
-      title: '积分兑换',
-      currentPoints: '当前积分',
-      currentCash: '当前现金',
-      exchangeRate: '汇率：1 积分 = 1,000 USD',
-      amount: '兑换积分数量',
-      submit: '立即兑换',
-      success: '兑换成功！',
-      insufficientPoints: '积分不足',
-      enterAmount: '请输入兑换积分数量'
+      title: '點數兌換',
+      currentPoints: '目前點數',
+      currentCash: '目前現金',
+      exchangeRate: '匯率：1 點數 = 1,000 新台幣 (TWD)',
+      amount: '兌換點數數量',
+      submit: '立即兌換',
+      success: '兌換成功！',
+      insufficientPoints: '點數不足',
+      enterAmount: '請輸入兌換點數數量'
     },
     login: {
-      title: '注册 / 登录',
-      name: '名称',
-      email: '邮箱',
-      register: '注册',
-      registering: '注册中...',
-      success: '登录成功！',
-      failed: '登录失败'
+      title: '註冊 / 登入',
+      name: '名稱',
+      email: '電子郵件',
+      register: '註冊',
+      registering: '註冊中...',
+      success: '登入成功！',
+      failed: '登入失敗'
     },
     errors: {
-      pleaseLogin: '请先登录',
-      operationFailed: '操作失败'
+      pleaseLogin: '請先登入',
+      operationFailed: '操作失敗'
     }
   },
   en: {
@@ -313,12 +313,12 @@ export const getT = (lang: Language): Translations => translations[lang]
 // Category translations
 export const categoryTranslations: Record<Language, Record<string, string>> = {
   zh: {
-    'trading-signal': '交易信号',
-    'data-feed': '数据源',
-    'model-access': '模型访问',
-    'analysis': '分析报告',
+    'trading-signal': '交易訊號',
+    'data-feed': '資料來源',
+    'model-access': '模型存取',
+    'analysis': '分析報告',
     'tool': '工具',
-    'all': '全部分类'
+    'all': '全部分類'
   },
   en: {
     'trading-signal': 'Trading Signal',

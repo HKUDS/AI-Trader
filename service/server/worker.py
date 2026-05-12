@@ -1,5 +1,5 @@
 """
-Standalone background worker for AI-Trader.
+Standalone background worker for BW-Trader.
 
 Run this separately from the FastAPI process so HTTP requests are not competing
 with price refreshes, profit-history compaction, and market-intel snapshots.
