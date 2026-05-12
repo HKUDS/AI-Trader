@@ -7,6 +7,7 @@ from fastapi import FastAPI, Header, HTTPException
 
 from cache import get_json, set_json
 from database import get_db_connection
+from experiment_events import record_event
 from routes_models import FollowRequest
 from routes_shared import (
     LEADERBOARD_CACHE_KEY_PREFIX,
@@ -45,16 +46,20 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         days: int = 30,
         offset: int = 0,
         include_history: bool = True,
+        metric: str = 'return',
     ):
         days = max(1, min(days, 365))
         limit = max(1, min(limit, 50))
         offset = max(0, offset)
+        metric = (metric or 'return').strip().lower()
+        if metric not in {'return', 'risk', 'collaboration', 'quality'}:
+            metric = 'return'
 
-        cache_key = (limit, days, offset, include_history)
+        cache_key = (limit, days, offset, include_history, metric)
         now_ts = time.time()
         redis_cache_key = (
             f'{LEADERBOARD_CACHE_KEY_PREFIX}:'
-            f'metric=return_percent:'
+            f'metric={metric}:'
             f'limit={limit}:days={days}:offset={offset}:history={int(include_history)}'
         )
 
@@ -83,27 +88,30 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         total_row = cursor.fetchone()
         total = total_row['total'] if total_row else 0
 
+        order_by = {
+            'return': 'profit_percent DESC',
+            'risk': 'risk_adjusted_score DESC',
+            'collaboration': 'collaboration_score DESC',
+            'quality': 'quality_score_avg DESC',
+        }[metric]
         cursor.execute(
-            """
-            SELECT
-                a.id AS agent_id,
-                a.name,
-                COALESCE(a.deposited, 0) AS deposited,
-                (
-                    COALESCE(a.cash, 0) +
-                    COALESCE(
-                        SUM(
-                            CASE
-                                WHEN p.current_price IS NULL THEN p.entry_price * ABS(p.quantity)
-                                WHEN p.side = 'long' THEN p.current_price * ABS(p.quantity)
-                                ELSE (2 * p.entry_price - p.current_price) * ABS(p.quantity)
-                            END
-                        ),
-                        0
-                    ) -
-                    (? + COALESCE(a.deposited, 0))
-                ) AS profit,
-                (
+            f"""
+            WITH latest_snapshots AS (
+                SELECT ams.*
+                FROM agent_metric_snapshots ams
+                JOIN (
+                    SELECT agent_id, MAX(window_end_at) AS latest_window_end_at
+                    FROM agent_metric_snapshots
+                    GROUP BY agent_id
+                ) latest
+                  ON latest.agent_id = ams.agent_id
+                 AND latest.latest_window_end_at = ams.window_end_at
+            ),
+            agent_profit AS (
+                SELECT
+                    a.id AS agent_id,
+                    a.name,
+                    COALESCE(a.deposited, 0) AS deposited,
                     (
                         COALESCE(a.cash, 0) +
                         COALESCE(
@@ -117,17 +125,59 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
                             0
                         ) -
                         (? + COALESCE(a.deposited, 0))
-                    ) / NULLIF((? + COALESCE(a.deposited, 0)), 0) * 100
-                ) AS profit_percent,
+                    ) AS profit,
+                    (
+                        (
+                            COALESCE(a.cash, 0) +
+                            COALESCE(
+                                SUM(
+                                    CASE
+                                        WHEN p.current_price IS NULL THEN p.entry_price * ABS(p.quantity)
+                                        WHEN p.side = 'long' THEN p.current_price * ABS(p.quantity)
+                                        ELSE (2 * p.entry_price - p.current_price) * ABS(p.quantity)
+                                    END
+                                ),
+                                0
+                            ) -
+                            (? + COALESCE(a.deposited, 0))
+                        ) / NULLIF((? + COALESCE(a.deposited, 0)), 0) * 100
+                    ) AS profit_percent,
+                    (
+                        SELECT MAX(ph.recorded_at)
+                        FROM profit_history ph
+                        WHERE ph.agent_id = a.id AND ph.recorded_at >= ?
+                    ) AS recorded_at,
+                    (
+                        SELECT COUNT(*)
+                        FROM signals ops
+                        WHERE ops.agent_id = a.id AND ops.message_type = 'operation'
+                    ) AS trade_count
+                FROM agents a
+                LEFT JOIN positions p ON p.agent_id = a.id
+                GROUP BY a.id, a.name, a.cash, a.deposited
+            )
+            SELECT
+                ap.*,
+                COALESCE(ls.max_drawdown, 0) AS max_drawdown,
+                COALESCE(ls.reply_count, 0) AS reply_count,
+                COALESCE(ls.accepted_reply_count, 0) AS accepted_reply_count,
+                COALESCE(ls.citation_count, 0) AS citation_count,
+                COALESCE(ls.adoption_count, 0) AS adoption_count,
+                COALESCE(ls.quality_score_avg, 0) AS quality_score_avg,
+                ls.id AS metric_snapshot_id,
+                ls.window_key AS metric_window_key,
+                ls.window_start_at AS metric_window_start_at,
+                ls.window_end_at AS metric_window_end_at,
+                (ap.profit_percent - COALESCE(ls.max_drawdown, 0)) AS risk_adjusted_score,
                 (
-                    SELECT MAX(ph.recorded_at)
-                    FROM profit_history ph
-                    WHERE ph.agent_id = a.id AND ph.recorded_at >= ?
-                ) AS recorded_at
-            FROM agents a
-            LEFT JOIN positions p ON p.agent_id = a.id
-            GROUP BY a.id, a.name, a.cash, a.deposited
-            ORDER BY profit_percent DESC
+                    COALESCE(ls.reply_count, 0) +
+                    COALESCE(ls.accepted_reply_count, 0) * 2 +
+                    COALESCE(ls.citation_count, 0) +
+                    COALESCE(ls.adoption_count, 0)
+                ) AS collaboration_score
+            FROM agent_profit ap
+            LEFT JOIN latest_snapshots ls ON ls.agent_id = ap.agent_id
+            ORDER BY {order_by}, ap.profit_percent DESC, ap.agent_id ASC
             LIMIT ? OFFSET ?
             """,
             (INITIAL_CAPITAL, INITIAL_CAPITAL, INITIAL_CAPITAL, cutoff, limit, offset),
@@ -140,6 +190,22 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
                 'profit': clamp_profit_for_display(row['profit']),
                 'profit_percent': row['profit_percent'] or 0,
                 'recorded_at': row['recorded_at'] or live_snapshot_recorded_at,
+                'trade_count': row['trade_count'] or 0,
+                'risk_adjusted_score': float(row['risk_adjusted_score'] or 0),
+                'collaboration_score': float(row['collaboration_score'] or 0),
+                'quality_score_avg': float(row['quality_score_avg'] or 0),
+                'metric_snapshot': {
+                    'id': row['metric_snapshot_id'],
+                    'window_key': row['metric_window_key'],
+                    'window_start_at': row['metric_window_start_at'],
+                    'window_end_at': row['metric_window_end_at'],
+                    'max_drawdown': row['max_drawdown'],
+                    'reply_count': row['reply_count'],
+                    'accepted_reply_count': row['accepted_reply_count'],
+                    'citation_count': row['citation_count'],
+                    'adoption_count': row['adoption_count'],
+                    'quality_score_avg': row['quality_score_avg'],
+                } if row['metric_snapshot_id'] is not None else {},
             }
             for row in cursor.fetchall()
         ]
@@ -159,17 +225,6 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         agent_ids = [agent['agent_id'] for agent in top_agents]
         placeholders = ','.join('?' for _ in agent_ids)
-
-        cursor.execute(
-            f"""
-            SELECT agent_id, COUNT(*) as count
-            FROM signals
-            WHERE message_type = 'operation' AND agent_id IN ({placeholders})
-            GROUP BY agent_id
-            """,
-            agent_ids,
-        )
-        trade_counts = {row['agent_id']: row['count'] for row in cursor.fetchall()}
 
         result = []
         for agent in top_agents:
@@ -215,7 +270,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
                 'current_profit': clamp_profit_for_display(agent['profit']),
                 'total_profit_percent': current_profit_percent,
                 'current_profit_percent': current_profit_percent,
-                'trade_count': trade_counts.get(agent['agent_id'], 0),
+                'trade_count': agent['trade_count'],
                 'recent_strategy_count_7d': 0,
                 'recent_discussion_count_7d': 0,
                 'recent_activity_at': agent['recorded_at'],
@@ -223,6 +278,10 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
                 'latest_strategy_title': None,
                 'latest_discussion_signal_id': None,
                 'latest_discussion_title': None,
+                'risk_adjusted_score': agent['risk_adjusted_score'],
+                'collaboration_score': agent['collaboration_score'],
+                'quality_score_avg': agent['quality_score_avg'],
+                'metric_snapshot': agent['metric_snapshot'],
                 'history': history_points,
             })
 
@@ -643,6 +702,16 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             """,
             (leader_id, follower_id),
         )
+        subscription_id = cursor.lastrowid
+        record_event(
+            'agent_followed',
+            actor_agent_id=follower_id,
+            target_agent_id=leader_id,
+            object_type='subscription',
+            object_id=subscription_id,
+            metadata={'leader_id': leader_id, 'follower_id': follower_id},
+            cursor=cursor,
+        )
         conn.commit()
         conn.close()
 
@@ -674,6 +743,15 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             WHERE leader_id = ? AND follower_id = ?
             """,
             (data.leader_id, agent['id']),
+        )
+        record_event(
+            'agent_unfollowed',
+            actor_agent_id=agent['id'],
+            target_agent_id=data.leader_id,
+            object_type='subscription',
+            object_id=f"{data.leader_id}:{agent['id']}",
+            metadata={'leader_id': data.leader_id, 'follower_id': agent['id']},
+            cursor=cursor,
         )
         conn.commit()
         conn.close()

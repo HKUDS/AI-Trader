@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Header, HTTPException, WebSocket
 
 from database import get_db_connection
+from experiment_events import record_event
+from experiments import variant_for_agent
 from routes_models import (
     AgentTokenRecoveryConfirm,
     AgentTokenRecoveryRequest,
@@ -26,6 +28,29 @@ from utils import (
     recover_signed_address,
     validate_address,
     verify_password,
+)
+
+
+DISCUSSION_NOTIFICATION_TYPES = (
+    'discussion_started',
+    'discussion_reply',
+    'discussion_mention',
+    'discussion_reply_accepted',
+)
+STRATEGY_NOTIFICATION_TYPES = (
+    'strategy_published',
+    'strategy_reply',
+    'strategy_mention',
+    'strategy_reply_accepted',
+)
+EXPERIMENT_NOTIFICATION_TYPES = (
+    'experiment_announcement',
+    'experiment_assignment',
+    'experiment_reminder',
+    'experiment_rule_update',
+    'experiment_result_update',
+    'challenge_invite',
+    'team_mission_invite',
 )
 
 
@@ -59,10 +84,16 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
 
     @app.websocket('/ws/notify/{client_id}')
     async def websocket_endpoint(websocket: WebSocket, client_id: str):
-        await websocket.accept()
         client_id_int = None
         try:
             client_id_int = int(client_id)
+            token = websocket.query_params.get('token')
+            agent = _get_agent_by_token(token)
+            if not agent or int(agent['id']) != client_id_int:
+                await websocket.close(code=1008)
+                return
+
+            await websocket.accept()
             ctx.ws_connections[client_id_int] = websocket
             while True:
                 await websocket.receive_text()
@@ -126,15 +157,15 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
         conn.close()
 
         counts = {row['type']: row['count'] for row in rows}
-        discussion_types = ('discussion_started', 'discussion_reply', 'discussion_mention', 'discussion_reply_accepted')
-        strategy_types = ('strategy_published', 'strategy_reply', 'strategy_mention', 'strategy_reply_accepted')
-        discussion_unread = sum(counts.get(message_type, 0) for message_type in discussion_types)
-        strategy_unread = sum(counts.get(message_type, 0) for message_type in strategy_types)
+        discussion_unread = sum(counts.get(message_type, 0) for message_type in DISCUSSION_NOTIFICATION_TYPES)
+        strategy_unread = sum(counts.get(message_type, 0) for message_type in STRATEGY_NOTIFICATION_TYPES)
+        experiment_unread = sum(counts.get(message_type, 0) for message_type in EXPERIMENT_NOTIFICATION_TYPES)
 
         return {
             'discussion_unread': discussion_unread,
             'strategy_unread': strategy_unread,
-            'total_unread': discussion_unread + strategy_unread,
+            'experiment_unread': experiment_unread,
+            'total_unread': discussion_unread + strategy_unread + experiment_unread,
             'by_type': counts,
         }
 
@@ -151,8 +182,9 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         limit = max(1, min(limit, 50))
         category_types = {
-            'discussion': ['discussion_started', 'discussion_reply', 'discussion_mention', 'discussion_reply_accepted'],
-            'strategy': ['strategy_published', 'strategy_reply', 'strategy_mention', 'strategy_reply_accepted'],
+            'discussion': list(DISCUSSION_NOTIFICATION_TYPES),
+            'strategy': list(STRATEGY_NOTIFICATION_TYPES),
+            'experiment': list(EXPERIMENT_NOTIFICATION_TYPES),
         }
 
         conn = get_db_connection()
@@ -204,8 +236,9 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
             raise HTTPException(status_code=401, detail='Invalid token')
 
         category_types = {
-            'discussion': ['discussion_started', 'discussion_reply', 'discussion_mention', 'discussion_reply_accepted'],
-            'strategy': ['strategy_published', 'strategy_reply', 'strategy_mention', 'strategy_reply_accepted'],
+            'discussion': list(DISCUSSION_NOTIFICATION_TYPES),
+            'strategy': list(STRATEGY_NOTIFICATION_TYPES),
+            'experiment': list(EXPERIMENT_NOTIFICATION_TYPES),
         }
         message_types: list[str] = []
         for category in data.categories:
@@ -308,6 +341,23 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
             (agent_id,),
         )
         tasks = cursor.fetchall()
+        if tasks:
+            record_event(
+                'agent_tasks_read',
+                actor_agent_id=agent_id,
+                object_type='agent_task_batch',
+                object_id=','.join(str(row['id']) for row in tasks),
+                metadata={'task_count': len(tasks), 'message_count': len(messages)},
+                cursor=cursor,
+            )
+        record_event(
+            'agent_heartbeat',
+            actor_agent_id=agent_id,
+            object_type='agent',
+            object_id=agent_id,
+            metadata={'unread_message_count': unread_message_count, 'pending_task_count': pending_task_count},
+            cursor=cursor,
+        )
 
         conn.commit()
         conn.close()
@@ -395,15 +445,30 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
                             now,
                         ),
                     )
+            record_event(
+                'agent_registered',
+                actor_agent_id=agent_id,
+                object_type='agent',
+                object_id=agent_id,
+                metadata={'name': data.name, 'initial_balance': data.initial_balance, 'position_count': len(data.positions or [])},
+                cursor=cursor,
+            )
 
             conn.commit()
             conn.close()
+
+            try:
+                experiment_assignments = variant_for_agent(agent_id)
+            except Exception as exc:
+                print(f"[Experiment Assignment Error] agent_registered={agent_id}: {exc}")
+                experiment_assignments = []
 
             return {
                 'token': token,
                 'agent_id': agent_id,
                 'name': data.name,
                 'initial_balance': data.initial_balance,
+                'experiment_assignments': experiment_assignments,
             }
         except HTTPException:
             conn.close()
@@ -559,6 +624,11 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
         if not agent:
             raise HTTPException(status_code=401, detail='Invalid token')
 
+        try:
+            experiment_assignments = variant_for_agent(agent['id'])
+        except Exception:
+            experiment_assignments = []
+
         return {
             'id': agent['id'],
             'name': agent['name'],
@@ -567,6 +637,7 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
             'points': agent.get('points', 0),
             'cash': agent.get('cash', 100000.0),
             'reputation_score': agent.get('reputation_score', 0),
+            'experiment_assignments': experiment_assignments,
         }
 
     @app.get('/api/claw/agents/me/points')

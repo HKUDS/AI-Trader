@@ -1,0 +1,79 @@
+{
+  "$id": "https://ai-trader.local/research/schemas/profit_history.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "agent_hash": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "agent_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "cash": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "position_value": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "profit": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "recorded_at": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "total_value": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "agent_id",
+    "agent_hash",
+    "total_value",
+    "cash",
+    "position_value",
+    "profit",
+    "recorded_at"
+  ],
+  "title": "profit_history.csv research export row",
+  "type": "object",
+  "x-default-anonymized": true,
+  "x-export-version": "2026-05-06"
+}

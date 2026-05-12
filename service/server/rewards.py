@@ -6,6 +6,7 @@ import json
 from typing import Any, Optional
 
 from database import begin_write_transaction, get_db_connection
+from experiment_events import record_event, record_reward_event
 from routes_shared import utc_now_iso_z
 
 
@@ -89,6 +90,17 @@ def grant_agent_reward(
         )
         ledger_id = cursor.lastrowid
         cursor.execute("UPDATE agents SET points = points + ? WHERE id = ?", (amount, agent_id))
+        record_reward_event(
+            agent_id,
+            amount,
+            reason,
+            source_type=source_type or 'reward',
+            source_id=source_id_text or ledger_id,
+            experiment_key=experiment_key,
+            variant_key=variant_key,
+            metadata={'ledger_id': ledger_id, **(metadata or {})},
+            cursor=cursor,
+        )
 
         if own_connection:
             conn.commit()
@@ -139,6 +151,14 @@ def reverse_agent_reward(
             (reason, utc_now_iso_z(), ledger_id),
         )
         cursor.execute("UPDATE agents SET points = points - ? WHERE id = ?", (row['amount'], row['agent_id']))
+        record_event(
+            'reward_reversed',
+            actor_agent_id=row['agent_id'],
+            object_type='agent_reward_ledger',
+            object_id=ledger_id,
+            metadata={'amount': row['amount'], 'reason': reason},
+            cursor=cursor,
+        )
 
         if own_connection:
             conn.commit()
@@ -168,4 +188,3 @@ def get_agent_reward_history(agent_id: int, limit: int = 100, offset: int = 0) -
     rows = [dict(row) for row in cursor.fetchall()]
     conn.close()
     return rows
-

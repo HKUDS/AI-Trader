@@ -1,0 +1,131 @@
+{
+  "$id": "https://ai-trader.local/research/schemas/team_members.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "agent_hash": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "agent_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "experiment_key": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "joined_at": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "market": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "mission_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "mission_key": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "role": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "status": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "team_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "team_key": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "variant_key": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "team_id",
+    "team_key",
+    "mission_id",
+    "mission_key",
+    "agent_id",
+    "agent_hash",
+    "role",
+    "status",
+    "joined_at",
+    "experiment_key",
+    "variant_key",
+    "market"
+  ],
+  "title": "team_members.csv research export row",
+  "type": "object",
+  "x-default-anonymized": true,
+  "x-export-version": "2026-05-06"
+}

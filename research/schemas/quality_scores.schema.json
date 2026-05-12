@@ -1,0 +1,152 @@
+{
+  "$id": "https://ai-trader.local/research/schemas/quality_scores.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "agent_hash": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "agent_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "evidence_score": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "experiment_key": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "market": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "metadata_json": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "model_version": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "novelty_score": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "overall_score": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "review_score": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "signal_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "specificity_score": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "variant_key": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "verifiability_score": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "signal_id",
+    "agent_id",
+    "agent_hash",
+    "verifiability_score",
+    "evidence_score",
+    "specificity_score",
+    "novelty_score",
+    "review_score",
+    "overall_score",
+    "model_version",
+    "metadata_json",
+    "created_at",
+    "market",
+    "experiment_key",
+    "variant_key"
+  ],
+  "title": "quality_scores.csv research export row",
+  "type": "object",
+  "x-default-anonymized": true,
+  "x-export-version": "2026-05-06"
+}

@@ -1,0 +1,161 @@
+{
+  "$id": "https://ai-trader.local/research/schemas/challenge_participants.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "agent_hash": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "agent_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "challenge_id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "challenge_key": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "disqualified_reason": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "ending_value": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "experiment_key": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "id": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "joined_at": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "market": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "max_drawdown": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "rank": {
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "return_pct": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "starting_cash": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "status": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    },
+    "trade_count": {
+      "type": [
+        "number",
+        "integer",
+        "null"
+      ]
+    },
+    "variant_key": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "challenge_id",
+    "challenge_key",
+    "agent_id",
+    "agent_hash",
+    "status",
+    "variant_key",
+    "joined_at",
+    "starting_cash",
+    "ending_value",
+    "return_pct",
+    "max_drawdown",
+    "trade_count",
+    "rank",
+    "disqualified_reason",
+    "experiment_key",
+    "market"
+  ],
+  "title": "challenge_participants.csv research export row",
+  "type": "object",
+  "x-default-anonymized": true,
+  "x-export-version": "2026-05-06"
+}

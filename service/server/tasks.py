@@ -785,6 +785,59 @@ async def settle_team_missions_loop():
         await asyncio.sleep(interval_s)
 
 
+async def score_signal_quality_loop():
+    """Background task to extract structured predictions and score signal quality."""
+    from signal_quality import score_unscored_signals
+
+    await asyncio.sleep(30)
+
+    while True:
+        interval_s = _env_int("SIGNAL_QUALITY_SCORE_INTERVAL", 240, minimum=30)
+        try:
+            result = await asyncio.to_thread(score_unscored_signals)
+            if result.get("inserted"):
+                print(f"[Signal Quality Scorer] inserted={result['inserted']}")
+        except Exception as e:
+            print(f"[Signal Quality Scorer Error] {e}")
+
+        await asyncio.sleep(interval_s)
+
+
+async def refresh_agent_metric_snapshots_loop():
+    """Background task to snapshot agent metrics for experiment analysis."""
+    from experiment_metrics import refresh_agent_metric_snapshots
+
+    await asyncio.sleep(34)
+
+    while True:
+        interval_s = _env_int("AGENT_METRIC_SNAPSHOT_INTERVAL", 900, minimum=60)
+        window_days = _env_int("AGENT_METRIC_SNAPSHOT_WINDOW_DAYS", 7, minimum=1)
+        try:
+            result = await asyncio.to_thread(refresh_agent_metric_snapshots, window_days)
+            print(f"[Agent Metric Snapshots] inserted={result.get('inserted', 0)} window={result.get('window_key')}")
+        except Exception as e:
+            print(f"[Agent Metric Snapshots Error] {e}")
+
+        await asyncio.sleep(interval_s)
+
+
+async def build_network_edges_loop():
+    """Background task to rebuild agent interaction network edges."""
+    from experiment_metrics import build_network_edges
+
+    await asyncio.sleep(38)
+
+    while True:
+        interval_s = _env_int("NETWORK_EDGES_BUILD_INTERVAL", 900, minimum=60)
+        try:
+            result = await asyncio.to_thread(build_network_edges)
+            print(f"[Network Edges] inserted={result.get('inserted', 0)}")
+        except Exception as e:
+            print(f"[Network Edges Error] {e}")
+
+        await asyncio.sleep(interval_s)
+
+
 BACKGROUND_TASK_REGISTRY = {
     "prices": update_position_prices,
     "profit_history": record_profit_history,
@@ -793,6 +846,9 @@ BACKGROUND_TASK_REGISTRY = {
     "team_mission_form": form_team_missions_loop,
     "team_contribution_score": score_team_contributions_loop,
     "team_mission_settlement": settle_team_missions_loop,
+    "signal_quality_score": score_signal_quality_loop,
+    "agent_metric_snapshots": refresh_agent_metric_snapshots_loop,
+    "network_edges": build_network_edges_loop,
     "market_news": refresh_market_news_snapshots_loop,
     "macro_signals": refresh_macro_signal_snapshots_loop,
     "etf_flows": refresh_etf_flow_snapshots_loop,

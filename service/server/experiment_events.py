@@ -76,8 +76,12 @@ def record_reward_event(
     source_id: Optional[Any] = None,
     experiment_key: Optional[str] = None,
     variant_key: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
     cursor: Any = None,
 ) -> str:
+    payload = {'amount': amount, 'reason': reason}
+    if metadata:
+        payload.update(metadata)
     return record_event(
         'reward_granted',
         actor_agent_id=agent_id,
@@ -85,7 +89,59 @@ def record_reward_event(
         object_id=source_id,
         experiment_key=experiment_key,
         variant_key=variant_key,
-        metadata={'amount': amount, 'reason': reason},
+        metadata=payload,
         cursor=cursor,
     )
 
+
+def record_signal_event(
+    event_type: str,
+    *,
+    agent_id: int,
+    signal_id: int,
+    message_type: str,
+    market: Optional[str] = None,
+    experiment_key: Optional[str] = None,
+    variant_key: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
+    cursor: Any = None,
+) -> str:
+    payload = {'signal_id': signal_id, 'message_type': message_type}
+    if metadata:
+        payload.update(metadata)
+    return record_event(
+        event_type,
+        actor_agent_id=agent_id,
+        object_type='signal',
+        object_id=signal_id,
+        market=market,
+        experiment_key=experiment_key,
+        variant_key=variant_key,
+        metadata=payload,
+        cursor=cursor,
+    )
+
+
+def record_assignment_event(
+    experiment_key: str,
+    *,
+    unit_type: str,
+    unit_id: int,
+    variant_key: str,
+    assignment_reason: Optional[str] = None,
+    metadata: Optional[dict[str, Any]] = None,
+    cursor: Any = None,
+) -> str:
+    payload = {'unit_type': unit_type, 'unit_id': unit_id, 'assignment_reason': assignment_reason}
+    if metadata:
+        payload.update(metadata)
+    return record_event(
+        'experiment_assigned',
+        actor_agent_id=unit_id if unit_type == 'agent' else None,
+        object_type='experiment_assignment',
+        object_id=f'{experiment_key}:{unit_type}:{unit_id}',
+        experiment_key=experiment_key,
+        variant_key=variant_key,
+        metadata=payload,
+        cursor=cursor,
+    )

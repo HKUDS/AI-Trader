@@ -17,6 +17,7 @@ build/
 artifacts/
 cache/
 typechain-types/
+/exp_frontend/
 
 # ====================
 # Hardhat

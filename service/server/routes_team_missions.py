@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Header, HTTPException
 
+from experiment_notifications import (
+    ExperimentNotificationError,
+    build_experiment_target_rule,
+    resolve_team_mission_notification_targets,
+    send_agent_notifications,
+)
 from routes_models import (
+    ExperimentNotificationRequest,
     TeamJoinRequest,
     TeamMessageLinkRequest,
     TeamMissionCreateRequest,
@@ -37,7 +44,7 @@ from utils import _extract_token
 def _to_http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, TeamMissionNotFound):
         return HTTPException(status_code=404, detail=str(exc))
-    if isinstance(exc, TeamMissionError):
+    if isinstance(exc, (TeamMissionError, ExperimentNotificationError)):
         return HTTPException(status_code=400, detail=str(exc))
     return HTTPException(status_code=500, detail=f"Team mission request failed: {exc}")
 
@@ -136,6 +143,51 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
         except Exception as exc:
             raise _to_http_error(exc)
 
+    @app.post("/api/team-missions/{mission_key}/notify")
+    async def api_notify_team_mission(
+        mission_key: str,
+        data: ExperimentNotificationRequest,
+        authorization: str = Header(None),
+    ):
+        agent = _require_agent(authorization)
+        try:
+            mission = get_team_mission(mission_key)
+            experiment_key = mission.get("experiment_key") or (data.data or {}).get("experiment_key") or ""
+            targets = resolve_team_mission_notification_targets(
+                mission_key,
+                team_key=data.team_key,
+                variant_key=data.variant_key,
+                agent_ids=data.agent_ids,
+                limit=data.limit,
+            )
+            target_rule = build_experiment_target_rule(
+                experiment_key=experiment_key,
+                variant_key=data.variant_key,
+                agent_ids=data.agent_ids,
+                limit=data.limit,
+                mission_key=mission_key,
+                team_key=data.team_key,
+                target="team_mission",
+            )
+            return await send_agent_notifications(
+                ctx,
+                targets,
+                actor_agent_id=agent["id"],
+                message_type=data.message_type,
+                title=data.title,
+                content=data.content,
+                experiment_key=experiment_key or None,
+                variant_key=data.variant_key,
+                mission_key=mission_key,
+                team_key=data.team_key,
+                data=data.data,
+                dry_run=data.dry_run,
+                event_type="team_mission_notification_sent",
+                target_rule=target_rule,
+            )
+        except Exception as exc:
+            raise _to_http_error(exc)
+
     @app.get("/api/team-missions/{mission_key}")
     async def api_get_team_mission(mission_key: str):
         try:
@@ -188,10 +240,58 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
         except Exception as exc:
             raise _to_http_error(exc)
 
+    @app.post("/api/teams/{team_key}/notify")
+    async def api_notify_team(
+        team_key: str,
+        data: ExperimentNotificationRequest,
+        authorization: str = Header(None),
+    ):
+        agent = _require_agent(authorization)
+        try:
+            team = get_team(team_key)
+            mission = team.get("mission") or {}
+            mission_key = mission.get("mission_key") or data.mission_key
+            if not mission_key:
+                raise ExperimentNotificationError("mission_key is required for team targeting")
+            experiment_key = mission.get("experiment_key") or (data.data or {}).get("experiment_key") or ""
+            targets = resolve_team_mission_notification_targets(
+                mission_key,
+                team_key=team_key,
+                variant_key=data.variant_key,
+                agent_ids=data.agent_ids,
+                limit=data.limit,
+            )
+            target_rule = build_experiment_target_rule(
+                experiment_key=experiment_key,
+                variant_key=data.variant_key,
+                agent_ids=data.agent_ids,
+                limit=data.limit,
+                mission_key=mission_key,
+                team_key=team_key,
+                target="team",
+            )
+            return await send_agent_notifications(
+                ctx,
+                targets,
+                actor_agent_id=agent["id"],
+                message_type=data.message_type,
+                title=data.title,
+                content=data.content,
+                experiment_key=experiment_key or None,
+                variant_key=data.variant_key,
+                mission_key=mission_key,
+                team_key=team_key,
+                data=data.data,
+                dry_run=data.dry_run,
+                event_type="team_mission_notification_sent",
+                target_rule=target_rule,
+            )
+        except Exception as exc:
+            raise _to_http_error(exc)
+
     @app.get("/api/teams/{team_key}")
     async def api_get_team(team_key: str):
         try:
             return get_team(team_key)
         except Exception as exc:
             raise _to_http_error(exc)
-

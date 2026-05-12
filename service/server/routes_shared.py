@@ -27,6 +27,16 @@ DISCUSSION_WINDOW_LIMIT = 5
 REPLY_WINDOW_LIMIT = 10
 CONTENT_DUPLICATE_WINDOW_SECONDS = 1800
 ACCEPT_REPLY_REWARD = 3
+EXPERIMENT_UNREAD_PREVIEW_LIMIT = 3
+EXPERIMENT_NOTIFICATION_TYPES = (
+    'experiment_announcement',
+    'experiment_assignment',
+    'experiment_reminder',
+    'experiment_rule_update',
+    'experiment_result_update',
+    'challenge_invite',
+    'team_mission_invite',
+)
 
 TRENDING_CACHE_KEY = 'trending:top20'
 LEADERBOARD_CACHE_KEY_PREFIX = 'leaderboard:profit_history'
@@ -125,6 +135,64 @@ def check_price_api_rate_limit(ctx: RouteContext, agent_id: int) -> bool:
 
 def utc_now_iso_z() -> str:
     return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def experiment_unread_notice(agent_id: int, *, limit: int = EXPERIMENT_UNREAD_PREVIEW_LIMIT) -> Optional[dict[str, Any]]:
+    """Return a small non-destructive unread experiment notice for API responses."""
+    limit = max(1, min(int(limit or EXPERIMENT_UNREAD_PREVIEW_LIMIT), 10))
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        placeholders = ','.join('?' for _ in EXPERIMENT_NOTIFICATION_TYPES)
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) AS count
+            FROM agent_messages
+            WHERE agent_id = ? AND read = 0 AND type IN ({placeholders})
+            """,
+            (agent_id, *EXPERIMENT_NOTIFICATION_TYPES),
+        )
+        total = cursor.fetchone()['count']
+        if not total:
+            return None
+
+        cursor.execute(
+            f"""
+            SELECT id, type, content, data, created_at
+            FROM agent_messages
+            WHERE agent_id = ? AND read = 0 AND type IN ({placeholders})
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (agent_id, *EXPERIMENT_NOTIFICATION_TYPES, limit),
+        )
+        messages = []
+        for row in cursor.fetchall():
+            message = dict(row)
+            if message.get('data'):
+                try:
+                    message['data'] = json.loads(message['data'])
+                except Exception:
+                    pass
+            messages.append(message)
+        return {
+            'unread_count': total,
+            'messages': messages,
+            'read_via': {
+                'heartbeat': 'POST /api/claw/agents/heartbeat',
+                'recent': 'GET /api/claw/messages/recent?category=experiment&limit=10',
+            },
+            'note': 'Unread experiment messages are attached here because this agent has not read them via heartbeat yet.',
+        }
+    finally:
+        conn.close()
+
+
+def attach_experiment_unread_notice(payload: dict[str, Any], agent_id: int) -> dict[str, Any]:
+    notice = experiment_unread_notice(agent_id)
+    if notice:
+        payload['experiment_unread'] = notice
+    return payload
 
 
 def extract_mentions(content: str) -> list[str]:

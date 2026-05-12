@@ -158,6 +158,27 @@ def _replace_unquoted_question_marks(sql: str) -> str:
     return "".join(result)
 
 
+def _escape_psycopg_percent_literals(sql: str) -> str:
+    """Escape literal percent signs before psycopg placeholder parsing.
+
+    psycopg uses percent-format placeholders, so SQL literals such as
+    ``LIKE '%foo%'`` must be sent as ``LIKE '%%foo%%'``. This runs before
+    sqlite ``?`` placeholders are translated to ``%s``.
+    """
+    result: list[str] = []
+    i = 0
+    while i < len(sql):
+        char = sql[i]
+        next_char = sql[i + 1] if i + 1 < len(sql) else ""
+        if char == "%":
+            result.append("%%")
+            i += 2 if next_char == "%" else 1
+            continue
+        result.append(char)
+        i += 1
+    return "".join(result)
+
+
 def _replace_sqlite_datetime_functions(sql: str) -> str:
     def replace_interval(match: re.Match[str]) -> str:
         amount = match.group(1)
@@ -175,6 +196,7 @@ def _adapt_sql_for_postgres(sql: str) -> str:
     adapted = _SQLITE_REAL_PATTERN.sub("DOUBLE PRECISION", adapted)
     adapted = _ALTER_ADD_COLUMN_PATTERN.sub(r"ALTER TABLE \1 ADD COLUMN IF NOT EXISTS ", adapted)
     adapted = _replace_sqlite_datetime_functions(adapted)
+    adapted = _escape_psycopg_percent_literals(adapted)
     adapted = _replace_unquoted_question_marks(adapted)
     return adapted
 
@@ -822,6 +844,45 @@ def init_database():
     """)
 
     cursor.execute("""
+        CREATE TABLE IF NOT EXISTS agent_metric_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id INTEGER NOT NULL,
+            window_key TEXT NOT NULL,
+            window_start_at TEXT NOT NULL,
+            window_end_at TEXT NOT NULL,
+            return_pct REAL DEFAULT 0,
+            max_drawdown REAL DEFAULT 0,
+            trade_count INTEGER DEFAULT 0,
+            strategy_count INTEGER DEFAULT 0,
+            discussion_count INTEGER DEFAULT 0,
+            reply_count INTEGER DEFAULT 0,
+            accepted_reply_count INTEGER DEFAULT 0,
+            citation_count INTEGER DEFAULT 0,
+            adoption_count INTEGER DEFAULT 0,
+            quality_score_avg REAL DEFAULT 0,
+            risk_violation_count INTEGER DEFAULT 0,
+            metadata_json TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS network_edges (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_agent_id INTEGER NOT NULL,
+            target_agent_id INTEGER NOT NULL,
+            edge_type TEXT NOT NULL,
+            signal_id INTEGER,
+            weight REAL DEFAULT 1,
+            metadata_json TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (source_agent_id) REFERENCES agents(id),
+            FOREIGN KEY (target_agent_id) REFERENCES agents(id)
+        )
+    """)
+
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS team_missions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             mission_key TEXT UNIQUE NOT NULL,
@@ -1240,6 +1301,31 @@ def init_database():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_signal_quality_scores_agent_created
         ON signal_quality_scores(agent_id, created_at)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_metric_snapshots_agent_window
+        ON agent_metric_snapshots(agent_id, window_key, window_end_at)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_metric_snapshots_window
+        ON agent_metric_snapshots(window_key, window_end_at)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_network_edges_source_created
+        ON network_edges(source_agent_id, created_at)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_network_edges_target_created
+        ON network_edges(target_agent_id, created_at)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_network_edges_type_created
+        ON network_edges(edge_type, created_at)
     """)
 
     cursor.execute("""
