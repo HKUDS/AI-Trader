@@ -1,0 +1,118 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # backend tests · always run, gate downstream deploys
+  # ---------------------------------------------------------------------------
+  test-backend:
+    name: pytest · service/server
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install uv + deps
+        run: |
+          python -m pip install --upgrade pip uv
+          uv pip install --system -r service/requirements.txt
+          uv pip install --system pytest pytest-asyncio
+
+      - name: Run pytest
+        working-directory: service
+        env:
+          DATABASE_URL: ""  # forces sqlite path for CI
+          ALLOW_LIVE_TRADING: "false"
+          PIONEX_AI_KIT_READ_ONLY: "true"
+        run: pytest server/tests -q
+
+  # ---------------------------------------------------------------------------
+  # frontend build · sanity-check Vite build before deploy
+  # ---------------------------------------------------------------------------
+  build-frontend:
+    name: build · service/frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: service/frontend/package-lock.json
+
+      - name: Install + build
+        working-directory: service/frontend
+        env:
+          VITE_API_URL: https://bw-trader-api.onrender.com
+          VITE_PUBLIC_DOMAIN: https://bw-trader.bw-space.com
+        run: |
+          npm ci
+          npm run build
+
+      - name: Smoke check SKILL.md served
+        working-directory: service/frontend
+        run: |
+          test -f dist/SKILL.md || (echo "SKILL.md missing in build" && exit 1)
+          test -f dist/.well-known/skill.json || (echo "skill.json missing" && exit 1)
+          test -f dist/skill/bw_trader || (echo "skill/bw_trader missing" && exit 1)
+
+  # ---------------------------------------------------------------------------
+  # frontend deploy · only on main
+  # ---------------------------------------------------------------------------
+  deploy-frontend:
+    name: Vercel · production
+    needs: [test-backend, build-frontend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vercel deploy
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: "--prod"
+          working-directory: service/frontend
+
+  # ---------------------------------------------------------------------------
+  # backend deploy · Render auto-deploys via render.yaml on push to main.
+  # This job is a tripwire that surfaces the deploy hook in the Actions UI.
+  # ---------------------------------------------------------------------------
+  deploy-backend:
+    name: Render · trigger deploy hook
+    needs: [test-backend]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Notify Render
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "RENDER_DEPLOY_HOOK_URL secret not set — Render auto-deploys via render.yaml on push, skipping."
+            exit 0
+          fi
+          curl -fsSL -X POST "$HOOK" | tee /tmp/render-resp.json
+          echo "Render deploy triggered."
