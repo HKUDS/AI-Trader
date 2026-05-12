@@ -1,0 +1,88 @@
+# BW-Trader Render Blueprint
+# Docs: https://render.com/docs/blueprint-spec
+#
+# Creates:
+#   - bw-trader-api          FastAPI web service (uvicorn)
+#   - bw-trader-scheduler    Background worker (python -m server.scheduler)
+#
+# Both share env vars via the bw-trader-env env group.
+# Secrets marked `sync: false` must be filled in the Render dashboard
+# (the Blueprint deploy will prompt for them on first apply).
+#
+# Region: singapore — TWSE / FinMind / Pionex TW latency lowest.
+# Plan: starter — adjust in dashboard once load is known.
+
+envVarGroups:
+  - name: bw-trader-env
+    envVars:
+      # --- runtime ---
+      - key: PYTHON_VERSION
+        value: "3.12"
+      - key: TZ
+        value: Asia/Taipei
+      # --- Postgres (Supabase pooler URL, e.g. postgresql://...:6543/postgres) ---
+      - key: DATABASE_URL
+        sync: false
+      # --- Pionex (read-only key + IP-whitelist for Render egress) ---
+      - key: PIONEX_API_KEY
+        sync: false
+      - key: PIONEX_API_SECRET
+        sync: false
+      - key: PIONEX_AI_KIT_COMMAND
+        value: npx @pionex/pionex-trade-mcp
+      - key: PIONEX_AI_KIT_READ_ONLY
+        value: "true"
+      - key: ALLOW_LIVE_TRADING
+        value: "false"
+      - key: DEFAULT_PAPER_BALANCE_NTD
+        value: "1000000"
+      # --- TW market data ---
+      - key: TWSE_OPENAPI_BASE
+        value: https://openapi.twse.com.tw/v1
+      - key: FINMIND_API_TOKEN
+        sync: false
+      # --- GPT proxy ---
+      - key: GPT_PROXY_URL
+        value: https://gpt-proxy.bw-space.com/v1
+      - key: GPT_PROXY_KEY
+        sync: false
+      # --- CORS / public domain ---
+      - key: PUBLIC_DOMAIN
+        value: https://bw-trader.bw-space.com
+      - key: ALLOWED_ORIGINS
+        value: https://bw-trader.bw-space.com,https://bw-space.com
+
+services:
+  - type: web
+    name: bw-trader-api
+    runtime: python
+    plan: starter
+    region: singapore
+    branch: main
+    rootDir: service
+    # Node ≥ 18 required for Pionex AI Kit MCP (`npx @pionex/pionex-trade-mcp`).
+    # Render's Python runtime ships Node 18, but we install via apt-aware buildpack:
+    buildCommand: |
+      python -m pip install --upgrade pip uv && \
+      uv pip install --system -r requirements.txt && \
+      command -v node >/dev/null 2>&1 || echo "Node provided by Render runtime"
+    startCommand: uvicorn server.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - fromGroup: bw-trader-env
+
+  - type: worker
+    name: bw-trader-scheduler
+    runtime: python
+    plan: starter
+    region: singapore
+    branch: main
+    rootDir: service
+    buildCommand: |
+      python -m pip install --upgrade pip uv && \
+      uv pip install --system -r requirements.txt
+    startCommand: python -m server.scheduler
+    autoDeploy: true
+    envVars:
+      - fromGroup: bw-trader-env
