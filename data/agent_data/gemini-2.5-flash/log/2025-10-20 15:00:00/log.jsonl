@@ -1,2 +1,0 @@
-{"signature": "gemini-2.5-flash", "new_messages": [{"role": "user", "content": "Please analyze and update today's (2025-10-20) positions."}]}
-{"signature": "gemini-2.5-flash", "new_messages": [{"role": "assistant", "content": "The portfolio has been updated.\n<FINISH_SIGNAL>"}]}
