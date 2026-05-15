@@ -131,8 +131,12 @@ ACTIONS: dict[str, ActionSpec] = {
         "timeout_seconds": 10,
     },
     "uv_pip_install": {
+        # --break-system-packages: M1 brew Python 3.14 marks the interpreter as
+        # PEP 668 externally-managed; uv refuses without this flag. The brew
+        # Python is single-tenant for BW-Trader, so side effects are bounded.
         "handler": lambda params: [
-            "uv", "pip", "install", "--system", "-r", "service/requirements.txt",
+            "uv", "pip", "install", "--system", "--break-system-packages",
+            "-r", "service/requirements.txt",
         ],
         "cwd": lambda params: repo_root(),
         "validate": lambda params: not params,

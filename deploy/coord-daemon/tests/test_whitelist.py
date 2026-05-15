@@ -60,6 +60,16 @@ def test_uv_pip_install_uses_system_flag():
     assert cwd  # must run inside repo
 
 
+def test_uv_pip_install_uses_break_system_packages_flag():
+    # M1 brew Python 3.14 is PEP 668 externally-managed; uv refuses to install
+    # into --system without --break-system-packages. Lock the flag in so deploy
+    # step 2 doesn't regress.
+    argv, _, _ = resolve_action("uv_pip_install", {})
+    assert "--break-system-packages" in argv
+    # Flag must come before -r so uv parses it as a pip-install option.
+    assert argv.index("--break-system-packages") < argv.index("-r")
+
+
 def test_launchctl_bootstrap_accepts_label_param():
     argv, _, _ = resolve_action(
         "launchctl_bootstrap", {"label": "ai.bwstudio.bw-trader-coord-daemon"}
