@@ -27,14 +27,17 @@ Run under launchd: see deploy/launchd/ai.bwstudio.bw-trader-coord-daemon.plist
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 # Allow running as a script from the deploy/coord-daemon directory.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -80,23 +83,37 @@ def _git(args: list[str], cwd: str, check: bool = True) -> subprocess.CompletedP
     )
 
 
-def _ensure_coord_branch_checked_out(repo: str) -> None:
-    """Make sure we're on COORD_BRANCH and synced with origin/COORD_BRANCH.
+@contextlib.contextmanager
+def _coord_worktree(repo: str) -> Iterator[str]:
+    """Yield a temporary git worktree checked out at origin/COORD_BRANCH.
 
-    Strategy: stash any local changes, checkout coord branch (create tracking if
-    missing), fast-forward from origin. We never touch main from this daemon.
+    The caller's repo HEAD is never touched. This prevents the daemon from
+    leaving the user's working copy on the `coord` branch — a previous bug
+    where launchd then failed to find this daemon's source file (which lives
+    on `main`, not `coord`).
+
+    The worktree is created detached (no local branch ref to clean up), and
+    pushes go to `origin coord` via `HEAD:refs/heads/coord`. We also prune
+    stale worktree records on entry to recover from a crashed prior run.
     """
+    _git(["worktree", "prune"], cwd=repo, check=False)
     _git(["fetch", "origin", COORD_BRANCH], cwd=repo, check=False)
-    current = _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=repo).stdout.strip()
-    if current != COORD_BRANCH:
-        # Try local checkout first, fall back to tracking remote.
-        rc = subprocess.run(
-            ["git", "checkout", COORD_BRANCH],
-            cwd=repo, capture_output=True, text=True,
-        ).returncode
-        if rc != 0:
-            _git(["checkout", "-B", COORD_BRANCH, f"origin/{COORD_BRANCH}"], cwd=repo)
-    _git(["pull", "--ff-only", "origin", COORD_BRANCH], cwd=repo, check=False)
+    tmp_parent = tempfile.mkdtemp(prefix="coord-wt-")
+    wt_path = os.path.join(tmp_parent, "wt")
+    try:
+        _git(
+            ["worktree", "add", "--detach", wt_path, f"origin/{COORD_BRANCH}"],
+            cwd=repo,
+        )
+        try:
+            yield wt_path
+        finally:
+            subprocess.run(
+                ["git", "-C", repo, "worktree", "remove", "--force", wt_path],
+                capture_output=True, text=True, timeout=30,
+            )
+    finally:
+        shutil.rmtree(tmp_parent, ignore_errors=True)
 
 
 def _list_inbox(repo: str) -> list[Path]:
@@ -248,48 +265,65 @@ def process_task(repo: str, inbox_path: Path) -> dict:
     return reply
 
 
-def run_once(repo: str | None = None, *, sync: bool = True) -> int:
-    """Run one poll cycle. Returns number of tasks processed."""
-    repo = repo or repo_root()
-    if sync:
-        _ensure_coord_branch_checked_out(repo)
-
-    inbox_files = _list_inbox(repo)
+def _drain_inbox(work_dir: str, processed: list[str]) -> int:
+    """Process every inbox file in work_dir; delete each after reply written."""
+    inbox_files = _list_inbox(work_dir)
     if not inbox_files:
         _log("no inbox tasks")
         return 0
-
-    processed: list[str] = []
     for inbox_path in inbox_files:
-        reply = process_task(repo, inbox_path)
+        reply = process_task(work_dir, inbox_path)
         try:
             inbox_path.unlink()
         except FileNotFoundError:
             pass
         processed.append(reply["task_id"])
+    return len(inbox_files)
 
-    if sync and processed:
-        _git(["add", "-A", COORD_DIR], cwd=repo, check=False)
-        status_out = _git(["status", "--porcelain"], cwd=repo).stdout
-        if status_out.strip():
-            short_ids = ",".join(t[:8] for t in processed)
-            _git(
-                [
-                    "-c", "user.name=bw-coord-daemon",
-                    "-c", "user.email=coord-daemon@bw-space.com",
-                    "commit", "-m", f"coord(m1): reply {short_ids}",
-                ],
-                cwd=repo,
-            )
-            push = subprocess.run(
-                ["git", "push", "origin", COORD_BRANCH],
-                cwd=repo, capture_output=True, text=True, timeout=60,
-            )
-            if push.returncode != 0:
-                _log(f"push failed: {push.stderr.strip()}")
-            else:
-                _log(f"pushed {len(processed)} reply commit(s)")
-    return len(processed)
+
+def _commit_and_push_worktree(wt: str, processed: list[str]) -> None:
+    _git(["add", "-A", COORD_DIR], cwd=wt, check=False)
+    status_out = _git(["status", "--porcelain"], cwd=wt).stdout
+    if not status_out.strip():
+        return
+    short_ids = ",".join(t[:8] for t in processed)
+    _git(
+        [
+            "-c", "user.name=bw-coord-daemon",
+            "-c", "user.email=coord-daemon@bw-space.com",
+            "commit", "-m", f"coord(m1): reply {short_ids}",
+        ],
+        cwd=wt,
+    )
+    # Detached HEAD in worktree → push HEAD to refs/heads/coord on origin.
+    push = subprocess.run(
+        ["git", "push", "origin", f"HEAD:refs/heads/{COORD_BRANCH}"],
+        cwd=wt, capture_output=True, text=True, timeout=60,
+    )
+    if push.returncode != 0:
+        _log(f"push failed: {push.stderr.strip()}")
+    else:
+        _log(f"pushed {len(processed)} reply commit(s)")
+
+
+def run_once(repo: str | None = None, *, sync: bool = True) -> int:
+    """Run one poll cycle. Returns number of tasks processed.
+
+    When sync=True, all inbox reads / outbox writes happen inside a temporary
+    git worktree on `origin/coord` — the caller's repo HEAD is untouched.
+    When sync=False (test mode), operate directly on the given repo path.
+    """
+    repo = repo or repo_root()
+    processed: list[str] = []
+
+    if not sync:
+        return _drain_inbox(repo, processed)
+
+    with _coord_worktree(repo) as wt:
+        n = _drain_inbox(wt, processed)
+        if processed:
+            _commit_and_push_worktree(wt, processed)
+        return n
 
 
 def main() -> int:

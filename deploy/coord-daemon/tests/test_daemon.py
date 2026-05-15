@@ -158,6 +158,133 @@ def test_run_once_no_sync_processes_and_clears_inbox(tmp_path, monkeypatch):
     assert (repo / ".coord" / "outbox" / "denied-1.json").exists()
 
 
+def _git(args, cwd, check=True):
+    import subprocess
+    return subprocess.run(
+        ["git", *args], cwd=str(cwd), check=check,
+        capture_output=True, text=True,
+    )
+
+
+def _make_repo_with_remote_and_coord_branch(tmp_path: Path) -> Path:
+    """Build a real git repo with bare 'origin' remote and main + coord branches.
+
+    Returns the working repo path. main has a README; coord is orphan with
+    .coord/{inbox,outbox} layout. Caller is left on main.
+    """
+    remote = tmp_path / "remote.git"
+    _git(["init", "--bare", "-q", str(remote)], cwd=tmp_path)
+
+    repo = tmp_path / "repo"
+    _git(["clone", "-q", str(remote), str(repo)], cwd=tmp_path)
+    _git(["config", "user.name", "t"], cwd=repo)
+    _git(["config", "user.email", "t@t"], cwd=repo)
+
+    # Seed main.
+    (repo / "README.md").write_text("hi\n")
+    _git(["checkout", "-b", "main"], cwd=repo, check=False)
+    _git(["add", "-A"], cwd=repo)
+    _git(["commit", "-m", "init", "-q"], cwd=repo)
+    _git(["push", "-u", "origin", "main", "-q"], cwd=repo)
+
+    # Create orphan coord branch with .coord layout.
+    _git(["checkout", "--orphan", "coord", "-q"], cwd=repo)
+    _git(["rm", "-rf", "."], cwd=repo, check=False)
+    (repo / ".coord" / "inbox").mkdir(parents=True)
+    (repo / ".coord" / "outbox").mkdir(parents=True)
+    (repo / ".coord" / "inbox" / ".gitkeep").touch()
+    (repo / ".coord" / "outbox" / ".gitkeep").touch()
+    _git(["add", "-A"], cwd=repo)
+    _git(["commit", "-m", "init coord", "-q"], cwd=repo)
+    _git(["push", "-u", "origin", "coord", "-q"], cwd=repo)
+
+    # Caller starts on main — that's the precondition the bug violated.
+    _git(["checkout", "main", "-q"], cwd=repo)
+    return repo
+
+
+def test_run_once_with_sync_preserves_caller_head(tmp_path, monkeypatch):
+    """Regression: daemon must not leave caller's HEAD on coord branch.
+
+    The original bug: `git checkout coord` on the caller's repo left HEAD on
+    coord, so launchd later couldn't find coord_daemon.py (lives on main).
+    """
+    repo = _make_repo_with_remote_and_coord_branch(tmp_path)
+    monkeypatch.setenv("COORD_REPO_ROOT", str(repo))
+
+    head_before = _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=repo).stdout.strip()
+    assert head_before == "main"
+
+    cd.run_once(repo=str(repo), sync=True)
+
+    head_after = _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=repo).stdout.strip()
+    assert head_after == "main", f"caller HEAD moved to {head_after!r}"
+    # And the working tree must still resolve coord_daemon.py-style files
+    # (i.e., README.md from main is still present).
+    assert (repo / "README.md").exists()
+
+
+def test_worktree_is_cleaned_up_after_run(tmp_path, monkeypatch):
+    """No dangling worktree records or temp directories should remain."""
+    repo = _make_repo_with_remote_and_coord_branch(tmp_path)
+    monkeypatch.setenv("COORD_REPO_ROOT", str(repo))
+
+    wts_before = _git(["worktree", "list"], cwd=repo).stdout
+    cd.run_once(repo=str(repo), sync=True)
+    wts_after = _git(["worktree", "list"], cwd=repo).stdout
+
+    # The temporary worktree must not survive.
+    assert "coord-wt-" not in wts_after
+    # Worktree count is unchanged (only the main checkout remains).
+    assert wts_before.strip().count("\n") == wts_after.strip().count("\n")
+
+
+def test_run_once_with_sync_processes_inbox_task_in_worktree(tmp_path, monkeypatch):
+    """End-to-end: place an inbox task on coord, run sync, verify outbox push."""
+    import subprocess
+    repo = _make_repo_with_remote_and_coord_branch(tmp_path)
+    monkeypatch.setenv("COORD_REPO_ROOT", str(repo))
+
+    # Put a denied task into coord branch via a one-shot worktree.
+    stage = tmp_path / "stage"
+    _git(["worktree", "add", "--detach", str(stage), "origin/coord"], cwd=repo)
+    try:
+        task = {
+            "task_id": "wt-end-to-end", "from": "dispatch-m4", "to": "m1",
+            "action": "does_not_exist", "nonce": "n",
+        }
+        (stage / ".coord" / "inbox" / "wt-end-to-end.json").write_text(
+            json.dumps(task), encoding="utf-8"
+        )
+        subprocess.run(["git", "-C", str(stage), "add", "-A"], check=True)
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", str(stage),
+             "commit", "-m", "seed task", "-q"], check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(stage), "push", "origin",
+             f"HEAD:refs/heads/coord"], check=True, capture_output=True,
+        )
+    finally:
+        _git(["worktree", "remove", "--force", str(stage)], cwd=repo, check=False)
+
+    n = cd.run_once(repo=str(repo), sync=True)
+    assert n == 1
+
+    # Caller still on main.
+    assert _git(["rev-parse", "--abbrev-ref", "HEAD"], cwd=repo).stdout.strip() == "main"
+
+    # The reply was pushed to origin's coord branch — verify by reading it via
+    # a throwaway worktree.
+    verify = tmp_path / "verify"
+    _git(["fetch", "origin", "coord"], cwd=repo, check=False)
+    _git(["worktree", "add", "--detach", str(verify), "origin/coord"], cwd=repo)
+    try:
+        assert (verify / ".coord" / "outbox" / "wt-end-to-end.json").exists()
+    finally:
+        _git(["worktree", "remove", "--force", str(verify)], cwd=repo, check=False)
+
+
 def test_main_dry_run_flag_disables_sync(tmp_path, monkeypatch):
     """`--dry-run` should run one cycle and never invoke git pull/commit/push."""
     repo = _make_repo(tmp_path)
