@@ -36,7 +36,10 @@ git fetch --prune origin
 git pull --ff-only origin main
 
 log "Install deps"
-uv pip install -r service/requirements.txt
+# --system + --break-system-packages: M1 uses brew Python 3.14 which is PEP 668
+# externally-managed; uv refuses without the flag. Matches the coord daemon's
+# whitelisted uv_pip_install action.
+uv pip install --system --break-system-packages -r service/requirements.txt
 
 for label in "$API_LABEL" "$SCHED_LABEL"; do
   plist="$LAUNCH_AGENTS/$label.plist"
@@ -52,6 +55,9 @@ for label in "$API_LABEL" "$SCHED_LABEL"; do
     launchctl kickstart -k "gui/$UID_NUM/$label"
   else
     log "Bootstrap $label"
+    # Enable first in case a prior failed bootstrap landed the label on the
+    # per-user disabled list (which makes future bootstrap exit 5/IO error).
+    launchctl enable "gui/$UID_NUM/$label" 2>/dev/null || true
     launchctl bootstrap "gui/$UID_NUM" "$plist"
   fi
 done
