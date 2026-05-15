@@ -156,3 +156,42 @@ def test_run_once_no_sync_processes_and_clears_inbox(tmp_path, monkeypatch):
     assert n == 1
     assert not inbox_path.exists()
     assert (repo / ".coord" / "outbox" / "denied-1.json").exists()
+
+
+def test_main_dry_run_flag_disables_sync(tmp_path, monkeypatch):
+    """`--dry-run` should run one cycle and never invoke git pull/commit/push."""
+    repo = _make_repo(tmp_path)
+    task = {
+        "task_id": "dry-1", "from": "dispatch-m4", "to": "m1",
+        "action": "does_not_exist", "nonce": "n",
+    }
+    _write_task(repo, task)
+
+    called = {"sync_values": []}
+
+    def fake_run_once(repo=None, *, sync=True):
+        called["sync_values"].append(sync)
+        return 0
+
+    monkeypatch.setattr(cd, "run_once", fake_run_once)
+    monkeypatch.setattr(sys, "argv", ["coord_daemon.py", "--dry-run", "--repo", str(repo)])
+    rc = cd.main()
+    assert rc == 0
+    assert called["sync_values"] == [False], (
+        f"--dry-run must disable sync, got sync={called['sync_values']!r}"
+    )
+
+
+def test_main_no_sync_flag_disables_sync(monkeypatch, tmp_path):
+    """Regression: `--no-sync` continues to work alongside --dry-run."""
+    called = {"sync_values": []}
+
+    def fake_run_once(repo=None, *, sync=True):
+        called["sync_values"].append(sync)
+        return 0
+
+    monkeypatch.setattr(cd, "run_once", fake_run_once)
+    monkeypatch.setattr(sys, "argv", ["coord_daemon.py", "--no-sync", "--repo", str(tmp_path)])
+    rc = cd.main()
+    assert rc == 0
+    assert called["sync_values"] == [False]

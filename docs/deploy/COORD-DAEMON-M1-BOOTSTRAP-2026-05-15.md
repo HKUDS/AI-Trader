@@ -46,6 +46,20 @@ COORD_REPO_ROOT=$HOME/dev/AI-Trader python3 deploy/coord-daemon/coord_daemon.py 
 Expected output: `no inbox tasks` (assuming the queue is empty) and exit 0.
 Any traceback here means stop and debug before going further.
 
+### Flag reference
+
+- `--once` — one poll cycle, then exit (default; what launchd uses).
+- `--no-sync` — skip git pull/commit/push; useful when iterating locally.
+- `--dry-run` — alias of `--once --no-sync`. Safe for bootstrap smoke-tests:
+  polls the inbox, writes replies to `.coord/outbox/`, never pushes.
+- `--repo <path>` — override repo root (defaults to `COORD_REPO_ROOT` env).
+
+Smoke-test without touching the remote:
+
+```bash
+python3 deploy/coord-daemon/coord_daemon.py --dry-run --repo ~/dev/AI-Trader
+```
+
 ## 3. Install the launchd plist
 
 ```bash

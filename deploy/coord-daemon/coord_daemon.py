@@ -303,13 +303,20 @@ def main() -> int:
         help="Skip git pull/commit/push (useful for local testing).",
     )
     parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Alias for --once --no-sync: poll inbox once, write replies locally, "
+             "skip all git operations. Safe for bootstrap smoke-tests.",
+    )
+    parser.add_argument(
         "--repo", default=None,
         help="Override repo root (defaults to COORD_REPO_ROOT env or ~/dev/AI-Trader).",
     )
     args = parser.parse_args()
 
+    sync = not (args.no_sync or args.dry_run)
+
     try:
-        run_once(repo=args.repo, sync=not args.no_sync)
+        run_once(repo=args.repo, sync=sync)
     except Exception as e:  # noqa: BLE001 — fail-loud, log + return non-zero
         _log(f"FATAL: {type(e).__name__}: {e}")
         import traceback
