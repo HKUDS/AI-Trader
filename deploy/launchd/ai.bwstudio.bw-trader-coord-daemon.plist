@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>ai.bwstudio.bw-trader-coord-daemon</string>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/brian/dev/AI-Trader</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/Users/brian/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>PYTHONUNBUFFERED</key>
+        <string>1</string>
+        <key>TZ</key>
+        <string>Asia/Taipei</string>
+        <key>COORD_REPO_ROOT</key>
+        <string>/Users/brian/dev/AI-Trader</string>
+    </dict>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/brian/dev/AI-Trader/deploy/coord-daemon/coord_daemon.py</string>
+        <string>--once</string>
+    </array>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StartInterval</key>
+    <integer>60</integer>
+
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+
+    <key>StandardOutPath</key>
+    <string>/Users/brian/Library/Logs/bw-trader-coord-daemon.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/brian/Library/Logs/bw-trader-coord-daemon.err.log</string>
+</dict>
+</plist>
