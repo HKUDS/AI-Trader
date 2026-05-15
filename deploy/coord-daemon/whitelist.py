@@ -14,7 +14,8 @@ string — argv is passed to subprocess without shell=True.
 Red lines enforced here (do not relax without a security review):
   - no arbitrary shell command
   - no destructive git (push --force, reset --hard, clean -fdx)
-  - no launchctl bootout / unload
+  - no launchctl unload of non-bwstudio labels
+  - launchctl bootout is allowed BUT label must start with ai.bwstudio.
   - launchctl labels must start with ai.bwstudio.
   - run_script names must be a short slug pointing at deploy/m1-coord-scripts/
   - health_check URLs must be loopback or *.bw-space.com
@@ -55,8 +56,7 @@ def _validate_launchctl_label(params: dict) -> bool:
     return isinstance(label, str) and bool(_LABEL_RE.match(label))
 
 
-def _validate_bootstrap_plist(params: dict) -> bool:
-    path = params.get("plist_path", "")
+def _validate_bootstrap_plist_path(path: str) -> bool:
     if not isinstance(path, str):
         return False
     home = os.path.expanduser("~")
@@ -66,6 +66,35 @@ def _validate_bootstrap_plist(params: dict) -> bool:
     if ".." in path or not path.endswith(".plist"):
         return False
     return True
+
+
+def _validate_launchctl_bootstrap(params: dict) -> bool:
+    """Accepts either ``label`` (resolved to ~/Library/LaunchAgents/{label}.plist)
+    or an explicit ``plist_path`` under the bwstudio prefix."""
+    plist_path = params.get("plist_path")
+    label = params.get("label")
+    if plist_path:
+        # plist_path wins; label (if any) is ignored — only path is validated.
+        return _validate_bootstrap_plist_path(plist_path)
+    if label:
+        if not isinstance(label, str) or not _LABEL_RE.match(label):
+            return False
+        # Resolve to the conventional path and re-run path validation so the
+        # final argv element is the same shape either way.
+        resolved = os.path.join(
+            os.path.expanduser("~"), "Library", "LaunchAgents", f"{label}.plist"
+        )
+        return _validate_bootstrap_plist_path(resolved)
+    return False
+
+
+def _bootstrap_plist_path(params: dict) -> str:
+    plist_path = params.get("plist_path")
+    if plist_path:
+        return plist_path
+    return os.path.join(
+        os.path.expanduser("~"), "Library", "LaunchAgents", f"{params['label']}.plist"
+    )
 
 
 def _validate_health_url(params: dict) -> bool:
@@ -103,7 +132,7 @@ ACTIONS: dict[str, ActionSpec] = {
     },
     "uv_pip_install": {
         "handler": lambda params: [
-            "uv", "pip", "install", "-r", "service/requirements.txt",
+            "uv", "pip", "install", "--system", "-r", "service/requirements.txt",
         ],
         "cwd": lambda params: repo_root(),
         "validate": lambda params: not params,
@@ -118,9 +147,18 @@ ACTIONS: dict[str, ActionSpec] = {
     },
     "launchctl_bootstrap": {
         "handler": lambda params: [
-            "launchctl", "bootstrap", f"gui/{_uid()}", params["plist_path"],
+            "launchctl", "bootstrap", f"gui/{_uid()}", _bootstrap_plist_path(params),
         ],
-        "validate": _validate_bootstrap_plist,
+        "validate": _validate_launchctl_bootstrap,
+        "timeout_seconds": 30,
+    },
+    "launchctl_bootout": {
+        # Reverse of bootstrap; locked to ai.bwstudio.* labels so it can never
+        # tear down system or third-party agents.
+        "handler": lambda params: [
+            "launchctl", "bootout", f"gui/{_uid()}/{params['label']}",
+        ],
+        "validate": _validate_launchctl_label,
         "timeout_seconds": 30,
     },
     "launchctl_list": {

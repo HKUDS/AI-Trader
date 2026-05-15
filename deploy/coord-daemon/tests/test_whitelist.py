@@ -52,6 +52,81 @@ def test_launchctl_kickstart_label_rejects_path_traversal():
             resolve_action("launchctl_kickstart", {"label": bad})
 
 
+def test_uv_pip_install_uses_system_flag():
+    argv, cwd, _ = resolve_action("uv_pip_install", {})
+    assert argv[:4] == ["uv", "pip", "install", "--system"]
+    assert "-r" in argv
+    assert "service/requirements.txt" in argv
+    assert cwd  # must run inside repo
+
+
+def test_launchctl_bootstrap_accepts_label_param():
+    argv, _, _ = resolve_action(
+        "launchctl_bootstrap", {"label": "ai.bwstudio.bw-trader-coord-daemon"}
+    )
+    home = os.path.expanduser("~")
+    assert argv[0] == "launchctl"
+    assert argv[1] == "bootstrap"
+    assert argv[2].startswith("gui/")
+    assert argv[3] == f"{home}/Library/LaunchAgents/ai.bwstudio.bw-trader-coord-daemon.plist"
+
+
+def test_launchctl_bootstrap_accepts_plist_path_param():
+    home = os.path.expanduser("~")
+    good = f"{home}/Library/LaunchAgents/ai.bwstudio.bw-trader-api.plist"
+    argv, _, _ = resolve_action("launchctl_bootstrap", {"plist_path": good})
+    assert argv[-1] == good
+
+
+def test_launchctl_bootstrap_rejects_non_bwstudio_label():
+    for bad in [
+        "com.apple.something",
+        "ai.bwstudio.",  # empty tail
+        "AI.BWSTUDIO.foo",
+        "ai.bwstudio.$(rm -rf /)",
+        "",
+    ]:
+        with pytest.raises(DeniedAction):
+            resolve_action("launchctl_bootstrap", {"label": bad})
+
+
+def test_launchctl_bootstrap_rejects_non_bwstudio_plist_path():
+    home = os.path.expanduser("~")
+    for bad in [
+        "/tmp/evil.plist",
+        f"{home}/Library/LaunchAgents/com.apple.thing.plist",
+        f"{home}/Library/LaunchAgents/ai.bwstudio.foo.txt",
+    ]:
+        with pytest.raises(DeniedAction):
+            resolve_action("launchctl_bootstrap", {"plist_path": bad})
+
+
+def test_launchctl_bootstrap_requires_at_least_one_param():
+    with pytest.raises(DeniedAction):
+        resolve_action("launchctl_bootstrap", {})
+
+
+def test_launchctl_bootout_basic():
+    argv, _, timeout = resolve_action(
+        "launchctl_bootout", {"label": "ai.bwstudio.bw-trader-api"}
+    )
+    assert argv[:2] == ["launchctl", "bootout"]
+    assert argv[2].startswith("gui/")
+    assert argv[2].endswith("/ai.bwstudio.bw-trader-api")
+    assert timeout <= 60
+
+
+def test_launchctl_bootout_requires_bwstudio_label():
+    for bad in [
+        "com.apple.evilservice",
+        "homebrew.mxcl.cloudflared",
+        "",
+        "ai.bwstudio.$(touch /tmp/pwned)",
+    ]:
+        with pytest.raises(DeniedAction):
+            resolve_action("launchctl_bootout", {"label": bad})
+
+
 def test_launchctl_bootstrap_path_must_be_in_launch_agents():
     home = os.path.expanduser("~")
     good = f"{home}/Library/LaunchAgents/ai.bwstudio.bw-trader-coord-daemon.plist"
@@ -131,9 +206,10 @@ def test_run_script_rejects_symlink_escape(tmp_path, monkeypatch):
 
 def test_no_destructive_action_in_whitelist():
     # If anyone adds something dangerous to ACTIONS this test breaks loudly.
+    # Note: launchctl_bootout is allowed but only for ai.bwstudio.* labels —
+    # see test_launchctl_bootout_requires_bwstudio_label.
     for name in ACTIONS:
         assert "force" not in name
-        assert "bootout" not in name
         assert "unload" not in name
         assert "rm" not in name
         assert "reset" not in name
@@ -155,6 +231,7 @@ def test_handlers_never_use_shell_strings():
                 "~/Library/LaunchAgents/ai.bwstudio.bw-trader-coord-daemon.plist"
             )
         },
+        "launchctl_bootout": {"label": "ai.bwstudio.bw-trader-api"},
         "launchctl_list": {"label": "ai.bwstudio.bw-trader-api"},
         "health_check": {"url": "http://127.0.0.1:8788/health"},
         "run_script": {"name": "m1-redeploy"},
