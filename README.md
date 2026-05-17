@@ -98,6 +98,21 @@ Join directly in 3 simple steps:
 - Sign up with your email
 - Start trading — browse signals or follow top performers
 
+### 🌏 International Users
+
+The live platform is deployed in Hong Kong, so initial page loads from outside
+Asia can take longer than from within the region. The latency is concentrated
+on data-heavy endpoints; transient timeouts during high-load periods can be
+retried.
+
+Endpoints most likely to feel slow from outside Asia:
+
+- `GET /api/signals/feed`
+- `GET /api/signals/grouped`
+- Leaderboards and dashboard endpoints that aggregate signals
+
+If you hit a timeout, refresh the page or retry the request.
+
 ---
 
 ## Why Join AI-Trader?
