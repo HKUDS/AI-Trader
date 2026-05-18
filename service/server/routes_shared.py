@@ -43,16 +43,68 @@ LEADERBOARD_CACHE_KEY_PREFIX = 'leaderboard:profit_history'
 GROUPED_SIGNALS_CACHE_KEY_PREFIX = 'signals:grouped'
 AGENT_SIGNALS_CACHE_KEY_PREFIX = 'signals:agent'
 PRICE_CACHE_KEY_PREFIX = 'price:quote'
+SIGNAL_FEED_CACHE_KEY_PREFIX = 'signals:feed'
+POSITIONS_CACHE_TTL_SECONDS = 10
+SIGNAL_FEED_CACHE_TTL_SECONDS = 10
+AGENT_MESSAGE_SUMMARY_CACHE_KEY_PREFIX = 'agent_messages:unread_summary'
+AGENT_MESSAGE_SUMMARY_CACHE_TTL_SECONDS = 5
+PUBLIC_COUNT_CACHE_KEY_PREFIX = 'public_counts'
+PUBLIC_COUNT_CACHE_TTL_SECONDS = 30
+MARKET_INTEL_CACHE_KEY_PREFIX = 'market_intel'
+MARKET_INTEL_CACHE_TTL_SECONDS = 30
 
 MENTION_PATTERN = re.compile(r'@([A-Za-z0-9_\-]{2,64})')
+SUPPORTED_MARKETS = {'us-stock', 'crypto', 'polymarket'}
+MARKET_ALIASES = {
+    'binance': 'crypto',
+    'binance-spot': 'crypto',
+    'binance_spot': 'crypto',
+    'coinbase': 'crypto',
+    'coinbase-spot': 'crypto',
+    'coinbase_spot': 'crypto',
+    'hyperliquid': 'crypto',
+    'hl': 'crypto',
+    'kraken': 'crypto',
+    'okx': 'crypto',
+    'stock': 'us-stock',
+    'stocks': 'us-stock',
+    'us': 'us-stock',
+    'us stock': 'us-stock',
+    'us stocks': 'us-stock',
+    'us_stock': 'us-stock',
+    'us_stocks': 'us-stock',
+    'usstock': 'us-stock',
+    'nasdaq': 'us-stock',
+    'sp500': 'us-stock',
+    'etf': 'us-stock',
+    'equity': 'us-stock',
+    'equities': 'us-stock',
+}
+
+
+def normalize_market(market: str | None) -> str:
+    normalized = (market or 'us-stock').strip().lower()
+    return MARKET_ALIASES.get(normalized, normalized)
+
+
+def validate_market(market: str | None) -> str:
+    normalized = normalize_market(market)
+    if normalized not in SUPPORTED_MARKETS:
+        allowed = ', '.join(sorted(SUPPORTED_MARKETS))
+        raise HTTPException(status_code=400, detail=f"Unsupported market '{market}'. Supported markets: {allowed}")
+    return normalized
 
 
 def allow_sync_price_fetch_in_api() -> bool:
     return os.getenv('ALLOW_SYNC_PRICE_FETCH_IN_API', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
 
 
+def api_access_log_enabled() -> bool:
+    return os.getenv('API_ACCESS_LOG', 'false').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+
 def should_fetch_server_trade_price(market: str) -> bool:
-    normalized_market = (market or '').strip().lower()
+    normalized_market = normalize_market(market)
     if normalized_market in {'crypto', 'polymarket'}:
         return True
     return allow_sync_price_fetch_in_api()
@@ -61,10 +113,15 @@ def should_fetch_server_trade_price(market: str) -> bool:
 @dataclass
 class RouteContext:
     grouped_signals_cache: dict[tuple[str, str, int, int], tuple[float, dict[str, Any]]] = field(default_factory=dict)
+    signal_feed_cache: dict[tuple[str, str, str, int, int, str, int], tuple[float, dict[str, Any]]] = field(default_factory=dict)
     agent_signals_cache: dict[tuple[int, str, int], tuple[float, dict[str, Any]]] = field(default_factory=dict)
+    positions_cache: dict[int, tuple[float, dict[str, Any]]] = field(default_factory=dict)
     price_api_last_request: dict[int, float] = field(default_factory=dict)
     price_quote_cache: dict[tuple[str, str, str, str], tuple[float, dict[str, Any]]] = field(default_factory=dict)
     leaderboard_cache: dict[tuple[int, int, int, bool], tuple[float, dict[str, Any]]] = field(default_factory=dict)
+    market_intel_cache: dict[str, tuple[float, dict[str, Any]]] = field(default_factory=dict)
+    public_count_cache: dict[str, tuple[float, dict[str, Any]]] = field(default_factory=dict)
+    agent_message_summary_cache: dict[str, tuple[float, dict[str, Any]]] = field(default_factory=dict)
     content_rate_limit_state: dict[tuple[int, str], dict[str, Any]] = field(default_factory=dict)
     ws_connections: dict[int, WebSocket] = field(default_factory=dict)
     verification_codes: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -135,6 +192,49 @@ def check_price_api_rate_limit(ctx: RouteContext, agent_id: int) -> bool:
 
 def utc_now_iso_z() -> str:
     return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def get_short_cached_payload(
+    ctx: RouteContext,
+    local_cache: dict[Any, tuple[float, Any]],
+    redis_key: str,
+    ttl_seconds: int,
+) -> Any:
+    from cache import get_json
+
+    now_ts = time.time()
+    cached = local_cache.get(redis_key)
+    if cached and now_ts - cached[0] < ttl_seconds:
+        return cached[1]
+
+    cached_payload = get_json(redis_key)
+    if cached_payload is not None:
+        local_cache[redis_key] = (now_ts, cached_payload)
+        return cached_payload
+
+    return None
+
+
+def set_short_cached_payload(
+    ctx: RouteContext,
+    local_cache: dict[Any, tuple[float, Any]],
+    redis_key: str,
+    payload: Any,
+    ttl_seconds: int,
+) -> Any:
+    from cache import set_json
+
+    local_cache[redis_key] = (time.time(), payload)
+    set_json(redis_key, payload, ttl_seconds=ttl_seconds)
+    return payload
+
+
+def invalidate_agent_message_caches(ctx: RouteContext, agent_id: int) -> None:
+    from cache import delete
+
+    key = f'{AGENT_MESSAGE_SUMMARY_CACHE_KEY_PREFIX}:agent_id={agent_id}'
+    ctx.agent_message_summary_cache.pop(key, None)
+    delete(key)
 
 
 def experiment_unread_notice(agent_id: int, *, limit: int = EXPERIMENT_UNREAD_PREVIEW_LIMIT) -> Optional[dict[str, Any]]:
@@ -374,7 +474,9 @@ def invalidate_signal_list_caches(ctx: RouteContext) -> None:
     from cache import delete_pattern
 
     ctx.grouped_signals_cache.clear()
+    ctx.signal_feed_cache.clear()
     delete_pattern(f'{GROUPED_SIGNALS_CACHE_KEY_PREFIX}:*')
+    delete_pattern(f'{SIGNAL_FEED_CACHE_KEY_PREFIX}:*')
     invalidate_agent_signal_caches(ctx)
 
 
@@ -398,6 +500,13 @@ def invalidate_signal_read_caches(ctx: RouteContext, refresh_trending: bool = Fa
     invalidate_leaderboard_caches(ctx)
     if refresh_trending:
         invalidate_trending_caches()
+
+
+def invalidate_position_cache(ctx: RouteContext, agent_id: int | None = None) -> None:
+    if agent_id is None:
+        ctx.positions_cache.clear()
+        return
+    ctx.positions_cache.pop(agent_id, None)
 
 
 def get_position_snapshot(cursor: Any, agent_id: int, market: str, symbol: str, token_id: Optional[str]):
@@ -440,6 +549,7 @@ async def push_agent_message(
     )
     conn.commit()
     conn.close()
+    invalidate_agent_message_caches(ctx, agent_id)
 
     if agent_id in ctx.ws_connections:
         try:

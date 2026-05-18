@@ -24,11 +24,14 @@ from routes_shared import (
     GROUPED_SIGNALS_CACHE_KEY_PREFIX,
     GROUPED_SIGNALS_CACHE_TTL_SECONDS,
     RouteContext,
+    SIGNAL_FEED_CACHE_KEY_PREFIX,
+    SIGNAL_FEED_CACHE_TTL_SECONDS,
     attach_experiment_unread_notice,
     decorate_polymarket_item,
     enforce_content_rate_limit,
     extract_mentions,
     get_position_snapshot,
+    invalidate_position_cache,
     invalidate_agent_signal_caches,
     invalidate_signal_read_caches,
     is_market_open,
@@ -37,6 +40,7 @@ from routes_shared import (
     should_fetch_server_trade_price,
     utc_now_iso_z,
     validate_executed_at,
+    validate_market,
 )
 from services import _add_agent_points, _get_agent_by_token, _reserve_signal_id, _update_position_from_signal
 from signal_quality import score_signal_quality
@@ -104,11 +108,13 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         now = utc_now_iso_z()
         side = data.action
         action_lower = side.lower()
-        fetch_price_in_request = should_fetch_server_trade_price(data.market)
+        market = validate_market(data.market)
+        symbol = data.symbol.strip() if market == 'polymarket' else data.symbol.strip().upper()
+        fetch_price_in_request = should_fetch_server_trade_price(market)
         polymarket_token_id = None
         polymarket_outcome = None
 
-        if data.market == 'polymarket' and action_lower in ('short', 'cover'):
+        if market == 'polymarket' and action_lower in ('short', 'cover'):
             raise HTTPException(
                 status_code=400,
                 detail='Polymarket paper trading does not support short/cover. Use buy/sell of outcome tokens instead.',
@@ -124,13 +130,13 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         if qty > 1_000_000:
             raise HTTPException(status_code=400, detail='Quantity too large')
 
-        if data.market == 'polymarket':
+        if market == 'polymarket':
             if data.executed_at.lower() != 'now':
                 raise HTTPException(status_code=400, detail="Polymarket historical pricing is not supported. Use executed_at='now'.")
             if fetch_price_in_request:
                 from price_fetcher import _polymarket_resolve_reference
 
-                contract = _polymarket_resolve_reference(data.symbol, token_id=data.token_id, outcome=data.outcome)
+                contract = _polymarket_resolve_reference(symbol, token_id=data.token_id, outcome=data.outcome)
                 if not contract:
                     raise HTTPException(
                         status_code=400,
@@ -158,8 +164,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             executed_at = now_utc.strftime('%Y-%m-%dT%H:%M:%SZ')
             now_et = now_utc.astimezone(ZoneInfo('America/New_York'))
 
-            if not is_market_open(data.market):
-                if data.market == 'us-stock':
+            if not is_market_open(market):
+                if market == 'us-stock':
                     raise HTTPException(
                         status_code=400,
                         detail=(
@@ -168,23 +174,23 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                             'Trading hours: Mon-Fri 9:30-16:00 ET'
                         ),
                     )
-                raise HTTPException(status_code=400, detail=f'{data.market} is currently closed')
+                raise HTTPException(status_code=400, detail=f'{market} is currently closed')
 
             if get_price_from_market is not None:
                 actual_price = get_price_from_market(
-                    data.symbol,
+                    symbol,
                     executed_at,
-                    data.market,
+                    market,
                     token_id=polymarket_token_id,
                     outcome=polymarket_outcome,
                 )
                 if not actual_price:
-                    raise HTTPException(status_code=400, detail=f'Unable to fetch current price for {data.symbol}')
+                    raise HTTPException(status_code=400, detail=f'Unable to fetch current price for {symbol}')
                 price = actual_price
             else:
                 price = data.price
         else:
-            is_valid, error_msg = validate_executed_at(data.executed_at, data.market)
+            is_valid, error_msg = validate_executed_at(data.executed_at, market)
             if not is_valid:
                 raise HTTPException(status_code=400, detail=error_msg)
 
@@ -194,16 +200,16 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
 
             if get_price_from_market is not None:
                 actual_price = get_price_from_market(
-                    data.symbol,
+                    symbol,
                     executed_at,
-                    data.market,
+                    market,
                     token_id=polymarket_token_id,
                     outcome=polymarket_outcome,
                 )
                 if not actual_price:
                     raise HTTPException(
                         status_code=400,
-                        detail=f'Unable to fetch historical price for {data.symbol} at {executed_at}',
+                        detail=f'Unable to fetch historical price for {symbol} at {executed_at}',
                     )
                 price = actual_price
             else:
@@ -242,7 +248,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             signal_id = _reserve_signal_id(cursor)
 
             if action_lower in ('sell', 'cover'):
-                pos = get_position_snapshot(cursor, agent_id, data.market, data.symbol, polymarket_token_id)
+                pos = get_position_snapshot(cursor, agent_id, market, symbol, polymarket_token_id)
                 current_qty = float(pos['quantity']) if pos else 0.0
                 position_entry_price = float(pos['entry_price']) if pos and pos['entry_price'] is not None else None
                 if action_lower == 'sell':
@@ -279,8 +285,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 (
                     signal_id,
                     agent_id,
-                    data.market,
-                    data.symbol,
+                    market,
+                    symbol,
                     polymarket_token_id,
                     polymarket_outcome,
                     side,
@@ -295,8 +301,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
 
             _update_position_from_signal(
                 agent_id,
-                data.symbol,
-                data.market,
+                symbol,
+                market,
                 side,
                 qty,
                 price,
@@ -320,8 +326,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 cursor,
                 agent_id=agent_id,
                 source_signal_id=signal_id,
-                market=data.market,
-                symbol=data.symbol,
+                market=market,
+                symbol=symbol,
                 side=side,
                 price=price,
                 quantity=qty,
@@ -332,8 +338,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                     'signal_id': signal_id,
                     'agent_id': agent_id,
                     'message_type': 'operation',
-                    'market': data.market,
-                    'symbol': data.symbol,
+                    'market': market,
+                    'symbol': symbol,
                     'side': side,
                     'content': data.content,
                     'created_at': now,
@@ -352,11 +358,11 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 agent_id=agent_id,
                 signal_id=signal_id,
                 message_type='operation',
-                market=data.market,
+                market=market,
                 experiment_key=event_experiment_key,
                 variant_key=event_variant_key,
                 metadata={
-                    'symbol': data.symbol,
+                    'symbol': symbol,
                     'side': side,
                     'quality_score': signal_quality.get('overall_score'),
                     **reward_metadata,
@@ -388,6 +394,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         )
 
         follower_count = 0
+        copied_follower_ids: set[int] = set()
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -420,8 +427,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                         follower_position = get_position_snapshot(
                             cursor,
                             follower_id,
-                            data.market,
-                            data.symbol,
+                            market,
+                            symbol,
                             polymarket_token_id,
                         )
                         if action_lower == 'cover' and (not follower_position or follower_position['entry_price'] is None):
@@ -430,8 +437,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
 
                     _update_position_from_signal(
                         follower_id,
-                        data.symbol,
-                        data.market,
+                        symbol,
+                        market,
                         side,
                         qty,
                         price,
@@ -454,8 +461,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                         (
                             follower_signal_id,
                             follower_id,
-                            data.market,
-                            data.symbol,
+                            market,
+                            symbol,
                             polymarket_token_id,
                             polymarket_outcome,
                             side,
@@ -486,8 +493,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                         cursor,
                         agent_id=follower_id,
                         source_signal_id=follower_signal_id,
-                        market=data.market,
-                        symbol=data.symbol,
+                        market=market,
+                        symbol=symbol,
                         side=side,
                         price=price,
                         quantity=qty,
@@ -498,8 +505,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                             'signal_id': follower_signal_id,
                             'agent_id': follower_id,
                             'message_type': 'operation',
-                            'market': data.market,
-                            'symbol': data.symbol,
+                            'market': market,
+                            'symbol': symbol,
                             'side': side,
                             'content': copy_content,
                             'created_at': now,
@@ -512,13 +519,14 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                         agent_id=follower_id,
                         signal_id=follower_signal_id,
                         message_type='operation',
-                        market=data.market,
-                        metadata={'symbol': data.symbol, 'side': side, 'copied_from_agent_id': agent_id},
+                        market=market,
+                        metadata={'symbol': symbol, 'side': side, 'copied_from_agent_id': agent_id},
                         cursor=cursor,
                     )
 
                     cursor.execute(f'RELEASE SAVEPOINT follower_{follower_id}')
                     follower_count += 1
+                    copied_follower_ids.add(follower_id)
                 except Exception:
                     try:
                         cursor.execute(f'ROLLBACK TO SAVEPOINT follower_{follower_id}')
@@ -535,13 +543,16 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 pass
 
         invalidate_signal_read_caches(ctx, refresh_trending=True)
+        invalidate_position_cache(ctx, agent_id)
+        for follower_id in copied_follower_ids:
+            invalidate_position_cache(ctx, follower_id)
 
         payload = {
             'success': True,
             'signal_id': signal_id,
             'message_type': 'operation',
-            'market': data.market,
-            'symbol': data.symbol,
+            'market': market,
+            'symbol': symbol,
             'price': price,
             'follower_count': follower_count,
             'points_earned': reward_points,
@@ -549,7 +560,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             'outcome': polymarket_outcome,
             'challenge_trade_count': challenge_trade_count,
         }
-        if data.market == 'polymarket':
+        if market == 'polymarket':
             decorate_polymarket_item(payload, fetch_remote=fetch_price_in_request)
         return attach_experiment_unread_notice(payload, agent_id)
 
@@ -999,6 +1010,32 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         if token:
             viewer = _get_agent_by_token(token)
 
+        feed_cache_key = (
+            (message_type or '').strip(),
+            (market or '').strip(),
+            (keyword or '').strip(),
+            limit,
+            offset,
+            (sort or 'new').strip(),
+            int(viewer['id']) if sort == 'following' and viewer else 0,
+        )
+        now_ts = time.time()
+        redis_cache_key = (
+            f'{SIGNAL_FEED_CACHE_KEY_PREFIX}:'
+            f"message_type={feed_cache_key[0] or 'all'}:"
+            f"market={feed_cache_key[1] or 'all'}:"
+            f"keyword={feed_cache_key[2] or 'none'}:"
+            f'limit={limit}:offset={offset}:sort={feed_cache_key[5]}:viewer={feed_cache_key[6]}'
+        )
+        cached_payload = get_json(redis_cache_key)
+        if isinstance(cached_payload, dict):
+            ctx.signal_feed_cache[feed_cache_key] = (now_ts, cached_payload)
+            return cached_payload
+
+        cached = ctx.signal_feed_cache.get(feed_cache_key)
+        if cached and now_ts - cached[0] < SIGNAL_FEED_CACHE_TTL_SECONDS:
+            return cached[1]
+
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -1173,13 +1210,16 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             signal_dict['is_following_author'] = signal_dict['agent_id'] in followed_author_ids
             signals.append(signal_dict)
 
-        return {
+        payload = {
             'signals': signals,
             'total': total,
             'limit': limit,
             'offset': offset,
             'has_more': offset + len(signals) < total,
         }
+        ctx.signal_feed_cache[feed_cache_key] = (now_ts, payload)
+        set_json(redis_cache_key, payload, ttl_seconds=SIGNAL_FEED_CACHE_TTL_SECONDS)
+        return payload
 
     @app.get('/api/signals/following')
     async def get_following(

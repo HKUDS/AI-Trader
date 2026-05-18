@@ -42,7 +42,7 @@ def create_app() -> FastAPI:
         return response
 
     ctx = RouteContext()
-    register_market_routes(app)
+    register_market_routes(app, ctx)
     register_agent_routes(app, ctx)
     register_signal_routes(app, ctx)
     register_trading_routes(app, ctx)

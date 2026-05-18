@@ -8,6 +8,8 @@ Crypto: 从 Hyperliquid 获取价格（停止使用 Alpha Vantage crypto 端点�
 import os
 import random
 import requests
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Tuple, Any
 import re
@@ -34,6 +36,8 @@ PRICE_FETCH_MAX_RETRIES = max(0, int(os.environ.get("PRICE_FETCH_MAX_RETRIES", "
 PRICE_FETCH_BACKOFF_BASE_SECONDS = max(0.0, float(os.environ.get("PRICE_FETCH_BACKOFF_BASE_SECONDS", "0.35")))
 PRICE_FETCH_ERROR_COOLDOWN_SECONDS = max(0.0, float(os.environ.get("PRICE_FETCH_ERROR_COOLDOWN_SECONDS", "20")))
 PRICE_FETCH_RATE_LIMIT_COOLDOWN_SECONDS = max(0.0, float(os.environ.get("PRICE_FETCH_RATE_LIMIT_COOLDOWN_SECONDS", "60")))
+PRICE_FETCH_VERBOSE = os.environ.get("PRICE_FETCH_VERBOSE", "true").strip().lower() not in {"0", "false", "no", "off"}
+HYPERLIQUID_SYMBOL_CACHE_TTL_SECONDS = max(60.0, float(os.environ.get("HYPERLIQUID_SYMBOL_CACHE_TTL_SECONDS", "300")))
 
 # 时区常量
 UTC = timezone.utc
@@ -47,6 +51,22 @@ _POLYMARKET_CONDITION_ID_RE = re.compile(r"^0x[a-fA-F0-9]{64}$")
 _POLYMARKET_TOKEN_ID_RE = re.compile(r"^\d+$")
 _RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 _provider_cooldowns: Dict[str, float] = {}
+_price_fetch_logging_enabled: ContextVar[bool] = ContextVar("price_fetch_logging_enabled", default=True)
+_hyperliquid_symbol_cache: Tuple[Optional[set[str]], float] = (None, 0.0)
+
+
+def _price_log(message: str) -> None:
+    if PRICE_FETCH_VERBOSE and _price_fetch_logging_enabled.get():
+        print(message)
+
+
+@contextmanager
+def price_fetch_logging(enabled: bool):
+    token = _price_fetch_logging_enabled.set(enabled)
+    try:
+        yield
+    finally:
+        _price_fetch_logging_enabled.reset(token)
 
 # Polymarket outcome prices are probabilities in [0, 1]. Reject values outside to avoid
 # token_id/condition_id or other API noise being interpreted as price (e.g. 1.5e+73).
@@ -61,7 +81,9 @@ def _polymarket_price_valid(price: float) -> bool:
 
 # In-memory cache for Polymarket reference+outcome -> (token_id, expiry_epoch_s)
 _polymarket_token_cache: Dict[str, Tuple[str, float]] = {}
+_polymarket_market_cache: Dict[str, Tuple[Optional[dict], float]] = {}
 _POLYMARKET_TOKEN_CACHE_TTL_S = 300.0
+_POLYMARKET_MARKET_CACHE_TTL_S = 300.0
 
 
 def _provider_cooldown_remaining(provider: str) -> float:
@@ -75,7 +97,7 @@ def _activate_provider_cooldown(provider: str, duration_s: float, reason: str) -
     previous_until = _provider_cooldowns.get(provider, 0.0)
     _provider_cooldowns[provider] = max(previous_until, until)
     remaining = _provider_cooldown_remaining(provider)
-    print(f"[Price API] {provider} cooldown {remaining:.1f}s ({reason})")
+    _price_log(f"[Price API] {provider} cooldown {remaining:.1f}s ({reason})")
 
 
 def _retry_delay(attempt: int) -> float:
@@ -119,7 +141,7 @@ def _request_json_with_retry(
 
             if retryable and attempt < attempts - 1:
                 delay = _retry_delay(attempt)
-                print(
+                _price_log(
                     f"[Price API] {provider} retry {attempt + 1}/{attempts - 1} "
                     f"after HTTP {status_code}; sleeping {delay:.2f}s"
                 )
@@ -144,7 +166,7 @@ def _request_json_with_retry(
             last_exc = exc
             if attempt < attempts - 1:
                 delay = _retry_delay(attempt)
-                print(
+                _price_log(
                     f"[Price API] {provider} retry {attempt + 1}/{attempts - 1} "
                     f"after {exc.__class__.__name__}; sleeping {delay:.2f}s"
                 )
@@ -245,6 +267,14 @@ def _normalize_hyperliquid_symbol(symbol: str) -> str:
             s = s[: -len(sep)]
             break
 
+    for sep in ("-USDT", "/USDT"):
+        if s.endswith(sep):
+            s = s[: -len(sep)]
+            break
+
+    if s.endswith("USDT") and len(s) > len("USDT"):
+        s = s[: -len("USDT")]
+
     return s.strip()
 
 
@@ -257,6 +287,42 @@ def _hyperliquid_post(payload: dict) -> object:
         HYPERLIQUID_API_URL,
         json_payload=payload,
     )
+
+
+def _get_hyperliquid_available_symbols() -> Optional[set[str]]:
+    global _hyperliquid_symbol_cache
+
+    cached_symbols, expires_at = _hyperliquid_symbol_cache
+    now = time.time()
+    if expires_at > now:
+        return cached_symbols
+
+    try:
+        data = _hyperliquid_post({"type": "meta"})
+    except Exception:
+        _hyperliquid_symbol_cache = (None, now + 30.0)
+        return None
+
+    symbols: set[str] = set()
+    if isinstance(data, dict):
+        universe = data.get("universe")
+        if isinstance(universe, list):
+            for asset in universe:
+                if isinstance(asset, dict):
+                    name = str(asset.get("name") or "").strip()
+                    if name:
+                        symbols.add(name)
+
+    _hyperliquid_symbol_cache = (symbols or None, now + HYPERLIQUID_SYMBOL_CACHE_TTL_SECONDS)
+    return symbols or None
+
+
+def _hyperliquid_symbol_available(coin: str) -> bool:
+    symbols = _get_hyperliquid_available_symbols()
+    if symbols is None:
+        return True
+    return coin in symbols
+
 
 def _polymarket_get_json(url: str, params: Optional[dict] = None) -> object:
     return _request_json_with_retry(
@@ -280,17 +346,26 @@ def _parse_string_array(value: Any) -> list[str]:
     return []
 
 
-def _polymarket_fetch_market(reference: str) -> Optional[dict]:
+def _polymarket_fetch_market(reference: str, token_id: Optional[str] = None) -> Optional[dict]:
     if not POLYMARKET_GAMMA_BASE_URL:
         return None
 
     ref = (reference or "").strip()
-    if not ref:
+    requested_token_id = (token_id or "").strip()
+    if not ref and not requested_token_id:
         return None
+
+    cache_key = f"{ref}::{requested_token_id}"
+    now = time.time()
+    cached = _polymarket_market_cache.get(cache_key)
+    if cached and cached[1] > now:
+        return cached[0]
 
     url = f"{POLYMARKET_GAMMA_BASE_URL.rstrip('/')}/markets"
     params = {"limit": "1"}
-    if _POLYMARKET_CONDITION_ID_RE.match(ref):
+    if requested_token_id and _POLYMARKET_TOKEN_ID_RE.match(requested_token_id):
+        params["clob_token_ids"] = requested_token_id
+    elif _POLYMARKET_CONDITION_ID_RE.match(ref):
         params["conditionId"] = ref
     elif _POLYMARKET_TOKEN_ID_RE.match(ref):
         params["clob_token_ids"] = ref
@@ -300,11 +375,15 @@ def _polymarket_fetch_market(reference: str) -> Optional[dict]:
     try:
         raw = _polymarket_get_json(url, params=params)
     except Exception:
+        _polymarket_market_cache[cache_key] = (None, now + 60.0)
         return None
 
     if not isinstance(raw, list) or not raw or not isinstance(raw[0], dict):
+        _polymarket_market_cache[cache_key] = (None, now + _POLYMARKET_MARKET_CACHE_TTL_S)
         return None
-    return raw[0]
+    market = raw[0]
+    _polymarket_market_cache[cache_key] = (market, now + _POLYMARKET_MARKET_CACHE_TTL_S)
+    return market
 
 
 def _polymarket_extract_tokens(market: dict) -> list[dict[str, Optional[str]]]:
@@ -331,6 +410,8 @@ def _polymarket_resolve_reference(reference: str, token_id: Optional[str] = None
     if not ref:
         return None
 
+    requested_token_id = (token_id or "").strip()
+    requested_outcome = (outcome or "").strip().lower()
     cache_key = f"{ref}::{(token_id or '').strip().lower()}::{(outcome or '').strip().lower()}"
     cached = _polymarket_token_cache.get(cache_key)
     now = time.time()
@@ -338,31 +419,31 @@ def _polymarket_resolve_reference(reference: str, token_id: Optional[str] = None
         return {
             "token_id": cached[0],
             "outcome": outcome,
-            "market": _polymarket_fetch_market(ref),
+            "market": _polymarket_fetch_market(ref, token_id=requested_token_id),
         }
 
-    market = _polymarket_fetch_market(ref)
+    market = _polymarket_fetch_market(ref, token_id=requested_token_id)
     if not market:
         return None
 
     tokens = _polymarket_extract_tokens(market)
-    requested_token_id = (token_id or "").strip()
-    requested_outcome = (outcome or "").strip().lower()
 
     selected = None
-    if requested_token_id:
+    if requested_token_id and _POLYMARKET_TOKEN_ID_RE.match(requested_token_id):
         for candidate in tokens:
             if candidate["token_id"] == requested_token_id:
                 selected = candidate
                 break
-    elif _POLYMARKET_TOKEN_ID_RE.match(ref):
+        if selected is None and not tokens:
+            selected = {"token_id": requested_token_id, "outcome": outcome}
+    if selected is None and _POLYMARKET_TOKEN_ID_RE.match(ref):
         selected = {"token_id": ref, "outcome": outcome}
-    elif requested_outcome:
+    if selected is None and requested_outcome:
         for candidate in tokens:
             if (candidate.get("outcome") or "").strip().lower() == requested_outcome:
                 selected = candidate
                 break
-    elif len(tokens) == 1:
+    if selected is None and len(tokens) == 1:
         selected = tokens[0]
 
     if not selected or not selected.get("token_id"):
@@ -496,6 +577,10 @@ def _get_hyperliquid_mid_price(symbol: str) -> Optional[float]:
     This is used for 'now' style queries.
     """
     coin = _normalize_hyperliquid_symbol(symbol)
+    if not _hyperliquid_symbol_available(coin):
+        _price_log(f"[Price API] Hyperliquid symbol not listed: {symbol} -> {coin}")
+        return None
+
     data = _hyperliquid_post({"type": "l2Book", "coin": coin})
     if not isinstance(data, dict) or "levels" not in data:
         return None
@@ -538,6 +623,10 @@ def _get_hyperliquid_candle_close(symbol: str, executed_at: str) -> Optional[flo
     end_ms = target_ms + 10 * 60 * 1000
 
     coin = _normalize_hyperliquid_symbol(symbol)
+    if not _hyperliquid_symbol_available(coin):
+        _price_log(f"[Price API] Hyperliquid symbol not listed: {symbol} -> {coin}")
+        return None
+
     payload = {
         "type": "candleSnapshot",
         "req": {
@@ -595,6 +684,13 @@ def get_price_from_market(
         查询到的价格，如果失败返回 None
     """
     try:
+        try:
+            from routes_shared import normalize_market
+
+            market = normalize_market(market)
+        except Exception:
+            market = (market or "").strip().lower()
+
         if market == "crypto":
             # Crypto pricing now uses Hyperliquid public endpoints.
             # Try historical candle (when executed_at is provided), then fall back to mid price.
@@ -603,20 +699,23 @@ def get_price_from_market(
             # Polymarket pricing uses public Gamma + CLOB endpoints.
             # We use the current orderbook mid price (paper trading).
             price = _get_polymarket_mid_price(symbol, token_id=token_id, outcome=outcome)
-        else:
+        elif market == "us-stock":
             if not ALPHA_VANTAGE_API_KEY or ALPHA_VANTAGE_API_KEY == "demo":
-                print("Warning: ALPHA_VANTAGE_API_KEY not set, using agent-provided price")
+                _price_log("Warning: ALPHA_VANTAGE_API_KEY not set, using agent-provided price")
                 return None
             price = _get_us_stock_price(symbol, executed_at)
+        else:
+            _price_log(f"[Price API] Unsupported market for server price fetch: {market}")
+            return None
 
         if price is None:
-            print(f"[Price API] Failed to fetch {symbol} ({market}) price for time {executed_at}")
+            _price_log(f"[Price API] Failed to fetch {symbol} ({market}) price for time {executed_at}")
         else:
-            print(f"[Price API] Successfully fetched {symbol} ({market}): ${price}")
+            _price_log(f"[Price API] Successfully fetched {symbol} ({market}): ${price}")
 
         return price
     except Exception as e:
-        print(f"[Price API] Error fetching {symbol} ({market}): {e}")
+        _price_log(f"[Price API] Error fetching {symbol} ({market}): {e}")
         return None
 
 
@@ -652,7 +751,7 @@ def _get_us_stock_price(symbol: str, executed_at: str) -> Optional[float]:
         )
 
         if "Error Message" in data:
-            print(f"[Price API] Error: {data.get('Error Message')}")
+            _price_log(f"[Price API] Error: {data.get('Error Message')}")
             return None
         if "Note" in data:
             _activate_provider_cooldown(
@@ -660,12 +759,12 @@ def _get_us_stock_price(symbol: str, executed_at: str) -> Optional[float]:
                 PRICE_FETCH_RATE_LIMIT_COOLDOWN_SECONDS,
                 "body rate limit note"
             )
-            print(f"[Price API] Rate limit: {data.get('Note')}")
+            _price_log(f"[Price API] Rate limit: {data.get('Note')}")
             return None
 
         time_series_key = "Time Series (1min)"
         if time_series_key not in data:
-            print(f"[Price API] No time series data for {symbol}")
+            _price_log(f"[Price API] No time series data for {symbol}")
             return None
 
         time_series = data[time_series_key]
@@ -689,11 +788,11 @@ def _get_us_stock_price(symbol: str, executed_at: str) -> Optional[float]:
                     closest_price = float(values.get("4. close", 0))
 
         if closest_price:
-            print(f"[Price API] Found closest price for {symbol}: ${closest_price} ({int(min_diff)}s earlier)")
+            _price_log(f"[Price API] Found closest price for {symbol}: ${closest_price} ({int(min_diff)}s earlier)")
         return closest_price
 
     except Exception as e:
-        print(f"[Price API] Exception while fetching {symbol}: {e}")
+        _price_log(f"[Price API] Exception while fetching {symbol}: {e}")
         return None
 
 

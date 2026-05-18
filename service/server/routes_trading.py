@@ -12,6 +12,7 @@ from routes_models import FollowRequest
 from routes_shared import (
     LEADERBOARD_CACHE_KEY_PREFIX,
     LEADERBOARD_CACHE_TTL_SECONDS,
+    POSITIONS_CACHE_TTL_SECONDS,
     PRICE_CACHE_KEY_PREFIX,
     PRICE_QUOTE_CACHE_TTL_SECONDS,
     RouteContext,
@@ -24,6 +25,7 @@ from routes_shared import (
     push_agent_message,
     resolve_position_prices,
     utc_now_iso_z,
+    validate_market,
 )
 from services import _get_agent_by_token
 from utils import _extract_token
@@ -464,6 +466,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         if not check_price_api_rate_limit(ctx, agent['id']):
             raise HTTPException(status_code=429, detail='Rate limit exceeded. Please wait 1 second between requests.')
 
+        market = validate_market(market)
         now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
         normalized_symbol = symbol.upper() if market == 'us-stock' else symbol
         cache_key = (
@@ -532,6 +535,11 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         if not agent:
             raise HTTPException(status_code=401, detail='Invalid token')
 
+        now_ts = time.time()
+        cached = ctx.positions_cache.get(agent['id'])
+        if cached and now_ts - cached[0] < POSITIONS_CACHE_TTL_SECONDS:
+            return cached[1]
+
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
@@ -578,7 +586,9 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             if positions[-1]['market'] == 'polymarket':
                 decorate_polymarket_item(positions[-1], fetch_remote=False)
 
-        return {'positions': positions, 'cash': agent.get('cash', 100000.0)}
+        payload = {'positions': positions, 'cash': agent.get('cash', 100000.0)}
+        ctx.positions_cache[agent['id']] = (now_ts, payload)
+        return payload
 
     @app.get('/api/agents/{agent_id}/positions')
     async def get_agent_positions(agent_id: int):

@@ -5,16 +5,28 @@ Tasks Module
 """
 
 import asyncio
+import hashlib
 import json
 import os
+import re
+import threading
 import time
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict, Any
 
 # Global trending cache (shared with routes)
 trending_cache: list = []
-_last_profit_history_prune_at: float = 0.0
+_last_profit_history_prune_at: float = time.time()
+_profit_history_prune_task: Optional[asyncio.Task] = None
 _TRENDING_CACHE_KEY = "trending:top20"
+_SUPPORTED_PRICE_MARKETS = {"crypto", "polymarket", "us-stock"}
+_PRICE_FAILURES: Dict[tuple[str, str, str, str], dict[str, float]] = {}
+_PRICE_FAILURE_CACHE_KEY_PREFIX = "position_price_failures"
+_POLYMARKET_SETTLEMENT_RECHECK_AFTER: Dict[tuple[str, str, str], float] = {}
+_POLYMARKET_UPDOWN_RE = re.compile(r"^(btc|eth|sol|xrp)-updown-(5m|15m|1h|4h)-(\d+)$", re.IGNORECASE)
+_profit_history_prune_lock = threading.Lock()
+_POLYMARKET_SETTLEMENT_CURSOR = 0
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -32,6 +44,98 @@ def _env_int(name: str, default: int, minimum: Optional[int] = None) -> int:
     if minimum is not None:
         value = max(minimum, value)
     return value
+
+
+def _env_csv_set(name: str, default: str = "") -> set[str]:
+    raw = os.getenv(name, default)
+    return {item.strip().lower() for item in raw.split(",") if item.strip()}
+
+
+def _normalize_task_market(market: str | None) -> str:
+    try:
+        from routes_shared import normalize_market
+
+        return normalize_market(market)
+    except Exception:
+        return (market or "").strip().lower()
+
+
+def _price_failure_retry_after(key: tuple[str, str, str, str], now_ts: float) -> float:
+    state = _PRICE_FAILURES.get(key)
+    if not state:
+        try:
+            from cache import get_json
+
+            cached = get_json(_price_failure_cache_key(key))
+            if isinstance(cached, dict):
+                state = {
+                    "count": float(cached.get("count") or 0),
+                    "retry_after": float(cached.get("retry_after") or 0),
+                    "last_failed_at": float(cached.get("last_failed_at") or 0),
+                }
+                if state["retry_after"] > now_ts:
+                    _PRICE_FAILURES[key] = state
+        except Exception:
+            state = None
+    if not state:
+        return 0.0
+    return max(0.0, float(state.get("retry_after", 0.0)) - now_ts)
+
+
+def _price_failure_cache_key(key: tuple[str, str, str, str]) -> str:
+    payload = json.dumps(list(key), separators=(",", ":"), sort_keys=False)
+    digest = hashlib.sha1(payload.encode("utf-8")).hexdigest()
+    return f"{_PRICE_FAILURE_CACHE_KEY_PREFIX}:{digest}"
+
+
+def _record_price_failure(key: tuple[str, str, str, str], now_ts: float) -> int:
+    base_s = _env_int("POSITION_PRICE_FAILURE_COOLDOWN_SECONDS", 3600, minimum=60)
+    max_s = _env_int("POSITION_PRICE_FAILURE_MAX_COOLDOWN_SECONDS", 21600, minimum=base_s)
+    previous = _PRICE_FAILURES.get(key, {})
+    count = int(previous.get("count", 0)) + 1
+    cooldown_s = min(max_s, base_s * (2 ** min(count - 1, 6)))
+    state = {
+        "count": float(count),
+        "retry_after": now_ts + cooldown_s,
+        "last_failed_at": now_ts,
+    }
+    _PRICE_FAILURES[key] = state
+    try:
+        from cache import set_json
+
+        set_json(_price_failure_cache_key(key), state, ttl_seconds=cooldown_s + 300)
+    except Exception:
+        pass
+    return cooldown_s
+
+
+def _clear_price_failure(key: tuple[str, str, str, str]) -> None:
+    _PRICE_FAILURES.pop(key, None)
+    try:
+        from cache import delete
+
+        delete(_price_failure_cache_key(key))
+    except Exception:
+        pass
+
+
+def _format_price_key(key: tuple[str, str, str, str]) -> str:
+    symbol, market, token_id, outcome = key
+    suffix = f", token={token_id}" if token_id else ""
+    if outcome:
+        suffix = f"{suffix}, outcome={outcome}" if suffix else f", outcome={outcome}"
+    return f"{symbol} ({market}{suffix})"
+
+
+def _polymarket_updown_expired_seconds(symbol: str | None, now_ts: float) -> Optional[float]:
+    match = _POLYMARKET_UPDOWN_RE.match((symbol or "").strip())
+    if not match:
+        return None
+    try:
+        end_ts = int(match.group(3))
+    except Exception:
+        return None
+    return now_ts - float(end_ts)
 
 
 def _backfill_polymarket_position_metadata() -> None:
@@ -123,6 +227,16 @@ def _update_trending_cache():
 
 
 def _prune_profit_history() -> None:
+    if not _profit_history_prune_lock.acquire(blocking=False):
+        print("[Profit History] Prune already running; skipped")
+        return
+    try:
+        _prune_profit_history_unlocked()
+    finally:
+        _profit_history_prune_lock.release()
+
+
+def _prune_profit_history_unlocked() -> None:
     """Tier profit history into high-resolution, 15m, hourly, and daily retention."""
     from database import get_db_connection, using_postgres
 
@@ -315,20 +429,54 @@ def _maybe_prune_profit_history() -> None:
     if now - _last_profit_history_prune_at < prune_interval:
         return
 
-    _prune_profit_history()
     _last_profit_history_prune_at = now
+    _prune_profit_history()
+
+
+def _profit_history_prune_done(task: asyncio.Task) -> None:
+    try:
+        task.result()
+    except asyncio.CancelledError:
+        pass
+    except Exception as exc:
+        print(f"[Profit History] Async prune failed: {exc}")
+
+
+def _maybe_schedule_profit_history_prune() -> None:
+    global _last_profit_history_prune_at, _profit_history_prune_task
+
+    prune_interval = _env_int("PROFIT_HISTORY_PRUNE_INTERVAL_SECONDS", 3600)
+    if prune_interval <= 0:
+        return
+
+    if _profit_history_prune_task is not None and not _profit_history_prune_task.done():
+        return
+
+    now = time.time()
+    if now - _last_profit_history_prune_at < prune_interval:
+        return
+
+    _last_profit_history_prune_at = now
+    _profit_history_prune_task = asyncio.create_task(
+        asyncio.to_thread(_prune_profit_history),
+        name="ai-trader:profit_history_prune",
+    )
+    _profit_history_prune_task.add_done_callback(_profit_history_prune_done)
+    print("[Profit History] Scheduled async prune")
 
 
 async def update_position_prices():
     """Background task to update position prices every 5 minutes."""
     from database import get_db_connection
-    from price_fetcher import get_price_from_market
+    from price_fetcher import get_price_from_market, price_fetch_logging
 
     # Get max parallel requests from environment variable
     max_parallel = _env_int("MAX_PARALLEL_PRICE_FETCH", 2, minimum=1)
+    verbose_fetch = _env_bool("POSITION_PRICE_VERBOSE_FETCH_LOGS", False)
+    refresh_priced_markets = _env_csv_set("POSITION_PRICE_REFRESH_PRICED_MARKETS", "crypto")
 
     # Wait a bit on startup before first update
-    await asyncio.sleep(5)
+    await asyncio.sleep(_env_int("POSITION_PRICE_STARTUP_DELAY_SECONDS", 15, minimum=0))
 
     while True:
         try:
@@ -337,54 +485,136 @@ async def update_position_prices():
             try:
                 cursor = conn.cursor()
 
-                # Get all unique positions with symbol and market
                 cursor.execute("""
-                    SELECT DISTINCT symbol, market, token_id, outcome
+                    SELECT
+                        symbol,
+                        market,
+                        token_id,
+                        outcome,
+                        COUNT(*) AS position_count,
+                        SUM(CASE WHEN current_price IS NULL THEN 1 ELSE 0 END) AS null_price_count
                     FROM positions
+                    GROUP BY symbol, market, token_id, outcome
                 """)
                 unique_positions = cursor.fetchall()
             finally:
                 conn.close()
 
-            print(f"[Price Update] Found {len(unique_positions)} positions to update")
+            now_ts = time.time()
+            candidates = []
+            skipped_unsupported = 0
+            skipped_cooldown = 0
+            skipped_expired_polymarket = 0
+            skipped_priced = 0
+            skipped_cooldown_by_market: Counter[str] = Counter()
+            skipped_priced_by_market: Counter[str] = Counter()
+            skipped_unsupported_by_market: Counter[str] = Counter()
+
+            for row in unique_positions:
+                symbol = row["symbol"]
+                original_market = row["market"]
+                market = _normalize_task_market(original_market)
+                token_id = row["token_id"] or ""
+                outcome = row["outcome"] or ""
+                null_price_count = int(row["null_price_count"] or 0)
+
+                if market not in _SUPPORTED_PRICE_MARKETS:
+                    skipped_unsupported += 1
+                    skipped_unsupported_by_market[str(original_market or "-")] += 1
+                    continue
+
+                if null_price_count <= 0 and market not in refresh_priced_markets:
+                    skipped_priced += 1
+                    skipped_priced_by_market[market] += 1
+                    continue
+
+                if market == "polymarket":
+                    expired_s = _polymarket_updown_expired_seconds(symbol, now_ts)
+                    if expired_s is not None and expired_s > _env_int("POLYMARKET_UPDOWN_PRICE_GRACE_SECONDS", 900, minimum=60):
+                        skipped_expired_polymarket += 1
+                        continue
+
+                key = (str(symbol or ""), market, str(token_id), str(outcome))
+                remaining = _price_failure_retry_after(key, now_ts)
+                if remaining > 0:
+                    skipped_cooldown += 1
+                    skipped_cooldown_by_market[market] += 1
+                    continue
+
+                candidates.append({
+                    "symbol": symbol,
+                    "db_market": original_market,
+                    "market": market,
+                    "token_id": token_id,
+                    "outcome": outcome,
+                    "key": key,
+                })
+
+            print(
+                "[Price Update] candidates="
+                f"{len(candidates)}/{len(unique_positions)} "
+                f"skipped_unsupported={skipped_unsupported} "
+                f"skipped_priced={skipped_priced} "
+                f"skipped_expired_polymarket={skipped_expired_polymarket} "
+                f"skipped_cooldown={skipped_cooldown}"
+            )
+            if skipped_unsupported_by_market:
+                print(f"[Price Update] Unsupported markets skipped: {dict(skipped_unsupported_by_market.most_common())}")
+            if skipped_priced_by_market:
+                print(f"[Price Update] Already-priced markets skipped: {dict(skipped_priced_by_market.most_common())}")
+            if skipped_cooldown_by_market:
+                print(f"[Price Update] Failure cooldown skips by market: {dict(skipped_cooldown_by_market.most_common())}")
 
             # Semaphore to control concurrency
             semaphore = asyncio.Semaphore(max_parallel)
 
-            async def fetch_price(row):
+            async def fetch_price(row: dict[str, Any]):
                 symbol = row["symbol"]
                 market = row["market"]
+                db_market = row["db_market"]
                 token_id = row["token_id"]
                 outcome = row["outcome"]
+                key = row["key"]
 
                 async with semaphore:
                     # Run synchronous function in thread pool
                     # Use UTC time for consistent pricing timestamps
                     now = datetime.now(timezone.utc)
                     executed_at = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-                    price = await asyncio.to_thread(
-                        get_price_from_market, symbol, executed_at, market, token_id, outcome
-                    )
-
-                    if price is not None:
-                        print(f"[Price Update] {symbol} ({market}, token={token_id or '-'}): ${price}")
-                    else:
-                        print(f"[Price Update] Failed to get price for {symbol} ({market}, token={token_id or '-'})")
+                    with price_fetch_logging(verbose_fetch):
+                        price = await asyncio.to_thread(
+                            get_price_from_market, symbol, executed_at, market, token_id, outcome
+                        )
 
                 return {
                     "symbol": symbol,
+                    "db_market": db_market,
                     "market": market,
                     "token_id": token_id,
+                    "outcome": outcome,
+                    "key": key,
                     "price": price,
                 }
 
             # Fetch prices in parallel, then write them back in one short transaction.
-            results = await asyncio.gather(*[fetch_price(row) for row in unique_positions])
+            results = await asyncio.gather(*[fetch_price(row) for row in candidates])
             updates = [
-                (item["price"], item["symbol"], item["market"], item["token_id"])
+                (item["price"], item["symbol"], item["db_market"], item["token_id"])
                 for item in results
                 if item["price"] is not None
             ]
+            failed = [item for item in results if item["price"] is None]
+            failures_by_market: Counter[str] = Counter(item["market"] for item in failed)
+            success_by_market: Counter[str] = Counter(item["market"] for item in results if item["price"] is not None)
+
+            cooldown_samples: list[str] = []
+            for item in results:
+                if item["price"] is not None:
+                    _clear_price_failure(item["key"])
+                    continue
+                cooldown_s = _record_price_failure(item["key"], now_ts)
+                if len(cooldown_samples) < 8:
+                    cooldown_samples.append(f"{_format_price_key(item['key'])} retry_in={cooldown_s}s")
 
             if updates:
                 conn = get_db_connection()
@@ -398,6 +628,15 @@ async def update_position_prices():
                     conn.commit()
                 finally:
                     conn.close()
+
+            print(
+                "[Price Update] summary "
+                f"requested={len(results)} updated={len(updates)} failed={len(failed)} "
+                f"success_by_market={dict(success_by_market.most_common())} "
+                f"failed_by_market={dict(failures_by_market.most_common())}"
+            )
+            if cooldown_samples:
+                print(f"[Price Update] Failure cooldown samples: {cooldown_samples}")
 
             # Update trending cache (no additional API call, uses same data)
             _update_trending_cache()
@@ -520,21 +759,21 @@ async def periodic_token_cleanup():
             print(f"[Token Cleanup Error] {e}")
 
 
-async def record_profit_history():
-    """Record profit history for all agents."""
-    from database import get_db_connection
+def _record_profit_history_once() -> int:
+    from database import get_db_connection, using_postgres
 
-    print("[Profit History] Task starting...")
-
-    while True:
-        try:
-            conn = get_db_connection()
-            try:
-                cursor = conn.cursor()
-
-                cursor.execute("""
+    started_at = time.monotonic()
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    initial_capital = 100000.0
+    max_abs_profit = 1e12
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        if using_postgres():
+            cursor.execute("""
+                WITH agent_values AS (
                     SELECT
-                        a.id,
+                        a.id AS agent_id,
                         COALESCE(a.cash, 0) AS cash,
                         COALESCE(a.deposited, 0) AS deposited,
                         COALESCE(
@@ -549,50 +788,135 @@ async def record_profit_history():
                         ) AS position_value
                     FROM agents a
                     LEFT JOIN positions p ON p.agent_id = a.id
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM agent_leaderboard_exclusions ale
+                        WHERE ale.agent_id = a.id
+                          AND COALESCE(ale.active, 1) = 1
+                    )
                     GROUP BY a.id, a.cash, a.deposited
+                ),
+                calculated AS (
+                    SELECT
+                        agent_id,
+                        cash,
+                        position_value,
+                        cash + position_value AS total_value,
+                        cash + position_value - (? + deposited) AS raw_profit
+                    FROM agent_values
+                ),
+                inserted AS (
+                    INSERT INTO profit_history (agent_id, total_value, cash, position_value, profit, recorded_at)
+                    SELECT
+                        agent_id,
+                        total_value,
+                        cash,
+                        position_value,
+                        CASE
+                            WHEN ABS(raw_profit) > ? THEN
+                                CASE WHEN raw_profit > 0 THEN ? ELSE -? END
+                            ELSE raw_profit
+                        END AS profit,
+                        ?
+                    FROM calculated
+                    RETURNING 1
+                )
+                SELECT
+                    (SELECT COUNT(*) FROM inserted) AS inserted_count,
+                    (SELECT COUNT(*) FROM calculated WHERE ABS(raw_profit) > ?) AS clamped_count
+            """, (initial_capital, max_abs_profit, max_abs_profit, max_abs_profit, now, max_abs_profit))
+            row = cursor.fetchone()
+            inserted_count = int(row["inserted_count"] or 0) if row else 0
+            clamped_count = int(row["clamped_count"] or 0) if row else 0
+        else:
+            cursor.execute("""
+                WITH agent_values AS (
+                    SELECT
+                        a.id AS agent_id,
+                        COALESCE(a.cash, 0) AS cash,
+                        COALESCE(a.deposited, 0) AS deposited,
+                        COALESCE(
+                            SUM(
+                                CASE
+                                    WHEN p.current_price IS NULL THEN p.entry_price * ABS(p.quantity)
+                                    WHEN p.side = 'long' THEN p.current_price * ABS(p.quantity)
+                                    ELSE (2 * p.entry_price - p.current_price) * ABS(p.quantity)
+                                END
+                            ),
+                            0
+                        ) AS position_value
+                    FROM agents a
+                    LEFT JOIN positions p ON p.agent_id = a.id
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM agent_leaderboard_exclusions ale
+                        WHERE ale.agent_id = a.id
+                          AND COALESCE(ale.active, 1) = 1
+                    )
+                    GROUP BY a.id, a.cash, a.deposited
+                ),
+                calculated AS (
+                    SELECT
+                        agent_id,
+                        cash,
+                        position_value,
+                        cash + position_value AS total_value,
+                        cash + position_value - (? + deposited) AS raw_profit
+                    FROM agent_values
+                )
+                INSERT INTO profit_history (agent_id, total_value, cash, position_value, profit, recorded_at)
+                SELECT
+                    agent_id,
+                    total_value,
+                    cash,
+                    position_value,
+                    CASE
+                        WHEN ABS(raw_profit) > ? THEN
+                            CASE WHEN raw_profit > 0 THEN ? ELSE -? END
+                        ELSE raw_profit
+                    END AS profit,
+                    ?
+                FROM calculated
+            """, (initial_capital, max_abs_profit, max_abs_profit, max_abs_profit, now))
+            inserted_count = cursor.rowcount if cursor.rowcount is not None and cursor.rowcount >= 0 else 0
+            clamped_count = 0
+            if inserted_count == 0:
+                cursor.execute("""
+                    SELECT COUNT(*) AS agent_count
+                    FROM agents a
+                    WHERE NOT EXISTS (
+                        SELECT 1
+                        FROM agent_leaderboard_exclusions ale
+                        WHERE ale.agent_id = a.id
+                          AND COALESCE(ale.active, 1) = 1
+                    )
                 """)
-                agents = cursor.fetchall()
-            finally:
-                conn.close()
+                row = cursor.fetchone()
+                inserted_count = int(row["agent_count"] or 0) if row else 0
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
-            print(f"[Profit History] Found {len(agents)} agents")
+    elapsed_s = time.monotonic() - started_at
+    if clamped_count:
+        print(f"[Profit History] Clamped absurd profit for {clamped_count} agents to ±{max_abs_profit}")
+    print(f"[Profit History] Recorded profit for {inserted_count} agents in {elapsed_s:.2f}s")
+    return inserted_count
 
-            now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-            rows_to_insert = []
 
-            for agent in agents:
-                agent_id = agent["id"]
-                cash = agent["cash"] or 0
-                deposited = agent["deposited"] or 0
-                position_value = agent["position_value"] or 0
-                initial_capital = 100000.0
+async def record_profit_history():
+    """Record profit history for all agents."""
+    print("[Profit History] Task starting...")
+    await asyncio.sleep(_env_int("PROFIT_HISTORY_STARTUP_DELAY_SECONDS", 90, minimum=0))
 
-                # Calculate profit: (cash + position) - (initial + deposited)
-                # This excludes deposited cash from profit calculation
-                total_value = cash + position_value
-                profit = total_value - (initial_capital + deposited)
-                # Clamp profit to avoid absurd values (e.g. from bad Polymarket price or API noise)
-                _max_abs_profit = 1e12
-                if abs(profit) > _max_abs_profit:
-                    print(f"[Profit History] Agent {agent_id}: clamping absurd profit {profit} to ±{_max_abs_profit}")
-                    profit = _max_abs_profit if profit > 0 else -_max_abs_profit
-                rows_to_insert.append((agent_id, total_value, cash, position_value, profit, now))
-
-            if rows_to_insert:
-                conn = get_db_connection()
-                try:
-                    cursor = conn.cursor()
-                    cursor.executemany("""
-                        INSERT INTO profit_history (agent_id, total_value, cash, position_value, profit, recorded_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    """, rows_to_insert)
-                    conn.commit()
-                finally:
-                    conn.close()
-                _maybe_prune_profit_history()
-
-            print(f"[Profit History] Recorded profit for {len(agents)} agents")
-
+    while True:
+        try:
+            recorded_count = await asyncio.to_thread(_record_profit_history_once)
+            if recorded_count:
+                _maybe_schedule_profit_history_prune()
         except Exception as e:
             print(f"[Profit History Error] {e}")
 
@@ -614,9 +938,10 @@ async def settle_polymarket_positions():
     """
     from database import get_db_connection
     from price_fetcher import _polymarket_resolve
+    global _POLYMARKET_SETTLEMENT_CURSOR
 
     # Wait a bit on startup before first settle pass
-    await asyncio.sleep(10)
+    await asyncio.sleep(_env_int("POLYMARKET_SETTLE_STARTUP_DELAY_SECONDS", 180, minimum=0))
 
     while True:
         try:
@@ -630,11 +955,14 @@ async def settle_polymarket_positions():
             try:
                 cursor = conn.cursor()
                 cursor.execute("""
-                    SELECT id, agent_id, symbol, token_id, outcome, quantity, entry_price
+                    SELECT symbol, token_id, outcome, COUNT(*) AS position_count
                     FROM positions
-                    WHERE market = 'polymarket'
+                    WHERE market = 'polymarket' AND token_id IS NOT NULL AND token_id != ''
+                    GROUP BY symbol, token_id, outcome
                 """)
-                rows = cursor.fetchall()
+                contract_rows = cursor.fetchall()
+                cursor.execute("SELECT COUNT(*) AS count FROM positions WHERE market = 'polymarket'")
+                total_positions = int(cursor.fetchone()["count"] or 0)
             finally:
                 conn.close()
 
@@ -644,47 +972,100 @@ async def settle_polymarket_positions():
             settlement_rows: list[tuple[Any, ...]] = []
             delete_rows: list[tuple[int]] = []
 
-            for row in rows:
-                pos_id = row["id"]
-                agent_id = row["agent_id"]
-                symbol = row["symbol"]
+            resolution_by_contract: dict[tuple[str, str, str], Optional[dict[str, Any]]] = {}
+            due_contracts: list[tuple[str, str, str]] = []
+            now_ts = time.time()
+            max_contracts = _env_int("POLYMARKET_SETTLE_MAX_CONTRACTS_PER_RUN", 25, minimum=1)
+            unresolved_recheck_s = _env_int("POLYMARKET_SETTLE_UNRESOLVED_RECHECK_SECONDS", 3600, minimum=interval_s)
+
+            for row in contract_rows:
                 token_id = row["token_id"]
-                outcome = row["outcome"]
-                qty = row["quantity"] or 0
-
-                if not token_id:
-                    skipped += 1
+                contract_key = (
+                    str(row["symbol"] or ""),
+                    str(token_id or ""),
+                    str(row["outcome"] or ""),
+                )
+                if contract_key in resolution_by_contract:
                     continue
+                retry_after = _POLYMARKET_SETTLEMENT_RECHECK_AFTER.get(contract_key, 0.0)
+                if retry_after > now_ts:
+                    resolution_by_contract[contract_key] = None
+                    continue
+                resolution_by_contract[contract_key] = None
+                due_contracts.append(contract_key)
 
-                resolution = _polymarket_resolve(symbol, token_id=token_id, outcome=outcome)
+            due_contracts.sort()
+            if len(due_contracts) > max_contracts:
+                start = _POLYMARKET_SETTLEMENT_CURSOR % len(due_contracts)
+                rotated = due_contracts[start:] + due_contracts[:start]
+                unique_contracts = rotated[:max_contracts]
+                _POLYMARKET_SETTLEMENT_CURSOR = (start + max_contracts) % len(due_contracts)
+            else:
+                unique_contracts = due_contracts
+                _POLYMARKET_SETTLEMENT_CURSOR = 0
+
+            for symbol, token_id, outcome in unique_contracts:
+                resolution = await asyncio.to_thread(_polymarket_resolve, symbol, token_id=token_id, outcome=outcome)
+                resolution_by_contract[(symbol, token_id, outcome)] = resolution
                 if not resolution or not resolution.get("resolved"):
-                    skipped += 1
-                    continue
+                    _POLYMARKET_SETTLEMENT_RECHECK_AFTER[(symbol, token_id, outcome)] = now_ts + unresolved_recheck_s
+                else:
+                    _POLYMARKET_SETTLEMENT_RECHECK_AFTER.pop((symbol, token_id, outcome), None)
 
-                settlement_price = resolution.get("settlementPrice")
-                if settlement_price is None:
-                    skipped += 1
+            skipped_recheck = 0
+            resolved_contracts = {
+                contract_key: resolution
+                for contract_key, resolution in resolution_by_contract.items()
+                if resolution and resolution.get("resolved") and resolution.get("settlementPrice") is not None
+            }
+            for row in contract_rows:
+                contract_key = (str(row["symbol"] or ""), str(row["token_id"] or ""), str(row["outcome"] or ""))
+                position_count = int(row["position_count"] or 0)
+                if contract_key in resolved_contracts:
                     continue
+                skipped += position_count
+                if _POLYMARKET_SETTLEMENT_RECHECK_AFTER.get(contract_key, 0.0) > now_ts:
+                    skipped_recheck += position_count
 
-                proceeds = float(f"{(abs(qty) * float(settlement_price)):.6f}")
-                cash_updates[agent_id] = float(f"{cash_updates.get(agent_id, 0.0) + proceeds:.6f}")
-                settlement_rows.append((
-                    pos_id,
-                    agent_id,
-                    symbol,
-                    token_id,
-                    outcome,
-                    qty,
-                    row["entry_price"],
-                    settlement_price,
-                    proceeds,
-                    resolution.get("market_slug"),
-                    resolution.get("resolved_outcome"),
-                    datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                    json.dumps(resolution),
-                ))
-                delete_rows.append((pos_id,))
-                settled += 1
+            if resolved_contracts:
+                conn = get_db_connection()
+                try:
+                    cursor = conn.cursor()
+                    for (symbol, token_id, outcome), resolution in resolved_contracts.items():
+                        cursor.execute(
+                            """
+                            SELECT id, agent_id, symbol, token_id, outcome, quantity, entry_price
+                            FROM positions
+                            WHERE market = 'polymarket' AND symbol = ? AND token_id = ? AND COALESCE(outcome, '') = COALESCE(?, '')
+                            """,
+                            (symbol, token_id, outcome),
+                        )
+                        for row in cursor.fetchall():
+                            pos_id = row["id"]
+                            agent_id = row["agent_id"]
+                            qty = row["quantity"] or 0
+                            settlement_price = resolution.get("settlementPrice")
+                            proceeds = float(f"{(abs(qty) * float(settlement_price)):.6f}")
+                            cash_updates[agent_id] = float(f"{cash_updates.get(agent_id, 0.0) + proceeds:.6f}")
+                            settlement_rows.append((
+                                pos_id,
+                                agent_id,
+                                row["symbol"],
+                                row["token_id"],
+                                row["outcome"],
+                                qty,
+                                row["entry_price"],
+                                settlement_price,
+                                proceeds,
+                                resolution.get("market_slug"),
+                                resolution.get("resolved_outcome"),
+                                datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                                json.dumps(resolution),
+                            ))
+                            delete_rows.append((pos_id,))
+                            settled += 1
+                finally:
+                    conn.close()
 
             if settlement_rows:
                 conn = get_db_connection()
@@ -704,8 +1085,12 @@ async def settle_polymarket_positions():
                 finally:
                     conn.close()
 
-            if settled > 0:
-                print(f"[Polymarket Settler] settled={settled}, skipped={skipped}")
+            print(
+                "[Polymarket Settler] "
+                f"positions={total_positions} unique_contracts={len(contract_rows)} contracts_due={len(due_contracts)} "
+                f"contracts_checked={len(unique_contracts)} "
+                f"settled={settled} skipped={skipped} recheck_cooldown={skipped_recheck}"
+            )
 
         except Exception as e:
             print(f"[Polymarket Settler Error] {e}")

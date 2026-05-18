@@ -16,6 +16,16 @@ def _time_series_payload(rows: dict) -> dict:
 
 
 class UsStockPriceTimezoneTests(unittest.TestCase):
+    def test_market_alias_uses_crypto_price_source(self) -> None:
+        with patch.object(price_fetcher, "_get_hyperliquid_candle_close", return_value=None), \
+             patch.object(price_fetcher, "_get_hyperliquid_mid_price", return_value=4.2) as mock_mid, \
+             patch.object(price_fetcher, "_get_us_stock_price", return_value=125.79) as mock_stock:
+            price = price_fetcher.get_price_from_market("SUI", "2026-05-15T08:00:00Z", "binance")
+
+        self.assertEqual(price, 4.2)
+        mock_mid.assert_called_once_with("SUI")
+        mock_stock.assert_not_called()
+
     def test_us_stock_lookup_uses_est_timestamp_in_winter(self) -> None:
         payload = _time_series_payload({
             "2025-01-15 09:30:00": {"4. close": "100.0"},

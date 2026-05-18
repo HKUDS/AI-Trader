@@ -18,7 +18,18 @@ from routes_models import (
     AgentRegister,
     AgentTaskCreate,
 )
-from routes_shared import RouteContext, push_agent_message, utc_now_iso_z
+from routes_shared import (
+    AGENT_MESSAGE_SUMMARY_CACHE_KEY_PREFIX,
+    AGENT_MESSAGE_SUMMARY_CACHE_TTL_SECONDS,
+    PUBLIC_COUNT_CACHE_KEY_PREFIX,
+    PUBLIC_COUNT_CACHE_TTL_SECONDS,
+    RouteContext,
+    get_short_cached_payload,
+    invalidate_agent_message_caches,
+    push_agent_message,
+    set_short_cached_payload,
+    utc_now_iso_z,
+)
 from services import (
     _get_agent_by_id,
     _get_agent_by_name,
@@ -129,6 +140,7 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
         conn.commit()
         message_id = cursor.lastrowid
         conn.close()
+        invalidate_agent_message_caches(ctx, data.agent_id)
 
         if data.agent_id in ctx.ws_connections:
             try:
@@ -149,32 +161,48 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
         if not agent:
             raise HTTPException(status_code=401, detail='Invalid token')
 
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT type, COUNT(*) as count
-            FROM agent_messages
-            WHERE agent_id = ? AND read = 0
-            GROUP BY type
-            """,
-            (agent['id'],),
+        redis_cache_key = f'{AGENT_MESSAGE_SUMMARY_CACHE_KEY_PREFIX}:agent_id={agent["id"]}'
+        payload = get_short_cached_payload(
+            ctx,
+            ctx.agent_message_summary_cache,
+            redis_cache_key,
+            AGENT_MESSAGE_SUMMARY_CACHE_TTL_SECONDS,
         )
-        rows = cursor.fetchall()
-        conn.close()
+        if not isinstance(payload, dict):
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT type, COUNT(*) as count
+                FROM agent_messages
+                WHERE agent_id = ? AND read = 0
+                GROUP BY type
+                """,
+                (agent['id'],),
+            )
+            rows = cursor.fetchall()
+            conn.close()
 
-        counts = {row['type']: row['count'] for row in rows}
-        discussion_unread = sum(counts.get(message_type, 0) for message_type in DISCUSSION_NOTIFICATION_TYPES)
-        strategy_unread = sum(counts.get(message_type, 0) for message_type in STRATEGY_NOTIFICATION_TYPES)
-        experiment_unread = sum(counts.get(message_type, 0) for message_type in EXPERIMENT_NOTIFICATION_TYPES)
+            counts = {row['type']: row['count'] for row in rows}
+            discussion_unread = sum(counts.get(message_type, 0) for message_type in DISCUSSION_NOTIFICATION_TYPES)
+            strategy_unread = sum(counts.get(message_type, 0) for message_type in STRATEGY_NOTIFICATION_TYPES)
+            experiment_unread = sum(counts.get(message_type, 0) for message_type in EXPERIMENT_NOTIFICATION_TYPES)
 
-        return {
-            'discussion_unread': discussion_unread,
-            'strategy_unread': strategy_unread,
-            'experiment_unread': experiment_unread,
-            'total_unread': discussion_unread + strategy_unread + experiment_unread,
-            'by_type': counts,
-        }
+            payload = {
+                'discussion_unread': discussion_unread,
+                'strategy_unread': strategy_unread,
+                'experiment_unread': experiment_unread,
+                'total_unread': discussion_unread + strategy_unread + experiment_unread,
+                'by_type': counts,
+            }
+            set_short_cached_payload(
+                ctx,
+                ctx.agent_message_summary_cache,
+                redis_cache_key,
+                payload,
+                AGENT_MESSAGE_SUMMARY_CACHE_TTL_SECONDS,
+            )
+        return payload
 
     @app.get('/api/claw/messages/recent')
     async def get_recent_agent_messages(
@@ -264,6 +292,8 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
         updated = cursor.rowcount
         conn.commit()
         conn.close()
+        if updated:
+            invalidate_agent_message_caches(ctx, agent['id'])
 
         return {'success': True, 'updated': updated}
 
@@ -368,6 +398,8 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         conn.commit()
         conn.close()
+        if message_ids:
+            invalidate_agent_message_caches(ctx, agent_id)
 
         parsed_messages = []
         for row in messages:
@@ -467,6 +499,10 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
 
             conn.commit()
             conn.close()
+            from cache import delete
+
+            ctx.public_count_cache.pop(f'{PUBLIC_COUNT_CACHE_KEY_PREFIX}:agents', None)
+            delete(f'{PUBLIC_COUNT_CACHE_KEY_PREFIX}:agents')
 
             try:
                 experiment_assignments = variant_for_agent(agent_id)
@@ -663,9 +699,25 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
 
     @app.get('/api/claw/agents/count')
     async def get_agent_count():
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute('SELECT COUNT(*) as count FROM agents')
-        count = cursor.fetchone()['count']
-        conn.close()
-        return {'count': count}
+        redis_cache_key = f'{PUBLIC_COUNT_CACHE_KEY_PREFIX}:agents'
+        payload = get_short_cached_payload(
+            ctx,
+            ctx.public_count_cache,
+            redis_cache_key,
+            PUBLIC_COUNT_CACHE_TTL_SECONDS,
+        )
+        if not isinstance(payload, dict):
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute('SELECT COUNT(*) as count FROM agents')
+            count = cursor.fetchone()['count']
+            conn.close()
+            payload = {'count': count}
+            set_short_cached_payload(
+                ctx,
+                ctx.public_count_cache,
+                redis_cache_key,
+                payload,
+                PUBLIC_COUNT_CACHE_TTL_SECONDS,
+            )
+        return payload

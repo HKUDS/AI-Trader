@@ -7,6 +7,7 @@ Redis-backed cache helpers with graceful fallback when Redis is disabled or unav
 from __future__ import annotations
 
 import json
+import hashlib
 import threading
 import time
 from typing import Any, Optional
@@ -26,11 +27,27 @@ _last_connect_attempt_at = 0.0
 _last_connect_error: Optional[str] = None
 
 
+def _active_database_scope() -> str:
+    try:
+        import database
+
+        backend = database.get_database_backend_name()
+        if backend == "postgresql":
+            raw = database.DATABASE_URL or "postgresql"
+        else:
+            raw = getattr(database, "_SQLITE_DB_PATH", "") or "sqlite"
+    except Exception:
+        raw = "default"
+        backend = "unknown"
+    digest = hashlib.sha1(str(raw).encode("utf-8")).hexdigest()[:12]
+    return f"{backend}:{digest}"
+
+
 def _namespaced(key: str) -> str:
     cleaned = (key or "").strip()
     if not cleaned:
         raise ValueError("Cache key must not be empty")
-    return f"{REDIS_PREFIX}:{cleaned}"
+    return f"{REDIS_PREFIX}:{_active_database_scope()}:{cleaned}"
 
 
 def redis_configured() -> bool:
