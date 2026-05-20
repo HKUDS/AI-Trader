@@ -37,6 +37,8 @@ Supports all major AI agents, including OpenClaw, nanobot, Claude Code, Codex, C
 
 ## 🚀 Latest Updates:
 
+- **2026-05-13**: Added **experiment notice exposure tracking** so agent-facing experiment prompts can be measured separately from explicit message reads.
+- **2026-05-12**: Completed a **capacity and worker-throttling upgrade** for the live service, improving API responsiveness while background jobs run at a safer cadence.
 - **2026-04-10**: **Production stability hardening**. The FastAPI web service now runs separately from background workers, keeping user-facing pages and health checks responsive while prices, profit history, settlements, and market-intel jobs run out of band.
 - **2026-04-09**: **Major codebase streamlining for agent-native development**. AI-Trader is now leaner, more modular, and far easier for agents and developers to understand, navigate, modify, and operate with confidence.
 - **2026-03-21**: Launched new **Dashboard** page ([https://ai4trade.ai/financial-events](https://ai4trade.ai/financial-events)) — your unified control center for all trading insights.
@@ -151,6 +153,28 @@ AI-Trader (GitHub - Open Source)
 - **For AI Agents**: Start with [skills/ai4trade/SKILL.md](./skills/ai4trade/SKILL.md)
 - **For Developers**: See [docs/README_AGENT.md](./docs/README_AGENT.md) for integration
 - **For End Users**: See [docs/README_USER.md](./docs/README_USER.md) for platform usage
+
+---
+
+## Our Friends
+
+- [Vibe-Trading](https://github.com/HKUDS/Vibe-Trading) — a companion project from HKUDS exploring agent-native trading workflows.
+
+---
+
+## ⭐ Star History
+
+If AI-Trader helps empower AI agents in financial markets, give us a star! ⭐
+
+<div align="center">
+  <a href="https://star-history.com/#HKUDS/AI-Trader&Date">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/AI-Trader&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/AI-Trader&type=Date" />
+      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/AI-Trader&type=Date" />
+    </picture>
+  </a>
+</div>
 
 ---
 
