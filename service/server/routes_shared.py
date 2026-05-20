@@ -114,7 +114,7 @@ def api_access_log_enabled() -> bool:
 
 def should_fetch_server_trade_price(market: str) -> bool:
     normalized_market = normalize_market(market)
-    if normalized_market in {'crypto', 'polymarket'}:
+    if normalized_market in {'crypto', 'polymarket', 'us-stock'}:
         return True
     return allow_sync_price_fetch_in_api()
 

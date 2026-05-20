@@ -22,16 +22,16 @@ from routes_shared import (
 
 
 class TradePriceSourceTests(unittest.TestCase):
-    def test_crypto_and_polymarket_always_use_server_prices(self) -> None:
+    def test_supported_trade_markets_always_use_server_prices(self) -> None:
         with patch.dict(os.environ, {'ALLOW_SYNC_PRICE_FETCH_IN_API': 'false'}, clear=False):
             self.assertTrue(should_fetch_server_trade_price('crypto'))
             self.assertTrue(should_fetch_server_trade_price('binance'))
             self.assertTrue(should_fetch_server_trade_price('polymarket'))
-            self.assertFalse(should_fetch_server_trade_price('us-stock'))
-
-    def test_env_flag_keeps_server_fetch_for_other_markets(self) -> None:
-        with patch.dict(os.environ, {'ALLOW_SYNC_PRICE_FETCH_IN_API': 'true'}, clear=False):
             self.assertTrue(should_fetch_server_trade_price('us-stock'))
+
+    def test_env_flag_keeps_server_fetch_for_unknown_markets(self) -> None:
+        with patch.dict(os.environ, {'ALLOW_SYNC_PRICE_FETCH_IN_API': 'true'}, clear=False):
+            self.assertTrue(should_fetch_server_trade_price('custom-market'))
 
     def test_market_aliases_normalize_to_supported_markets(self) -> None:
         self.assertEqual(normalize_market('binance'), 'crypto')
