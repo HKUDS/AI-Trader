@@ -6,7 +6,8 @@ from fastapi import FastAPI, Header, HTTPException, WebSocket
 
 from database import get_db_connection
 from experiment_events import record_event
-from experiments import variant_for_agent
+from experiments import agent_experiment_behavior_context, variant_for_agent
+from permissions import agent_permissions, agent_role
 from routes_models import (
     AgentTokenRecoveryConfirm,
     AgentTokenRecoveryRequest,
@@ -24,11 +25,13 @@ from routes_shared import (
     PUBLIC_COUNT_CACHE_KEY_PREFIX,
     PUBLIC_COUNT_CACHE_TTL_SECONDS,
     RouteContext,
+    attach_experiment_unread_notice,
     get_short_cached_payload,
     invalidate_agent_message_caches,
     push_agent_message,
     set_short_cached_payload,
     utc_now_iso_z,
+    validate_market,
 )
 from services import (
     _get_agent_by_id,
@@ -202,7 +205,13 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
                 payload,
                 AGENT_MESSAGE_SUMMARY_CACHE_TTL_SECONDS,
             )
-        return payload
+        return attach_experiment_unread_notice(
+            dict(payload),
+            agent['id'],
+            surface='messages_unread_summary',
+            field='experiment_unread_notice',
+            ctx=ctx,
+        )
 
     @app.get('/api/claw/messages/recent')
     async def get_recent_agent_messages(
@@ -261,7 +270,9 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
                     pass
             messages.append(message)
 
-        return {'messages': messages}
+        payload = {'messages': messages}
+        surface = f'messages_recent_{category}' if category in category_types else 'messages_recent'
+        return attach_experiment_unread_notice(payload, agent['id'], surface=surface, ctx=ctx)
 
     @app.post('/api/claw/messages/mark-read')
     async def mark_agent_messages_read(data: AgentMessagesMarkReadRequest, authorization: str = Header(None)):
@@ -297,6 +308,91 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         return {'success': True, 'updated': updated}
 
+    @app.post('/api/claw/messages/read-experiment')
+    async def read_experiment_messages(limit: int = 50, authorization: str = Header(None)):
+        token = _extract_token(authorization)
+        agent = _get_agent_by_token(token)
+        if not agent:
+            raise HTTPException(status_code=401, detail='Invalid token')
+
+        limit = max(1, min(limit, 100))
+        placeholders = ','.join('?' for _ in EXPERIMENT_NOTIFICATION_TYPES)
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT COUNT(*) AS count
+            FROM agent_messages
+            WHERE agent_id = ? AND read = 0 AND type IN ({placeholders})
+            """,
+            (agent['id'], *EXPERIMENT_NOTIFICATION_TYPES),
+        )
+        unread_before = cursor.fetchone()['count']
+
+        cursor.execute(
+            f"""
+            SELECT *
+            FROM agent_messages
+            WHERE agent_id = ? AND read = 0 AND type IN ({placeholders})
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (agent['id'], *EXPERIMENT_NOTIFICATION_TYPES, limit),
+        )
+        rows = cursor.fetchall()
+        message_ids = [row['id'] for row in rows]
+        if message_ids:
+            id_placeholders = ','.join('?' for _ in message_ids)
+            cursor.execute(
+                f"""
+                UPDATE agent_messages
+                SET read = 1
+                WHERE agent_id = ? AND id IN ({id_placeholders})
+                """,
+                (agent['id'], *message_ids),
+            )
+
+        record_event(
+            'experiment_messages_read',
+            actor_agent_id=agent['id'],
+            object_type='agent_message_batch',
+            object_id=','.join(str(message_id) for message_id in message_ids) if message_ids else None,
+            metadata={
+                'message_count': len(message_ids),
+                'unread_before': unread_before,
+                'remaining_unread_count': max(0, unread_before - len(message_ids)),
+                'message_ids': message_ids,
+                'read_method': 'read_experiment_endpoint',
+            },
+            cursor=cursor,
+        )
+
+        conn.commit()
+        conn.close()
+        if message_ids:
+            invalidate_agent_message_caches(ctx, agent['id'])
+
+        messages = []
+        for row in rows:
+            message = dict(row)
+            message['read'] = 1
+            if message.get('data'):
+                try:
+                    message['data'] = json.loads(message['data'])
+                except Exception:
+                    pass
+            messages.append(message)
+
+        return {
+            'success': True,
+            'messages': messages,
+            'message_count': len(messages),
+            'updated': len(message_ids),
+            'unread_before': unread_before,
+            'remaining_unread_count': max(0, unread_before - len(message_ids)),
+            'has_more_messages': unread_before > len(message_ids),
+        }
+
     @app.post('/api/claw/tasks')
     async def create_agent_task(data: AgentTaskCreate, authorization: str = Header(None)):
         token = _extract_token(authorization)
@@ -327,6 +423,10 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
             raise HTTPException(status_code=401, detail='Invalid token')
 
         agent_id = agent['id']
+        experiment_context = agent_experiment_behavior_context(agent_id)
+        experiment_assignment = (experiment_context.get('assignments') or [{}])[0] if experiment_context else {}
+        event_experiment_key = experiment_assignment.get('experiment_key')
+        event_variant_key = experiment_assignment.get('variant_key')
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -384,6 +484,8 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
                 actor_agent_id=agent_id,
                 object_type='agent_task_batch',
                 object_id=','.join(str(row['id']) for row in tasks),
+                experiment_key=event_experiment_key,
+                variant_key=event_variant_key,
                 metadata={'task_count': len(tasks), 'message_count': len(messages)},
                 cursor=cursor,
             )
@@ -392,6 +494,8 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
             actor_agent_id=agent_id,
             object_type='agent',
             object_id=agent_id,
+            experiment_key=event_experiment_key,
+            variant_key=event_variant_key,
             metadata={'unread_message_count': unread_message_count, 'pending_task_count': pending_task_count},
             cursor=cursor,
         )
@@ -426,7 +530,7 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
                     pass
             parsed_tasks.append(task)
 
-        return {
+        payload = {
             'agent_id': agent_id,
             'server_time': utc_now_iso_z(),
             'recommended_poll_interval_seconds': 30,
@@ -440,6 +544,9 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
             'has_more_messages': unread_message_count > len(parsed_messages),
             'has_more_tasks': pending_task_count > len(parsed_tasks),
         }
+        if experiment_context:
+            payload['experiment_context'] = experiment_context
+        return payload
 
     @app.post('/api/claw/agents/selfRegister')
     async def agent_self_register(data: AgentRegister):
@@ -473,6 +580,12 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
             now = utc_now_iso_z()
             if data.positions:
                 for pos in data.positions:
+                    market = validate_market(pos.get('market', 'us-stock'))
+                    symbol = str(pos.get('symbol') or '').strip()
+                    if not symbol:
+                        raise HTTPException(status_code=400, detail='Position symbol is required')
+                    if market != 'polymarket':
+                        symbol = symbol.upper()
                     cursor.execute(
                         """
                         INSERT INTO positions (agent_id, symbol, market, side, quantity, entry_price, opened_at)
@@ -480,8 +593,8 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
                         """,
                         (
                             agent_id,
-                            pos.get('symbol'),
-                            pos.get('market', 'us-stock'),
+                            symbol,
+                            market,
                             pos.get('side', 'long'),
                             pos.get('quantity', 0),
                             pos.get('entry_price', 0),
@@ -676,16 +789,19 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
         except Exception:
             experiment_assignments = []
 
-        return {
+        payload = {
             'id': agent['id'],
             'name': agent['name'],
             'token': token,
+            'role': agent_role(agent),
+            'permissions': agent_permissions(agent),
             'wallet_address': agent.get('wallet_address'),
             'points': agent.get('points', 0),
             'cash': agent.get('cash', 100000.0),
             'reputation_score': agent.get('reputation_score', 0),
             'experiment_assignments': experiment_assignments,
         }
+        return attach_experiment_unread_notice(payload, agent['id'], surface='agents_me', ctx=ctx)
 
     @app.get('/api/claw/agents/me/points')
     async def get_agent_points(authorization: str = Header(None)):
@@ -698,7 +814,7 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
         return {'points': points}
 
     @app.get('/api/claw/agents/count')
-    async def get_agent_count():
+    async def get_agent_count(authorization: str = Header(None)):
         redis_cache_key = f'{PUBLIC_COUNT_CACHE_KEY_PREFIX}:agents'
         payload = get_short_cached_payload(
             ctx,
@@ -720,4 +836,8 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
                 payload,
                 PUBLIC_COUNT_CACHE_TTL_SECONDS,
             )
+        token = _extract_token(authorization)
+        agent = _get_agent_by_token(token)
+        if agent:
+            return attach_experiment_unread_notice(dict(payload), agent['id'], surface='agents_count', ctx=ctx)
         return payload

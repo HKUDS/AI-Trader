@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from database import begin_write_transaction, get_db_connection
@@ -23,6 +24,29 @@ EXPERIMENT_CONFIG_KEYS = {
     "enrollment_reason",
     "enrollment_status",
 }
+
+EXPERIMENT_NOTIFICATION_TYPES = (
+    "experiment_announcement",
+    "experiment_assignment",
+    "experiment_reminder",
+    "experiment_rule_update",
+    "experiment_result_update",
+    "challenge_invite",
+    "team_mission_invite",
+)
+
+EXPERIMENT_BEHAVIOR_EVENT_TYPES = (
+    "agent_heartbeat",
+    "agent_tasks_read",
+    "signal_published",
+    "reply_created",
+    "reply_accepted",
+    "experiment_notice_exposed",
+)
+
+EXPERIMENT_PRIMARY_METRIC_FAMILY = "active_agent_behavior"
+EXPERIMENT_READ_RECEIPTS_ROLE = "diagnostic_only"
+EXPERIMENT_BEHAVIOR_WINDOW_HOURS = 24
 
 
 class ExperimentError(ValueError):
@@ -156,6 +180,140 @@ def get_experiment_enrollment_max_unit_id(experiment_key: str) -> Optional[int]:
     if not row:
         return None
     return experiment_enrollment_max_unit_id(dict(row))
+
+
+def _behavior_window_since(hours: int = EXPERIMENT_BEHAVIOR_WINDOW_HOURS) -> str:
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat().replace("+00:00", "Z")
+
+
+def _rows_by_variant(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    return {str(row.get("variant_key") or ""): row for row in rows}
+
+
+def _experiment_behavior_metrics(cursor: Any, experiment_key: str, *, since: str) -> list[dict[str, Any]]:
+    """Return recent behavior metrics by variant without depending on message read state."""
+    behavior_placeholders = ",".join("?" for _ in EXPERIMENT_BEHAVIOR_EVENT_TYPES)
+    cursor.execute(
+        f"""
+        SELECT
+            ea.variant_key,
+            COUNT(DISTINCT ea.unit_id) AS assigned_agent_count,
+            COUNT(DISTINCT CASE
+                WHEN ee.event_type IN ({behavior_placeholders}) THEN ea.unit_id
+            END) AS active_agent_count_24h,
+            SUM(CASE
+                WHEN ee.event_type IN ({behavior_placeholders}) THEN 1 ELSE 0
+            END) AS active_behavior_event_count_24h,
+            COUNT(DISTINCT CASE WHEN ee.event_type = 'agent_heartbeat' THEN ea.unit_id END) AS heartbeat_agent_count_24h,
+            SUM(CASE WHEN ee.event_type = 'agent_heartbeat' THEN 1 ELSE 0 END) AS heartbeat_count_24h,
+            COUNT(DISTINCT CASE WHEN ee.event_type = 'agent_tasks_read' THEN ea.unit_id END) AS task_read_agent_count_24h,
+            SUM(CASE WHEN ee.event_type = 'agent_tasks_read' THEN 1 ELSE 0 END) AS task_read_count_24h,
+            COUNT(DISTINCT CASE WHEN ee.event_type = 'signal_published' THEN ea.unit_id END) AS signal_agent_count_24h,
+            SUM(CASE WHEN ee.event_type = 'signal_published' THEN 1 ELSE 0 END) AS signal_count_24h,
+            COUNT(DISTINCT CASE WHEN ee.event_type IN ('reply_created', 'reply_accepted') THEN ea.unit_id END) AS reply_agent_count_24h,
+            SUM(CASE WHEN ee.event_type IN ('reply_created', 'reply_accepted') THEN 1 ELSE 0 END) AS reply_count_24h,
+            COUNT(DISTINCT CASE WHEN ee.event_type = 'experiment_notice_exposed' THEN ea.unit_id END) AS experiment_notice_exposure_agent_count_24h,
+            SUM(CASE WHEN ee.event_type = 'experiment_notice_exposed' THEN 1 ELSE 0 END) AS experiment_notice_exposure_count_24h
+        FROM experiment_assignments ea
+        LEFT JOIN experiment_events ee
+          ON ee.actor_agent_id = ea.unit_id
+         AND ee.created_at >= ?
+        WHERE ea.experiment_key = ?
+          AND ea.unit_type = 'agent'
+        GROUP BY ea.variant_key
+        ORDER BY ea.variant_key
+        """,
+        (*EXPERIMENT_BEHAVIOR_EVENT_TYPES, *EXPERIMENT_BEHAVIOR_EVENT_TYPES, since, experiment_key),
+    )
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def _experiment_read_diagnostics(cursor: Any, experiment_key: str) -> list[dict[str, Any]]:
+    """Return message read diagnostics by variant; these are not primary experiment metrics."""
+    notification_placeholders = ",".join("?" for _ in EXPERIMENT_NOTIFICATION_TYPES)
+    cursor.execute(
+        f"""
+        SELECT
+            ea.variant_key,
+            COUNT(DISTINCT CASE WHEN am.read = 1 THEN ea.unit_id END) AS read_receipt_agent_count,
+            SUM(CASE WHEN am.read = 1 THEN 1 ELSE 0 END) AS read_receipt_message_count,
+            COUNT(DISTINCT CASE WHEN COALESCE(am.read, 0) = 0 AND am.id IS NOT NULL THEN ea.unit_id END) AS unread_experiment_agent_count,
+            SUM(CASE WHEN COALESCE(am.read, 0) = 0 AND am.id IS NOT NULL THEN 1 ELSE 0 END) AS unread_experiment_message_count
+        FROM experiment_assignments ea
+        LEFT JOIN agent_messages am
+          ON am.agent_id = ea.unit_id
+         AND am.type IN ({notification_placeholders})
+        WHERE ea.experiment_key = ?
+          AND ea.unit_type = 'agent'
+        GROUP BY ea.variant_key
+        ORDER BY ea.variant_key
+        """,
+        (*EXPERIMENT_NOTIFICATION_TYPES, experiment_key),
+    )
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def agent_experiment_behavior_context(agent_id: int) -> Optional[dict[str, Any]]:
+    """Return active experiment context for high-frequency agent APIs without enrolling new agents."""
+    now = utc_now_iso_z()
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT
+            e.experiment_key,
+            e.title,
+            e.description,
+            e.status,
+            e.unit_type,
+            e.start_at,
+            e.end_at,
+            ea.variant_key,
+            ea.assignment_reason,
+            ea.created_at AS assignment_created_at
+        FROM experiment_assignments ea
+        JOIN experiments e ON e.experiment_key = ea.experiment_key
+        WHERE ea.unit_type = 'agent'
+          AND ea.unit_id = ?
+          AND e.status = 'active'
+          AND (e.start_at IS NULL OR e.start_at <= ?)
+          AND (e.end_at IS NULL OR e.end_at >= ?)
+        ORDER BY e.created_at DESC, e.id DESC
+        """,
+        (agent_id, now, now),
+    )
+    rows = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+    if not rows:
+        return None
+
+    assignments = []
+    for row in rows:
+        assignments.append({
+            "experiment_key": row.get("experiment_key"),
+            "title": row.get("title"),
+            "variant_key": row.get("variant_key"),
+            "assignment_reason": row.get("assignment_reason"),
+            "assignment_created_at": row.get("assignment_created_at"),
+            "status": row.get("status"),
+            "primary_metric_family": EXPERIMENT_PRIMARY_METRIC_FAMILY,
+            "read_receipts_role": EXPERIMENT_READ_RECEIPTS_ROLE,
+            "message_read_state_required": False,
+            "tracked_behaviors": [
+                "agent_heartbeat",
+                "agent_tasks_read",
+                "signal_published",
+                "reply_created",
+                "reply_accepted",
+            ],
+        })
+
+    return {
+        "primary_metric_family": EXPERIMENT_PRIMARY_METRIC_FAMILY,
+        "read_receipts_role": EXPERIMENT_READ_RECEIPTS_ROLE,
+        "message_read_state_required": False,
+        "assignments": assignments,
+    }
 
 
 def stable_bucket(experiment_key: str, unit_type: str, unit_id: int | str, *, salt: str = "") -> int:
@@ -424,6 +582,20 @@ def get_experiment_assignments(experiment_key: str, limit: int = 1000, offset: i
         (experiment_key,),
     )
     metrics = [dict(row) for row in cursor.fetchall()]
+    behavior_window_start_at = _behavior_window_since()
+    behavior_metrics = _rows_by_variant(
+        _experiment_behavior_metrics(cursor, experiment_key, since=behavior_window_start_at)
+    )
+    read_diagnostics = _rows_by_variant(_experiment_read_diagnostics(cursor, experiment_key))
+    for row in metrics:
+        variant_key = str(row.get("variant_key") or "")
+        row.update(behavior_metrics.get(variant_key, {}))
+        row.update(read_diagnostics.get(variant_key, {}))
+        row["primary_metric_family"] = EXPERIMENT_PRIMARY_METRIC_FAMILY
+        row["read_receipts_role"] = EXPERIMENT_READ_RECEIPTS_ROLE
+        row["message_read_state_required"] = False
+        row["behavior_window_hours"] = EXPERIMENT_BEHAVIOR_WINDOW_HOURS
+        row["behavior_window_start_at"] = behavior_window_start_at
     cursor.execute(
         """
         SELECT ea.*, a.name AS agent_name
@@ -441,6 +613,27 @@ def get_experiment_assignments(experiment_key: str, limit: int = 1000, offset: i
         "experiment": _serialize_experiment(experiment_row),
         "variant_counts": counts,
         "variant_metrics": metrics,
+        "metric_policy": {
+            "primary_metric_family": EXPERIMENT_PRIMARY_METRIC_FAMILY,
+            "read_receipts_role": EXPERIMENT_READ_RECEIPTS_ROLE,
+            "message_read_state_required": False,
+            "behavior_window_hours": EXPERIMENT_BEHAVIOR_WINDOW_HOURS,
+            "behavior_window_start_at": behavior_window_start_at,
+            "tracked_behaviors": [
+                "agent_heartbeat",
+                "agent_tasks_read",
+                "signal_published",
+                "reply_created",
+                "reply_accepted",
+                "experiment_notice_exposed",
+            ],
+            "diagnostic_metrics": [
+                "read_receipt_agent_count",
+                "read_receipt_message_count",
+                "unread_experiment_agent_count",
+                "unread_experiment_message_count",
+            ],
+        },
         "assignments": assignments,
         "limit": limit,
         "offset": offset,

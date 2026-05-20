@@ -18,6 +18,7 @@ from routes_shared import (
     RouteContext,
     TRENDING_CACHE_KEY,
     allow_sync_price_fetch_in_api,
+    attach_experiment_unread_notice,
     check_price_api_rate_limit,
     clamp_profit_for_display,
     decorate_polymarket_item,
@@ -42,6 +43,15 @@ def profit_percent_for_display(profit: float, deposited: float) -> float:
 
 
 def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
+    def _agent_from_authorization(authorization: str | None) -> Optional[dict]:
+        token = _extract_token(authorization)
+        return _get_agent_by_token(token)
+
+    def _attach_agent_notice(payload: dict, agent: Optional[dict], *, surface: str) -> dict:
+        if not agent:
+            return payload
+        return attach_experiment_unread_notice(dict(payload), agent['id'], surface=surface, ctx=ctx)
+
     @app.get('/api/profit/history')
     async def get_profit_history(
         limit: int = 10,
@@ -355,7 +365,12 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
     async def get_leaderboard_position_pnl(limit: int = 10):
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT id, name FROM agents')
+        cursor.execute(
+            """
+            SELECT id, name
+            FROM agents
+            """
+        )
         agents = cursor.fetchall()
 
         result = []
@@ -401,13 +416,18 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         return {'top_agents': sorted(result, key=lambda item: item['position_pnl'], reverse=True)[:limit]}
 
     @app.get('/api/trending')
-    async def get_trending_symbols(limit: int = 10):
+    async def get_trending_symbols(limit: int = 10, authorization: str = Header(None)):
+        agent = _agent_from_authorization(authorization)
         cached = get_json(TRENDING_CACHE_KEY)
         if isinstance(cached, list):
-            return {'trending': cached[: max(1, limit)]}
+            return _attach_agent_notice({'trending': cached[: max(1, limit)]}, agent, surface='trending')
 
         if task_runtime.trending_cache:
-            return {'trending': task_runtime.trending_cache[: max(1, limit)]}
+            return _attach_agent_notice(
+                {'trending': task_runtime.trending_cache[: max(1, limit)]},
+                agent,
+                surface='trending',
+            )
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -445,7 +465,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         conn.close()
         set_json(TRENDING_CACHE_KEY, result, ttl_seconds=300)
-        return {'trending': result}
+        return _attach_agent_notice({'trending': result}, agent, surface='trending')
 
     @app.get('/api/price')
     async def get_price(
@@ -486,12 +506,12 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         cached_payload = get_json(redis_cache_key)
         if isinstance(cached_payload, dict):
             ctx.price_quote_cache[cache_key] = (time.time(), cached_payload)
-            return cached_payload
+            return _attach_agent_notice(cached_payload, agent, surface='price_quote')
 
         cached = ctx.price_quote_cache.get(cache_key)
         now_ts = time.time()
         if cached and now_ts - cached[0] < PRICE_QUOTE_CACHE_TTL_SECONDS:
-            return cached[1]
+            return _attach_agent_notice(cached[1], agent, surface='price_quote')
 
         price = None
         conn = get_db_connection()
@@ -526,7 +546,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             decorate_polymarket_item(payload, fetch_remote=allow_sync_price_fetch_in_api())
         ctx.price_quote_cache[cache_key] = (now_ts, payload)
         set_json(redis_cache_key, payload, ttl_seconds=PRICE_QUOTE_CACHE_TTL_SECONDS)
-        return payload
+        return _attach_agent_notice(payload, agent, surface='price_quote')
 
     @app.get('/api/positions')
     async def get_my_positions(authorization: str = Header(None)):
@@ -538,7 +558,12 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         now_ts = time.time()
         cached = ctx.positions_cache.get(agent['id'])
         if cached and now_ts - cached[0] < POSITIONS_CACHE_TTL_SECONDS:
-            return cached[1]
+            return attach_experiment_unread_notice(
+                dict(cached[1]),
+                agent['id'],
+                surface='positions',
+                ctx=ctx,
+            )
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -588,7 +613,12 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         payload = {'positions': positions, 'cash': agent.get('cash', 100000.0)}
         ctx.positions_cache[agent['id']] = (now_ts, payload)
-        return payload
+        return attach_experiment_unread_notice(
+            dict(payload),
+            agent['id'],
+            surface='positions',
+            ctx=ctx,
+        )
 
     @app.get('/api/agents/{agent_id}/positions')
     async def get_agent_positions(agent_id: int):

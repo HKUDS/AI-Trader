@@ -5,8 +5,9 @@ from __future__ import annotations
 import csv
 import io
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Header, Response
 
+from permissions import RESEARCH_EXPORTS_CAPABILITY, require_capability
 from research_exports import (
     RESEARCH_EXPORTS,
     fetch_research_export_rows,
@@ -72,7 +73,8 @@ def register_research_routes(app: FastAPI, ctx: RouteContext) -> None:
         return filename, columns, rows
 
     @app.get("/api/research/datasets")
-    async def api_research_datasets():
+    async def api_research_datasets(authorization: str = Header(None)):
+        require_capability(authorization, RESEARCH_EXPORTS_CAPABILITY)
         return {"datasets": get_research_dataset_names()}
 
     @app.get("/api/research/events")
@@ -87,7 +89,9 @@ def register_research_routes(app: FastAPI, ctx: RouteContext) -> None:
         include_content: bool = True,
         limit: int = 1000,
         offset: int = 0,
+        authorization: str = Header(None),
     ):
+        require_capability(authorization, RESEARCH_EXPORTS_CAPABILITY)
         _filename, columns, rows = _fetch(
             "events",
             start_at=start_at,
@@ -116,7 +120,9 @@ def register_research_routes(app: FastAPI, ctx: RouteContext) -> None:
         include_content: bool = True,
         limit: int = 100000,
         offset: int = 0,
+        authorization: str = Header(None),
     ):
+        require_capability(authorization, RESEARCH_EXPORTS_CAPABILITY)
         try:
             filename, columns, rows = _fetch(
                 dataset_name,
@@ -148,7 +154,9 @@ def register_research_routes(app: FastAPI, ctx: RouteContext) -> None:
         include_content: bool = True,
         limit: int = 100000,
         offset: int = 0,
+        authorization: str = Header(None),
     ):
+        require_capability(authorization, RESEARCH_EXPORTS_CAPABILITY)
         try:
             filename, columns, rows = _fetch(
                 dataset_name,
@@ -168,7 +176,8 @@ def register_research_routes(app: FastAPI, ctx: RouteContext) -> None:
         return {"dataset": filename, "columns": columns, "rows": rows, "limit": max(1, min(limit, 100000)), "offset": max(0, offset)}
 
     @app.get("/api/research/schema/{dataset_name}")
-    async def api_research_schema(dataset_name: str):
+    async def api_research_schema(dataset_name: str, authorization: str = Header(None)):
+        require_capability(authorization, RESEARCH_EXPORTS_CAPABILITY)
         try:
             return research_schema_for_dataset(dataset_name)
         except ValueError as exc:
@@ -183,7 +192,9 @@ def register_research_routes(app: FastAPI, ctx: RouteContext) -> None:
         market: str | None,
         limit: int,
         offset: int,
+        authorization: str | None,
     ) -> Response:
+        require_capability(authorization, RESEARCH_EXPORTS_CAPABILITY)
         try:
             normalized, columns, rows = _fetch(
                 filename,
@@ -208,8 +219,9 @@ def register_research_routes(app: FastAPI, ctx: RouteContext) -> None:
         market: str | None = None,
         limit: int = 100000,
         offset: int = 0,
+        authorization: str = Header(None),
     ):
-        return await _download("agents.csv", start_at, end_at, experiment_key, variant_key, market, limit, offset)
+        return await _download("agents.csv", start_at, end_at, experiment_key, variant_key, market, limit, offset, authorization)
 
     @app.get("/api/research/events.csv")
     async def api_research_events_csv(
@@ -220,8 +232,9 @@ def register_research_routes(app: FastAPI, ctx: RouteContext) -> None:
         market: str | None = None,
         limit: int = 100000,
         offset: int = 0,
+        authorization: str = Header(None),
     ):
-        return await _download("events.csv", start_at, end_at, experiment_key, variant_key, market, limit, offset)
+        return await _download("events.csv", start_at, end_at, experiment_key, variant_key, market, limit, offset, authorization)
 
     @app.get("/api/research/signals.csv")
     async def api_research_signals_csv(
@@ -232,8 +245,9 @@ def register_research_routes(app: FastAPI, ctx: RouteContext) -> None:
         market: str | None = None,
         limit: int = 100000,
         offset: int = 0,
+        authorization: str = Header(None),
     ):
-        return await _download("signals.csv", start_at, end_at, experiment_key, variant_key, market, limit, offset)
+        return await _download("signals.csv", start_at, end_at, experiment_key, variant_key, market, limit, offset, authorization)
 
     @app.get("/api/research/network_edges.csv")
     async def api_research_network_edges_csv(
@@ -244,5 +258,6 @@ def register_research_routes(app: FastAPI, ctx: RouteContext) -> None:
         market: str | None = None,
         limit: int = 100000,
         offset: int = 0,
+        authorization: str = Header(None),
     ):
-        return await _download("network_edges.csv", start_at, end_at, experiment_key, variant_key, market, limit, offset)
+        return await _download("network_edges.csv", start_at, end_at, experiment_key, variant_key, market, limit, offset, authorization)

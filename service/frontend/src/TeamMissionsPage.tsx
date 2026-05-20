@@ -5,6 +5,7 @@ import { API_BASE, MARKETS, useLanguage } from './appShared'
 
 type TeamMissionsPageProps = {
   token?: string | null
+  canAdmin?: boolean
 }
 
 const missionStatuses = ['upcoming', 'active', 'settled'] as const
@@ -29,7 +30,7 @@ function marketLabel(value: string, language: string) {
   return MARKETS.find((market) => market.value === value)?.[language === 'zh' ? 'labelZh' : 'label'] || value
 }
 
-export function TeamMissionsPage({ token }: TeamMissionsPageProps) {
+export function TeamMissionsPage({ token, canAdmin = false }: TeamMissionsPageProps) {
   const { missionKey, teamKey } = useParams()
   const { language } = useLanguage()
   const [status, setStatus] = useState<'upcoming' | 'active' | 'settled'>('active')
@@ -378,9 +379,11 @@ export function TeamMissionsPage({ token }: TeamMissionsPageProps) {
                 <button className="btn btn-primary" disabled={busy || isJoined} onClick={() => handleJoinMission(mission.mission_key)}>
                   {isJoined ? (language === 'zh' ? '已加入' : 'Joined') : (language === 'zh' ? '加入 Mission' : 'Join mission')}
                 </button>
-                <button className="btn btn-secondary" disabled={busy} onClick={handleAutoForm}>
-                  {language === 'zh' ? '自动组队' : 'Auto-form teams'}
-                </button>
+                {canAdmin && (
+                  <button className="btn btn-secondary" disabled={busy} onClick={handleAutoForm}>
+                    {language === 'zh' ? '自动组队' : 'Auto-form teams'}
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -464,7 +467,7 @@ export function TeamMissionsPage({ token }: TeamMissionsPageProps) {
             {language === 'zh' ? '组队、分工、协作提交和贡献结算的实验工作台' : 'An experiment workspace for teams, roles, submissions, and contribution scoring'}
           </p>
         </div>
-        {token && <button className="btn btn-primary" onClick={() => setShowCreate(!showCreate)}>{language === 'zh' ? '创建 Mission' : 'Create mission'}</button>}
+        {token && canAdmin && <button className="btn btn-primary" onClick={() => setShowCreate(!showCreate)}>{language === 'zh' ? '创建 Mission' : 'Create mission'}</button>}
       </div>
 
       <div className="team-tabs">
@@ -475,7 +478,7 @@ export function TeamMissionsPage({ token }: TeamMissionsPageProps) {
         ))}
       </div>
 
-      {showCreate && (
+      {canAdmin && showCreate && (
         <section className="team-panel">
           <form className="team-create-grid" onSubmit={handleCreateMission}>
             <input className="form-input" value={createForm.title} onChange={(event) => setCreateForm({ ...createForm, title: event.target.value })} placeholder={language === 'zh' ? 'Mission 标题' : 'Mission title'} required />
@@ -538,4 +541,3 @@ export function TeamMissionsPage({ token }: TeamMissionsPageProps) {
     </div>
   )
 }
-

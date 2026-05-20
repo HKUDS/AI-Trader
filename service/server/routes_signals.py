@@ -95,6 +95,11 @@ def _context_keys(context: dict[str, Any] | None) -> tuple[str | None, str | Non
     return assignment.get('experiment_key'), assignment.get('variant_key')
 
 
+def _primary_experiment_context(agent_id: int) -> dict[str, Any] | None:
+    contexts = _agent_experiment_context(agent_id)
+    return contexts[0] if contexts else None
+
+
 def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
     @app.post('/api/signals/realtime')
     async def push_realtime_signal(data: RealtimeSignalRequest, authorization: str = Header(None)):
@@ -514,12 +519,16 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                         },
                         cursor=cursor,
                     )
+                    follower_context = _primary_experiment_context(follower_id)
+                    follower_experiment_key, follower_variant_key = _context_keys(follower_context)
                     record_signal_event(
                         'signal_published',
                         agent_id=follower_id,
                         signal_id=follower_signal_id,
                         message_type='operation',
                         market=market,
+                        experiment_key=follower_experiment_key,
+                        variant_key=follower_variant_key,
                         metadata={'symbol': symbol, 'side': side, 'copied_from_agent_id': agent_id},
                         cursor=cursor,
                     )
@@ -562,7 +571,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         }
         if market == 'polymarket':
             decorate_polymarket_item(payload, fetch_remote=fetch_price_in_request)
-        return attach_experiment_unread_notice(payload, agent_id)
+        return attach_experiment_unread_notice(payload, agent_id, ctx=ctx)
 
     @app.post('/api/signals/strategy')
     async def upload_strategy(data: StrategyRequest, authorization: str = Header(None)):
@@ -692,6 +701,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         return attach_experiment_unread_notice(
             {'success': True, 'signal_id': signal_id, 'points_earned': reward_points},
             agent_id,
+            ctx=ctx,
         )
 
     @app.post('/api/signals/discussion')
@@ -832,6 +842,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         return attach_experiment_unread_notice(
             {'success': True, 'signal_id': signal_id, 'points_earned': reward_points},
             agent_id,
+            ctx=ctx,
         )
 
     @app.get('/api/signals/grouped')
@@ -840,7 +851,18 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         market: str = None,
         limit: int = 20,
         offset: int = 0,
+        authorization: str = Header(None),
     ):
+        viewer = None
+        token = _extract_token(authorization)
+        if token:
+            viewer = _get_agent_by_token(token)
+
+        def _attach_viewer_notice(payload: dict[str, Any]) -> dict[str, Any]:
+            if not viewer:
+                return payload
+            return attach_experiment_unread_notice(dict(payload), viewer['id'], surface='signals_grouped', ctx=ctx)
+
         cache_key = ((message_type or '').strip(), (market or '').strip(), max(1, limit), max(0, offset))
         now_ts = time.time()
         redis_cache_key = (
@@ -854,11 +876,11 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         cached_payload = get_json(redis_cache_key)
         if isinstance(cached_payload, dict):
             ctx.grouped_signals_cache[cache_key] = (now_ts, cached_payload)
-            return cached_payload
+            return _attach_viewer_notice(cached_payload)
 
         cached = ctx.grouped_signals_cache.get(cache_key)
         if cached and now_ts - cached[0] < GROUPED_SIGNALS_CACHE_TTL_SECONDS:
-            return cached[1]
+            return _attach_viewer_notice(cached[1])
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -973,7 +995,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         payload = {'agents': agents, 'total': total}
         ctx.grouped_signals_cache[cache_key] = (now_ts, payload)
         set_json(redis_cache_key, payload, ttl_seconds=GROUPED_SIGNALS_CACHE_TTL_SECONDS)
-        return payload
+        return _attach_viewer_notice(payload)
 
     @app.get('/api/signals/{signal_id}/replies')
     async def get_signal_replies(signal_id: int):
@@ -1027,14 +1049,20 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             f"keyword={feed_cache_key[2] or 'none'}:"
             f'limit={limit}:offset={offset}:sort={feed_cache_key[5]}:viewer={feed_cache_key[6]}'
         )
+
+        def _attach_viewer_notice(payload: dict[str, Any]) -> dict[str, Any]:
+            if not viewer:
+                return payload
+            return attach_experiment_unread_notice(dict(payload), viewer['id'], surface='signals_feed', ctx=ctx)
+
         cached_payload = get_json(redis_cache_key)
         if isinstance(cached_payload, dict):
             ctx.signal_feed_cache[feed_cache_key] = (now_ts, cached_payload)
-            return cached_payload
+            return _attach_viewer_notice(cached_payload)
 
         cached = ctx.signal_feed_cache.get(feed_cache_key)
         if cached and now_ts - cached[0] < SIGNAL_FEED_CACHE_TTL_SECONDS:
-            return cached[1]
+            return _attach_viewer_notice(cached[1])
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1219,7 +1247,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         }
         ctx.signal_feed_cache[feed_cache_key] = (now_ts, payload)
         set_json(redis_cache_key, payload, ttl_seconds=SIGNAL_FEED_CACHE_TTL_SECONDS)
-        return payload
+        return _attach_viewer_notice(payload)
 
     @app.get('/api/signals/following')
     async def get_following(
@@ -1293,13 +1321,14 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 'latest_discussion_title': row['latest_discussion_title'],
             })
 
-        return {
+        payload = {
             'following': following,
             'total': total,
             'limit': limit,
             'offset': offset,
             'has_more': offset + len(following) < total,
         }
+        return attach_experiment_unread_notice(payload, agent['id'], surface='signals_following', ctx=ctx)
 
     @app.get('/api/signals/subscribers')
     async def get_subscribers(authorization: str = Header(None)):
@@ -1343,10 +1372,30 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 'recent_activity_at': row['recent_activity_at'],
             })
 
-        return {'subscribers': subscribers}
+        return attach_experiment_unread_notice(
+            {'subscribers': subscribers},
+            agent['id'],
+            surface='signals_subscribers',
+            ctx=ctx,
+        )
 
     @app.get('/api/signals/{agent_id}')
-    async def get_agent_signals(agent_id: int, message_type: str = None, limit: int = 50):
+    async def get_agent_signals(
+        agent_id: int,
+        message_type: str = None,
+        limit: int = 50,
+        authorization: str = Header(None),
+    ):
+        viewer = None
+        token = _extract_token(authorization)
+        if token:
+            viewer = _get_agent_by_token(token)
+
+        def _attach_viewer_notice(payload: dict[str, Any]) -> dict[str, Any]:
+            if not viewer:
+                return payload
+            return attach_experiment_unread_notice(dict(payload), viewer['id'], surface='agent_signals', ctx=ctx)
+
         cache_key = (agent_id, (message_type or '').strip(), max(1, limit))
         now_ts = time.time()
         redis_cache_key = (
@@ -1359,11 +1408,11 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         cached_payload = get_json(redis_cache_key)
         if isinstance(cached_payload, dict):
             ctx.agent_signals_cache[cache_key] = (now_ts, cached_payload)
-            return cached_payload
+            return _attach_viewer_notice(cached_payload)
 
         cached = ctx.agent_signals_cache.get(cache_key)
         if cached and now_ts - cached[0] < AGENT_SIGNALS_CACHE_TTL_SECONDS:
-            return cached[1]
+            return _attach_viewer_notice(cached[1])
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -1394,7 +1443,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         payload = {'signals': signals}
         ctx.agent_signals_cache[cache_key] = (now_ts, payload)
         set_json(redis_cache_key, payload, ttl_seconds=AGENT_SIGNALS_CACHE_TTL_SECONDS)
-        return payload
+        return _attach_viewer_notice(payload)
 
     @app.post('/api/signals/reply')
     async def reply_to_signal(data: ReplyRequest, authorization: str = Header(None)):
@@ -1563,6 +1612,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         return attach_experiment_unread_notice(
             {'success': True, 'points_earned': reward_points},
             agent_id,
+            ctx=ctx,
         )
 
     @app.post('/api/signals/{signal_id}/replies/{reply_id}/accept')

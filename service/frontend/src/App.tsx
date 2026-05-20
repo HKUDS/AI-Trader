@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-route
 
 import {
   API_BASE,
+  type AgentInfo,
   ExchangePage,
   FinancialEventsPage,
   LandingPage,
@@ -30,6 +31,7 @@ import { ExperimentAdminPage } from './ExperimentAdminPage'
 import { ResearchExportsPage } from './ResearchExportsPage'
 import { TeamMissionsPage } from './TeamMissionsPage'
 import { Language, getT } from './i18n'
+import { hasPermission } from './appShared'
 
 const DISCUSSION_NOTIFICATION_TYPES = new Set([
   'discussion_started',
@@ -63,7 +65,8 @@ function App() {
     return savedTheme === 'light' ? 'light' : 'dark'
   })
   const [token, setToken] = useState<string | null>(localStorage.getItem('claw_token'))
-  const [agentInfo, setAgentInfo] = useState<any>(null)
+  const [agentInfo, setAgentInfo] = useState<AgentInfo | null>(null)
+  const [agentInfoLoading, setAgentInfoLoading] = useState(Boolean(localStorage.getItem('claw_token')))
   const [toast, setToast] = useState<{ message: string, type: 'success' | 'error' } | null>(null)
   const [notificationCounts, setNotificationCounts] = useState<NotificationCounts>({ discussion: 0, strategy: 0, experiment: 0 })
 
@@ -72,12 +75,14 @@ function App() {
   const login = (newToken: string) => {
     localStorage.setItem('claw_token', newToken)
     setToken(newToken)
+    setAgentInfoLoading(true)
   }
 
   const logout = () => {
     localStorage.removeItem('claw_token')
     setToken(null)
     setAgentInfo(null)
+    setAgentInfoLoading(false)
     setNotificationCounts({ discussion: 0, strategy: 0, experiment: 0 })
   }
 
@@ -87,6 +92,8 @@ function App() {
   }, [theme])
 
   const fetchAgentInfo = async () => {
+    if (!token) return
+    setAgentInfoLoading(true)
     try {
       const res = await fetch(`${API_BASE}/claw/agents/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
@@ -94,15 +101,24 @@ function App() {
       if (res.ok) {
         const data = await res.json()
         setAgentInfo(data)
+      } else if (res.status === 401) {
+        localStorage.removeItem('claw_token')
+        setToken(null)
+        setAgentInfo(null)
       }
     } catch (e) {
       console.error(e)
+    } finally {
+      setAgentInfoLoading(false)
     }
   }
 
   useEffect(() => {
     if (token) {
       fetchAgentInfo()
+    } else {
+      setAgentInfo(null)
+      setAgentInfoLoading(false)
     }
   }, [token])
 
@@ -185,6 +201,7 @@ function App() {
           <AppRouter
             token={token}
             agentInfo={agentInfo}
+            agentInfoLoading={agentInfoLoading}
             login={login}
             logout={logout}
             fetchAgentInfo={fetchAgentInfo}
@@ -208,6 +225,7 @@ function App() {
 function AppRouter({
   token,
   agentInfo,
+  agentInfoLoading,
   login,
   logout,
   fetchAgentInfo,
@@ -215,7 +233,8 @@ function AppRouter({
   markCategoryRead,
 }: {
   token: string | null
-  agentInfo: any
+  agentInfo: AgentInfo | null
+  agentInfoLoading: boolean
   login: (token: string) => void
   logout: () => void
   fetchAgentInfo: () => Promise<void>
@@ -224,6 +243,11 @@ function AppRouter({
 }) {
   const location = useLocation()
   const isLanding = location.pathname === '/'
+  const canUseExperiments = hasPermission(agentInfo, 'experiment_admin')
+  const canUseResearchExports = hasPermission(agentInfo, 'research_exports')
+  const canUseTeamMissionAdmin = hasPermission(agentInfo, 'team_mission_admin')
+  const permissionLoading = Boolean(token && agentInfoLoading)
+  const permissionLoadingView = <div className="loading"><div className="spinner"></div></div>
 
   if (isLanding) {
     return (
@@ -254,11 +278,11 @@ function AppRouter({
             <Route path="/leaderboard" element={<LeaderboardPage token={token} />} />
             <Route path="/challenges" element={<ChallengePage token={token} />} />
             <Route path="/challenges/:challengeKey" element={<ChallengePage token={token} />} />
-            <Route path="/team-missions" element={<TeamMissionsPage token={token} />} />
-            <Route path="/team-missions/:missionKey" element={<TeamMissionsPage token={token} />} />
-            <Route path="/teams/:teamKey" element={<TeamMissionsPage token={token} />} />
-            <Route path="/experiments" element={<ExperimentAdminPage token={token} />} />
-            <Route path="/research-exports" element={<ResearchExportsPage />} />
+            <Route path="/team-missions" element={permissionLoading ? permissionLoadingView : canUseTeamMissionAdmin ? <TeamMissionsPage token={token} canAdmin={canUseTeamMissionAdmin} /> : <Navigate to="/market" replace />} />
+            <Route path="/team-missions/:missionKey" element={permissionLoading ? permissionLoadingView : canUseTeamMissionAdmin ? <TeamMissionsPage token={token} canAdmin={canUseTeamMissionAdmin} /> : <Navigate to="/market" replace />} />
+            <Route path="/teams/:teamKey" element={permissionLoading ? permissionLoadingView : canUseTeamMissionAdmin ? <TeamMissionsPage token={token} canAdmin={canUseTeamMissionAdmin} /> : <Navigate to="/market" replace />} />
+            <Route path="/experiments" element={permissionLoading ? permissionLoadingView : canUseExperiments ? <ExperimentAdminPage token={token} /> : <Navigate to="/market" replace />} />
+            <Route path="/research-exports" element={permissionLoading ? permissionLoadingView : canUseResearchExports && token ? <ResearchExportsPage token={token} /> : <Navigate to="/market" replace />} />
             <Route path="/financial-events" element={<FinancialEventsPage />} />
             <Route path="/copytrading" element={token ? <CopyTradingPage token={token} /> : <Navigate to="/login" replace />} />
             <Route path="/strategies" element={<StrategiesPage />} />

@@ -35,6 +35,8 @@ DEFAULT_LIMIT = 500
 MAX_LIMIT = 5289
 TARGET_PREVIEW_LIMIT = 20
 CONTENT_MAX_LENGTH = 4000
+EXPERIMENT_READ_CONVERSION_REMINDER_TYPE = "experiment_reminder"
+EXPERIMENT_READ_CONVERSION_EVENT_TYPE = "experiment_read_conversion_reminder_sent"
 
 
 class ExperimentNotificationError(ValueError):
@@ -228,6 +230,123 @@ def resolve_recent_active_experiment_targets(
         WHERE {' AND '.join(where)}
         GROUP BY ea.unit_id, a.name, ea.variant_key, ea.experiment_key, a.updated_at, a.created_at
         ORDER BY latest_activity_at DESC, ea.id ASC
+        LIMIT ?
+        """,
+        tuple(params),
+        limit=clamped_limit,
+    )
+    return _apply_agent_filter(rows, normalized_agent_ids)
+
+
+def resolve_unread_active_experiment_targets(
+    experiment_key: str,
+    *,
+    variant_key: Optional[str] = None,
+    agent_ids: Optional[list[int] | list[str]] = None,
+    limit: Optional[int] = None,
+    active_since: Optional[str] = None,
+    reminder_since: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Resolve fixed-cohort agents who are active but still have unread experiment messages."""
+    normalized_agent_ids = _coerce_agent_ids(agent_ids)
+    clamped_limit = _clamp_limit(limit)
+    params: list[Any] = [experiment_key]
+    where = [
+        "ea.experiment_key = ?",
+        "ea.unit_type = 'agent'",
+        """
+        EXISTS (
+            SELECT 1
+            FROM agent_messages unread
+            WHERE unread.agent_id = ea.unit_id
+              AND unread.read = 0
+              AND unread.type IN (
+                'experiment_announcement',
+                'experiment_assignment',
+                'experiment_reminder',
+                'experiment_rule_update',
+                'experiment_result_update',
+                'challenge_invite',
+                'team_mission_invite'
+              )
+        )
+        """,
+    ]
+    if variant_key:
+        where.append("ea.variant_key = ?")
+        params.append(variant_key)
+    max_unit_id = get_experiment_enrollment_max_unit_id(experiment_key)
+    if max_unit_id is not None:
+        where.append("ea.unit_id <= ?")
+        params.append(max_unit_id)
+    if active_since:
+        where.append(
+            """
+            EXISTS (
+                SELECT 1
+                FROM experiment_events active_event
+                WHERE active_event.actor_agent_id = ea.unit_id
+                  AND active_event.created_at >= ?
+                  AND active_event.event_type IN (
+                    'agent_heartbeat',
+                    'agent_tasks_read',
+                    'signal_published',
+                    'experiment_notice_exposed'
+                  )
+            )
+            """
+        )
+        params.append(active_since)
+    if reminder_since:
+        where.append(
+            """
+            NOT EXISTS (
+                SELECT 1
+                FROM agent_messages recent_reminder
+                WHERE recent_reminder.agent_id = ea.unit_id
+                  AND recent_reminder.type = ?
+                  AND recent_reminder.created_at >= ?
+                  AND recent_reminder.data LIKE ?
+            )
+            """
+        )
+        params.extend([
+            EXPERIMENT_READ_CONVERSION_REMINDER_TYPE,
+            reminder_since,
+            '%"purpose": "read_conversion"%',
+        ])
+
+    rows = _target_rows_from_query(
+        f"""
+        SELECT
+            ea.unit_id AS agent_id,
+            a.name AS agent_name,
+            ea.variant_key,
+            ea.experiment_key,
+            (
+                SELECT MAX(activity.created_at)
+                FROM experiment_events activity
+                WHERE activity.actor_agent_id = ea.unit_id
+            ) AS latest_activity_at,
+            (
+                SELECT COUNT(*)
+                FROM agent_messages unread
+                WHERE unread.agent_id = ea.unit_id
+                  AND unread.read = 0
+                  AND unread.type IN (
+                    'experiment_announcement',
+                    'experiment_assignment',
+                    'experiment_reminder',
+                    'experiment_rule_update',
+                    'experiment_result_update',
+                    'challenge_invite',
+                    'team_mission_invite'
+                  )
+            ) AS unread_experiment_count
+        FROM experiment_assignments ea
+        JOIN agents a ON a.id = ea.unit_id
+        WHERE {' AND '.join(where)}
+        ORDER BY latest_activity_at DESC NULLS LAST, ea.id ASC
         LIMIT ?
         """,
         tuple(params),

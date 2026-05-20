@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Header, HTTPException
 
+from permissions import TEAM_MISSION_ADMIN_CAPABILITY, require_agent, require_capability
 from experiment_notifications import (
     ExperimentNotificationError,
     build_experiment_target_rule,
@@ -19,7 +20,6 @@ from routes_models import (
     TeamSubmissionRequest,
 )
 from routes_shared import RouteContext
-from services import _get_agent_by_token
 from team_missions import (
     TeamMissionError,
     TeamMissionNotFound,
@@ -38,7 +38,6 @@ from team_missions import (
     list_team_missions,
     settle_team_mission,
 )
-from utils import _extract_token
 
 
 def _to_http_error(exc: Exception) -> HTTPException:
@@ -47,14 +46,6 @@ def _to_http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, (TeamMissionError, ExperimentNotificationError)):
         return HTTPException(status_code=400, detail=str(exc))
     return HTTPException(status_code=500, detail=f"Team mission request failed: {exc}")
-
-
-def _require_agent(authorization: str | None) -> dict:
-    token = _extract_token(authorization)
-    agent = _get_agent_by_token(token)
-    if not agent:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return agent
 
 
 def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
@@ -67,7 +58,7 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
 
     @app.post("/api/team-missions")
     async def api_create_team_mission(data: TeamMissionCreateRequest, authorization: str = Header(None)):
-        agent = _require_agent(authorization)
+        agent = require_capability(authorization, TEAM_MISSION_ADMIN_CAPABILITY)
         try:
             return create_team_mission(data, created_by_agent_id=agent["id"])
         except Exception as exc:
@@ -75,7 +66,7 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
 
     @app.get("/api/team-missions/me")
     async def api_my_team_missions(authorization: str = Header(None)):
-        agent = _require_agent(authorization)
+        agent = require_agent(authorization)
         try:
             return get_agent_team_missions(agent["id"])
         except Exception as exc:
@@ -101,7 +92,7 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
         data: TeamJoinRequest | None = None,
         authorization: str = Header(None),
     ):
-        agent = _require_agent(authorization)
+        agent = require_agent(authorization)
         try:
             return join_team_mission(mission_key, agent["id"], data)
         except Exception as exc:
@@ -113,7 +104,7 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
         data: TeamJoinRequest | None = None,
         authorization: str = Header(None),
     ):
-        agent = _require_agent(authorization)
+        agent = require_agent(authorization)
         try:
             return create_team_for_mission(mission_key, agent["id"], data)
         except Exception as exc:
@@ -125,7 +116,7 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
         data: TeamMissionSettleRequest | None = None,
         authorization: str = Header(None),
     ):
-        _require_agent(authorization)
+        require_capability(authorization, TEAM_MISSION_ADMIN_CAPABILITY)
         try:
             return auto_form_teams(mission_key, assignment_mode=data.assignment_mode if data else None)
         except Exception as exc:
@@ -137,7 +128,7 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
         data: TeamMissionSettleRequest | None = None,
         authorization: str = Header(None),
     ):
-        _require_agent(authorization)
+        require_capability(authorization, TEAM_MISSION_ADMIN_CAPABILITY)
         try:
             return settle_team_mission(mission_key, force=bool(data.force if data else False))
         except Exception as exc:
@@ -149,7 +140,7 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
         data: ExperimentNotificationRequest,
         authorization: str = Header(None),
     ):
-        agent = _require_agent(authorization)
+        agent = require_capability(authorization, TEAM_MISSION_ADMIN_CAPABILITY)
         try:
             mission = get_team_mission(mission_key)
             experiment_key = mission.get("experiment_key") or (data.data or {}).get("experiment_key") or ""
@@ -208,7 +199,7 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
         data: TeamJoinRequest | None = None,
         authorization: str = Header(None),
     ):
-        agent = _require_agent(authorization)
+        agent = require_agent(authorization)
         try:
             return join_team(team_key, agent["id"], data)
         except Exception as exc:
@@ -220,7 +211,7 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
         data: TeamMessageLinkRequest,
         authorization: str = Header(None),
     ):
-        agent = _require_agent(authorization)
+        agent = require_agent(authorization)
         try:
             return link_signal_to_team(team_key, agent["id"], data)
         except Exception as exc:
@@ -232,7 +223,7 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
         data: TeamSubmissionRequest,
         authorization: str = Header(None),
     ):
-        agent = _require_agent(authorization)
+        agent = require_agent(authorization)
         try:
             from team_missions import submit_team
 
@@ -246,7 +237,7 @@ def register_team_mission_routes(app: FastAPI, ctx: RouteContext) -> None:
         data: ExperimentNotificationRequest,
         authorization: str = Header(None),
     ):
-        agent = _require_agent(authorization)
+        agent = require_capability(authorization, TEAM_MISSION_ADMIN_CAPABILITY)
         try:
             team = get_team(team_key)
             mission = team.get("mission") or {}

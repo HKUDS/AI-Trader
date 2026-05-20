@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from fastapi import FastAPI, Header, HTTPException
 
+from permissions import (
+    EXPERIMENT_ADMIN_CAPABILITY,
+    RESEARCH_EXPORTS_CAPABILITY,
+    require_agent,
+    require_any_capability,
+    require_capability,
+)
 from experiment_notifications import (
     ExperimentNotificationError,
     build_experiment_target_rule,
@@ -12,6 +19,7 @@ from experiment_notifications import (
     resolve_experiment_notification_targets,
     resolve_recent_active_experiment_targets,
     resolve_team_mission_notification_targets,
+    resolve_unread_active_experiment_targets,
     send_agent_notifications,
     validate_notification_request,
     validate_task_request,
@@ -33,16 +41,6 @@ from routes_models import (
     ExperimentTaskRequest,
 )
 from routes_shared import RouteContext
-from services import _get_agent_by_token
-from utils import _extract_token
-
-
-def _require_agent(authorization: str | None) -> dict:
-    token = _extract_token(authorization)
-    agent = _get_agent_by_token(token)
-    if not agent:
-        raise HTTPException(status_code=401, detail="Invalid token")
-    return agent
 
 
 def _to_http_error(exc: Exception) -> HTTPException:
@@ -82,6 +80,13 @@ def _resolve_targets_for_request(experiment_key: str, data: ExperimentNotificati
             agent_ids=data.agent_ids,
             limit=data.limit,
         )
+    elif target in {"unread_active", "unread-active", "active_unread", "active-unread"}:
+        targets = resolve_unread_active_experiment_targets(
+            experiment_key,
+            variant_key=data.variant_key,
+            agent_ids=data.agent_ids,
+            limit=data.limit,
+        )
     elif target in {"recent_active", "recent-active"}:
         targets = resolve_recent_active_experiment_targets(
             experiment_key,
@@ -101,7 +106,16 @@ def _resolve_targets_for_request(experiment_key: str, data: ExperimentNotificati
 
 def register_experiment_routes(app: FastAPI, ctx: RouteContext) -> None:
     @app.get("/api/experiments")
-    async def api_list_experiments(status: str | None = None, limit: int = 100, offset: int = 0):
+    async def api_list_experiments(
+        status: str | None = None,
+        limit: int = 100,
+        offset: int = 0,
+        authorization: str = Header(None),
+    ):
+        require_any_capability(
+            authorization,
+            (EXPERIMENT_ADMIN_CAPABILITY, RESEARCH_EXPORTS_CAPABILITY),
+        )
         try:
             return list_experiments(status=status, limit=limit, offset=offset)
         except Exception as exc:
@@ -109,7 +123,7 @@ def register_experiment_routes(app: FastAPI, ctx: RouteContext) -> None:
 
     @app.post("/api/experiments")
     async def api_create_experiment(data: ExperimentCreateRequest, authorization: str = Header(None)):
-        _require_agent(authorization)
+        require_capability(authorization, EXPERIMENT_ADMIN_CAPABILITY)
         try:
             return create_experiment(data)
         except Exception as exc:
@@ -121,14 +135,20 @@ def register_experiment_routes(app: FastAPI, ctx: RouteContext) -> None:
         data: ExperimentStatusRequest,
         authorization: str = Header(None),
     ):
-        _require_agent(authorization)
+        require_capability(authorization, EXPERIMENT_ADMIN_CAPABILITY)
         try:
             return update_experiment_status(experiment_key, data.status)
         except Exception as exc:
             raise _to_http_error(exc)
 
     @app.get("/api/experiments/{experiment_key}/assignments")
-    async def api_experiment_assignments(experiment_key: str, limit: int = 1000, offset: int = 0):
+    async def api_experiment_assignments(
+        experiment_key: str,
+        limit: int = 1000,
+        offset: int = 0,
+        authorization: str = Header(None),
+    ):
+        require_capability(authorization, EXPERIMENT_ADMIN_CAPABILITY)
         try:
             return get_experiment_assignments(experiment_key, limit=limit, offset=offset)
         except Exception as exc:
@@ -140,7 +160,7 @@ def register_experiment_routes(app: FastAPI, ctx: RouteContext) -> None:
         data: ExperimentNotificationRequest,
         authorization: str = Header(None),
     ):
-        actor = _require_agent(authorization)
+        actor = require_capability(authorization, EXPERIMENT_ADMIN_CAPABILITY)
         try:
             targets, target_rule = _resolve_targets_for_request(experiment_key, data)
             validate_notification_request(data.message_type, data.title, data.content)
@@ -200,7 +220,7 @@ def register_experiment_routes(app: FastAPI, ctx: RouteContext) -> None:
         data: ExperimentTaskRequest,
         authorization: str = Header(None),
     ):
-        actor = _require_agent(authorization)
+        actor = require_capability(authorization, EXPERIMENT_ADMIN_CAPABILITY)
         try:
             targets, target_rule = _resolve_targets_for_request(experiment_key, data)
             return create_agent_tasks(
@@ -221,7 +241,7 @@ def register_experiment_routes(app: FastAPI, ctx: RouteContext) -> None:
 
     @app.get("/api/agents/me/experiments")
     async def api_my_experiments(authorization: str = Header(None)):
-        agent = _require_agent(authorization)
+        agent = require_agent(authorization)
         try:
             return {"assignments": variant_for_agent(agent["id"])}
         except Exception as exc:
@@ -229,7 +249,7 @@ def register_experiment_routes(app: FastAPI, ctx: RouteContext) -> None:
 
     @app.post("/api/experiments/{experiment_key}/assign")
     async def api_assign_me_to_experiment(experiment_key: str, authorization: str = Header(None)):
-        agent = _require_agent(authorization)
+        agent = require_agent(authorization)
         try:
             return assign_unit_to_experiment(experiment_key, "agent", agent["id"], assignment_reason="api_request")
         except Exception as exc:
@@ -237,7 +257,7 @@ def register_experiment_routes(app: FastAPI, ctx: RouteContext) -> None:
 
     @app.get("/api/agents/me/rewards")
     async def api_my_rewards(limit: int = 100, offset: int = 0, authorization: str = Header(None)):
-        agent = _require_agent(authorization)
+        agent = require_agent(authorization)
         return {
             "rewards": get_agent_reward_history(agent["id"], limit=limit, offset=offset),
             "limit": max(1, min(limit, 500)),

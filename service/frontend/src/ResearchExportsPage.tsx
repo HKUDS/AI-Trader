@@ -25,10 +25,12 @@ const exportSpecs = [
   }
 ]
 
-export function ResearchExportsPage() {
+export function ResearchExportsPage({ token }: { token: string }) {
   const { language } = useLanguage()
   const [experiments, setExperiments] = useState<any[]>([])
   const [events, setEvents] = useState<any[]>([])
+  const [busyDownload, setBusyDownload] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [filters, setFilters] = useState({
     start_at: '',
     end_at: '',
@@ -55,22 +57,59 @@ export function ResearchExportsPage() {
 
   const loadExperiments = async () => {
     try {
-      const res = await fetch(`${API_BASE}/experiments?limit=200`)
+      const res = await fetch(`${API_BASE}/experiments?limit=200`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'experiment_load_failed')
       setExperiments(data.experiments || [])
     } catch (e) {
       console.error(e)
+      setExperiments([])
     }
   }
 
   const loadEvents = async () => {
     try {
-      const res = await fetch(`${API_BASE}/research/events?${queryString}`)
+      const res = await fetch(`${API_BASE}/research/events?${queryString}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'events_load_failed')
       setEvents(data.events || [])
+      setError(null)
     } catch (e) {
       console.error(e)
       setEvents([])
+      setError(language === 'zh' ? '研究数据加载失败' : 'Failed to load research data')
+    }
+  }
+
+  const downloadCsv = async (filename: string) => {
+    setBusyDownload(filename)
+    try {
+      const res = await fetch(`${API_BASE}/research/${filename}?${queryString}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (!res.ok) {
+        const detail = await res.text()
+        throw new Error(detail || 'download_failed')
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+      setError(null)
+    } catch (e) {
+      console.error(e)
+      setError(language === 'zh' ? 'CSV 下载失败' : 'CSV download failed')
+    } finally {
+      setBusyDownload(null)
     }
   }
 
@@ -92,6 +131,8 @@ export function ResearchExportsPage() {
           </p>
         </div>
       </div>
+
+      {error && <div className="empty-state"><div className="empty-title">{error}</div></div>}
 
       <section className="experiment-panel">
         <div className="experiment-section-header"><h2>{language === 'zh' ? '过滤条件' : 'Filters'}</h2></div>
@@ -125,9 +166,9 @@ export function ResearchExportsPage() {
               <span className="experiment-badge">{spec.filename}</span>
             </div>
             <p>{spec.columns}</p>
-            <a className="btn btn-primary" href={`${API_BASE}/research/${spec.filename}?${queryString}`}>
-              {language === 'zh' ? '下载 CSV' : 'Download CSV'}
-            </a>
+            <button className="btn btn-primary" disabled={busyDownload === spec.filename} onClick={() => downloadCsv(spec.filename)}>
+              {busyDownload === spec.filename ? (language === 'zh' ? '下载中' : 'Downloading') : (language === 'zh' ? '下载 CSV' : 'Download CSV')}
+            </button>
           </article>
         ))}
       </div>

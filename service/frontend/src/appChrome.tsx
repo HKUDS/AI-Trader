@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { Link, useLocation } from 'react-router-dom'
 
-import { useLanguage, useTheme } from './appShared'
+import { type AgentInfo, hasPermission, useLanguage, useTheme } from './appShared'
 
 export function Toast({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) {
   useEffect(() => {
@@ -76,7 +76,7 @@ export function Sidebar({
   onMarkCategoryRead
 }: {
   token: string | null
-  agentInfo: any
+  agentInfo: AgentInfo | null
   onLogout: () => void
   notificationCounts: NotificationCounts
   onMarkCategoryRead: (category: 'discussion' | 'strategy' | 'experiment') => void
@@ -85,14 +85,19 @@ export function Sidebar({
   const { t, language } = useLanguage()
   const [showToken, setShowToken] = useState(false)
 
+  const canUseExperiments = hasPermission(agentInfo, 'experiment_admin')
+  const canUseResearchExports = hasPermission(agentInfo, 'research_exports')
+  const canUseTeamMissionAdmin = hasPermission(agentInfo, 'team_mission_admin')
+  const agentToken = agentInfo?.token
+
   const navItems = [
     { path: '/financial-events', icon: '🗞️', label: language === 'zh' ? '金融事件看板' : 'Financial Events', requiresAuth: false },
     { path: '/market', icon: '📊', label: t.nav.signals, requiresAuth: false },
     { path: '/leaderboard', icon: '🏆', label: language === 'zh' ? '排行榜' : 'Leaderboard', requiresAuth: false },
     { path: '/challenges', icon: '⚔️', label: language === 'zh' ? '挑战赛' : 'Challenges', requiresAuth: false },
-    { path: '/team-missions', icon: '▦', label: language === 'zh' ? '团队任务' : 'Team Missions', requiresAuth: false },
-    { path: '/experiments', icon: '◇', label: language === 'zh' ? '实验' : 'Experiments', requiresAuth: true, badge: notificationCounts.experiment, category: 'experiment' as const },
-    { path: '/research-exports', icon: '⇩', label: language === 'zh' ? '研究导出' : 'Research Exports', requiresAuth: false },
+    ...(canUseTeamMissionAdmin ? [{ path: '/team-missions', icon: '▦', label: language === 'zh' ? '团队任务' : 'Team Missions', requiresAuth: true }] : []),
+    ...(canUseExperiments ? [{ path: '/experiments', icon: '◇', label: language === 'zh' ? '实验' : 'Experiments', requiresAuth: true, badge: notificationCounts.experiment, category: 'experiment' as const }] : []),
+    ...(canUseResearchExports ? [{ path: '/research-exports', icon: '⇩', label: language === 'zh' ? '研究导出' : 'Research Exports', requiresAuth: true }] : []),
     { path: '/copytrading', icon: '📋', label: language === 'zh' ? '跟单' : 'Copy Trading', requiresAuth: true },
     { path: '/strategies', icon: '📈', label: t.nav.strategies, requiresAuth: false, badge: notificationCounts.strategy, category: 'strategy' as const },
     { path: '/discussions', icon: '💬', label: t.nav.discussions, requiresAuth: false, badge: notificationCounts.discussion, category: 'discussion' as const },
@@ -181,7 +186,7 @@ export function Sidebar({
               )}
             </div>
 
-            {agentInfo.token && (
+            {agentToken && (
               <div style={{ marginTop: '12px', padding: '8px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                   <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
@@ -210,11 +215,11 @@ export function Sidebar({
                     wordBreak: 'break-all'
                   }}
                   onClick={() => {
-                    navigator.clipboard.writeText(agentInfo.token)
+                    navigator.clipboard.writeText(agentToken)
                     alert(language === 'zh' ? 'Token 已复制到剪贴板' : 'Token copied to clipboard')
                   }}
                 >
-                  {showToken ? agentInfo.token : agentInfo.token.substring(0, 10) + '***'}
+                  {showToken ? agentToken : agentToken.substring(0, 10) + '***'}
                 </div>
               </div>
             )}

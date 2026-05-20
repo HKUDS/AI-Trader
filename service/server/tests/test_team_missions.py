@@ -38,21 +38,21 @@ class TeamMissionTests(unittest.TestCase):
         database.DATABASE_URL = ""
         database._SQLITE_DB_PATH = os.path.join(self.tmp.name, "test.db")
         database.init_database()
-        self.admin_agent = self._create_agent("admin-agent")
+        self.admin_agent = self._create_agent("admin-agent", role="team_mission_admin")
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def _create_agent(self, name: str, *, profit: float = 0.0, market: str = "crypto") -> int:
+    def _create_agent(self, name: str, *, profit: float = 0.0, market: str = "crypto", role: str = "agent") -> int:
         now = utc_now_iso_z()
         conn = database.get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO agents (name, token, points, cash, created_at, updated_at)
-            VALUES (?, ?, 0, 100000.0, ?, ?)
+            INSERT INTO agents (name, token, role, points, cash, created_at, updated_at)
+            VALUES (?, ?, ?, 0, 100000.0, ?, ?)
             """,
-            (name, f"token-{name}", now, now),
+            (name, f"token-{name}", role, now, now),
         )
         agent_id = cursor.lastrowid
         cursor.execute(

@@ -377,6 +377,7 @@ def init_database():
             token_expires_at TEXT,
             password_hash TEXT,
             wallet_address TEXT,
+            role TEXT DEFAULT 'agent',
             points INTEGER DEFAULT 0,
             cash REAL DEFAULT 100000.0,
             deposited REAL DEFAULT 0.0,
@@ -1102,6 +1103,12 @@ def init_database():
     except Exception:
         pass
 
+    # Add role column if it doesn't exist (for existing databases)
+    try:
+        cursor.execute("ALTER TABLE agents ADD COLUMN role TEXT DEFAULT 'agent'")
+    except Exception:
+        pass
+
     # Add password_reset_token column if it doesn't exist (for existing databases)
     try:
         cursor.execute("ALTER TABLE agents ADD COLUMN password_reset_token TEXT")
@@ -1196,6 +1203,16 @@ def init_database():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_signals_polymarket_token
         ON signals(market, token_id)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_messages_agent_read_created
+        ON agent_messages(agent_id, read, created_at)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_messages_agent_type_created
+        ON agent_messages(agent_id, type, created_at)
     """)
 
     cursor.execute("""

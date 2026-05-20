@@ -57,8 +57,11 @@ export function ExperimentAdminPage({ token }: ExperimentAdminPageProps) {
   const loadExperiments = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`${API_BASE}/experiments?limit=100`)
+      const res = await fetch(`${API_BASE}/experiments?limit=100`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      })
       const data = await res.json()
+      if (!res.ok) throw new Error(data.detail || 'experiment_load_failed')
       setExperiments(data.experiments || [])
       if (!notificationForm.experiment_key && data.experiments?.[0]?.experiment_key) {
         setNotificationForm((prev) => ({ ...prev, experiment_key: data.experiments[0].experiment_key }))
@@ -73,7 +76,9 @@ export function ExperimentAdminPage({ token }: ExperimentAdminPageProps) {
 
   const loadAssignments = async (experimentKey: string) => {
     try {
-      const res = await fetch(`${API_BASE}/experiments/${experimentKey}/assignments?limit=500`)
+      const res = await fetch(`${API_BASE}/experiments/${experimentKey}/assignments?limit=500`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      })
       const data = await res.json()
       if (!res.ok) throw new Error(data.detail || 'assignment_load_failed')
       setSelectedExperiment(data.experiment)

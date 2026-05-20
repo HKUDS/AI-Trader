@@ -46,6 +46,20 @@ class ExperimentEventRouteTests(unittest.TestCase):
         conn.close()
         return agent_id
 
+    def _assign(self, experiment_key: str, agent_id: int, variant_key: str) -> None:
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO experiment_assignments
+            (experiment_key, unit_type, unit_id, variant_key, assignment_reason, metadata_json, created_at)
+            VALUES (?, 'agent', ?, ?, 'fixture', '{}', ?)
+            """,
+            (experiment_key, agent_id, variant_key, utc_now_iso_z()),
+        )
+        conn.commit()
+        conn.close()
+
     def test_strategy_discussion_reply_and_accept_write_events_with_json_metadata(self):
         create_experiment({
             "experiment_key": "event-context",
@@ -136,6 +150,60 @@ class ExperimentEventRouteTests(unittest.TestCase):
         )
         self.assertGreaterEqual(cursor.fetchone()["count"], 4)
         conn.close()
+
+    def test_copied_realtime_signal_event_uses_follower_experiment_context(self):
+        create_experiment({
+            "experiment_key": "copy-context",
+            "title": "Copy context",
+            "variants_json": [{"key": "control", "weight": 1}, {"key": "treatment", "weight": 1}],
+        })
+        self._assign("copy-context", self.author_id, "control")
+        self._assign("copy-context", self.reply_agent_id, "treatment")
+
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO subscriptions (leader_id, follower_id, status, created_at) VALUES (?, ?, 'active', ?)",
+            (self.author_id, self.reply_agent_id, utc_now_iso_z()),
+        )
+        conn.commit()
+        conn.close()
+
+        response = self.client.post(
+            "/api/signals/realtime",
+            headers={"Authorization": "Bearer token-author"},
+            json={
+                "market": "crypto",
+                "symbol": "BTC",
+                "action": "buy",
+                "quantity": 0.01,
+                "price": 100,
+                "content": "BTC copy attribution check.",
+                "executed_at": utc_now_iso_z(),
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["follower_count"], 1)
+
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT actor_agent_id, experiment_key, variant_key, metadata_json
+            FROM experiment_events
+            WHERE event_type = 'signal_published'
+              AND actor_agent_id = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (self.reply_agent_id,),
+        )
+        row = cursor.fetchone()
+        conn.close()
+
+        self.assertEqual(row["experiment_key"], "copy-context")
+        self.assertEqual(row["variant_key"], "treatment")
+        self.assertEqual(json.loads(row["metadata_json"])["copied_from_agent_id"], self.author_id)
 
 
 if __name__ == "__main__":

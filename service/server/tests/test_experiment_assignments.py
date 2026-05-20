@@ -104,6 +104,33 @@ class ExperimentAssignmentTests(unittest.TestCase):
             """,
             (self.agent_ids[0], now, now, now),
         )
+        cursor.execute(
+            """
+            INSERT INTO experiment_events
+            (event_id, event_type, actor_agent_id, object_type, object_id,
+             experiment_key, variant_key, metadata_json, created_at)
+            VALUES ('metric-heartbeat', 'agent_heartbeat', ?, 'agent', ?,
+                    'metric-summary', ?, '{}', ?)
+            """,
+            (self.agent_ids[0], str(self.agent_ids[0]), assignment["variant_key"], now),
+        )
+        cursor.execute(
+            """
+            INSERT INTO experiment_events
+            (event_id, event_type, actor_agent_id, object_type, object_id,
+             experiment_key, variant_key, metadata_json, created_at)
+            VALUES ('metric-signal', 'signal_published', ?, 'signal', '101',
+                    'metric-summary', ?, '{}', ?)
+            """,
+            (self.agent_ids[0], assignment["variant_key"], now),
+        )
+        cursor.execute(
+            """
+            INSERT INTO agent_messages (agent_id, type, content, data, read, created_at)
+            VALUES (?, 'experiment_announcement', 'read diagnostic', '{}', 1, ?)
+            """,
+            (self.agent_ids[0], now),
+        )
         conn.commit()
         conn.close()
 
@@ -115,6 +142,15 @@ class ExperimentAssignmentTests(unittest.TestCase):
         self.assertEqual(variant_row["agent_count"], 1)
         self.assertEqual(variant_row["trade_count"], 4)
         self.assertAlmostEqual(variant_row["quality_score_avg"], 4.25)
+        self.assertEqual(variant_row["primary_metric_family"], "active_agent_behavior")
+        self.assertEqual(variant_row["read_receipts_role"], "diagnostic_only")
+        self.assertFalse(variant_row["message_read_state_required"])
+        self.assertEqual(variant_row["active_agent_count_24h"], 1)
+        self.assertEqual(variant_row["heartbeat_count_24h"], 1)
+        self.assertEqual(variant_row["signal_count_24h"], 1)
+        self.assertEqual(variant_row["read_receipt_message_count"], 1)
+        self.assertEqual(summary["metric_policy"]["primary_metric_family"], "active_agent_behavior")
+        self.assertEqual(summary["metric_policy"]["read_receipts_role"], "diagnostic_only")
 
     def test_enrollment_limit_blocks_new_assignments_but_keeps_existing(self):
         create_experiment({

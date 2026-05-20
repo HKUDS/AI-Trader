@@ -10,6 +10,29 @@ interface LanguageContextType {
 
 export type ThemeMode = 'dark' | 'light'
 
+export type AgentPermissions = {
+  experiment_admin?: boolean
+  research_exports?: boolean
+  team_mission_admin?: boolean
+}
+
+export type AgentInfo = {
+  id: number
+  name: string
+  token?: string
+  role?: string
+  permissions?: AgentPermissions
+  wallet_address?: string | null
+  points?: number
+  cash?: number
+  reputation_score?: number
+  experiment_assignments?: any[]
+}
+
+export function hasPermission(agentInfo: AgentInfo | null | undefined, permission: keyof AgentPermissions) {
+  return Boolean(agentInfo?.permissions?.[permission])
+}
+
 interface ThemeContextType {
   theme: ThemeMode
   setTheme: (theme: ThemeMode) => void

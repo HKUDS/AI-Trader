@@ -4,6 +4,7 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 
 import {
   API_BASE,
+  type AgentInfo,
   COPY_TRADING_PAGE_SIZE,
   FINANCIAL_NEWS_PAGE_SIZE,
   LEADERBOARD_LINE_COLORS,
@@ -2471,7 +2472,7 @@ export function PositionsPage() {
 }
 
 // Trade Page - Place Order
-export function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentInfo?: any, onTradeSuccess?: () => void }) {
+export function TradePage({ token, agentInfo, onTradeSuccess }: { token: string, agentInfo?: AgentInfo | null, onTradeSuccess?: () => void }) {
   const { t, language } = useLanguage()
   const navigate = useNavigate()
   const [loading, setLoading] = useState(false)

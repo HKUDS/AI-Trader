@@ -47,15 +47,15 @@ class ResearchExportTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def _create_agent(self, name: str) -> int:
+    def _create_agent(self, name: str, role: str = "agent") -> int:
         conn = database.get_db_connection()
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO agents (name, token, points, cash, created_at, updated_at)
-            VALUES (?, ?, 0, 100000.0, ?, ?)
+            INSERT INTO agents (name, token, role, points, cash, created_at, updated_at)
+            VALUES (?, ?, ?, 0, 100000.0, ?, ?)
             """,
-            (name, f"token-{name}", utc_now_iso_z(), utc_now_iso_z()),
+            (name, f"token-{name}", role, utc_now_iso_z(), utc_now_iso_z()),
         )
         agent_id = cursor.lastrowid
         conn.commit()
@@ -340,19 +340,42 @@ class ResearchExportTests(unittest.TestCase):
             metadata={"token": "hidden", "safe": "ok"},
         )
 
-        csv_response = self.client.get("/api/research/export/events.csv?experiment_key=api-exp")
+        no_auth_response = self.client.get("/api/research/export/events.csv?experiment_key=api-exp")
+        self.assertEqual(no_auth_response.status_code, 401)
+
+        regular_response = self.client.get(
+            "/api/research/export/events.csv?experiment_key=api-exp",
+            headers={"Authorization": "Bearer token-export-agent-1"},
+        )
+        self.assertEqual(regular_response.status_code, 403)
+
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE agents SET role = 'researcher' WHERE id = ?", (self.agent_1,))
+        conn.commit()
+        conn.close()
+
+        auth_headers = {"Authorization": "Bearer token-export-agent-1"}
+
+        csv_response = self.client.get(
+            "/api/research/export/events.csv?experiment_key=api-exp",
+            headers=auth_headers,
+        )
         self.assertEqual(csv_response.status_code, 200)
         self.assertIn("event_id", csv_response.text.splitlines()[0])
         self.assertNotIn("hidden", csv_response.text)
 
-        json_response = self.client.get("/api/research/export/events.json?experiment_key=api-exp")
+        json_response = self.client.get(
+            "/api/research/export/events.json?experiment_key=api-exp",
+            headers=auth_headers,
+        )
         self.assertEqual(json_response.status_code, 200)
         payload = json_response.json()
         self.assertEqual(payload["dataset"], "events.csv")
         self.assertIn("event_id", payload["columns"])
         self.assertEqual(payload["rows"][0]["experiment_key"], "api-exp")
 
-        schema_response = self.client.get("/api/research/schema/events")
+        schema_response = self.client.get("/api/research/schema/events", headers=auth_headers)
         self.assertEqual(schema_response.status_code, 200)
         schema = schema_response.json()
         self.assertEqual(schema["title"], "events.csv research export row")
