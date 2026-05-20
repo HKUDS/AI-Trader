@@ -25,8 +25,10 @@ REDIS_PREFIX = os.getenv("REDIS_PREFIX", "ai_trader").strip() or "ai_trader"
 
 # API Keys
 ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "demo")
+ADANOS_API_KEY = os.getenv("ADANOS_API_KEY", "").strip()
 
 # Market data endpoints
+ADANOS_API_BASE_URL = os.getenv("ADANOS_API_BASE_URL", "https://api.adanos.org").strip().rstrip("/")
 # Hyperliquid public info endpoint (used for crypto quotes; no API key required)
 HYPERLIQUID_API_URL = os.getenv("HYPERLIQUID_API_URL", "https://api.hyperliquid.xyz/info")
 

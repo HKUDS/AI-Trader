@@ -74,6 +74,9 @@ Use when you want a small set of server-generated stock analysis snapshots for t
 `GET /api/market-intel/stocks/{symbol}/latest`
 
 Use when you need the latest read-only analysis snapshot for one stock.
+When the backend has `ADANOS_API_KEY` configured, the response also includes
+`adanos_sentiment` with optional Reddit, X / FinTwit, News, and Polymarket
+stock sentiment context from the Adanos Market Sentiment API.
 
 ### Stock Analysis History
 
@@ -165,6 +168,8 @@ if overview.get("available"):
 ## Decision Rules
 
 - Use this skill when you need market context
+- Treat `adanos_sentiment` as optional alternative-data context, never as the
+  sole reason to trade
 - Use `tradesync` when you need to publish signals
 - Use `copytrade` when you need follow/unfollow behavior
 - Use `heartbeat` when you need messages or tasks

@@ -42,16 +42,72 @@ def _snapshot_payload(symbol: str = "HD") -> dict:
 class MarketIntelLatestPayloadTests(unittest.TestCase):
     @patch("market_intel.set_json")
     @patch("market_intel.get_json", return_value=None)
+    @patch("market_intel.ADANOS_API_KEY", "")
+    def test_adanos_sentiment_is_disabled_without_api_key(self, _mock_get_json, _mock_set_json) -> None:
+        payload = market_intel._get_adanos_stock_sentiment_payload("AAPL")
+
+        self.assertFalse(payload["available"])
+        self.assertEqual(payload["reason"], "ADANOS_API_KEY is not configured")
+
+    @patch("market_intel.set_json")
+    @patch("market_intel.get_json", return_value=None)
+    @patch("market_intel.ADANOS_API_KEY", "sk_live_test")
+    @patch("market_intel.requests.get")
+    def test_adanos_sentiment_payload_collects_available_sources(
+        self,
+        mock_get,
+        _mock_get_json,
+        _mock_set_json,
+    ) -> None:
+        class Response:
+            def __init__(self, payload: dict) -> None:
+                self._payload = payload
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return self._payload
+
+        mock_get.side_effect = [
+            Response({
+                "found": True,
+                "sentiment_score": 0.22,
+                "buzz_score": 72.4,
+                "mentions": 120,
+                "bullish_pct": 48,
+                "bearish_pct": 19,
+                "trend": "rising",
+                "period_days": 7,
+            }),
+            Response({"found": False}),
+            Response({"found": False}),
+            Response({"found": False}),
+        ]
+
+        payload = market_intel._get_adanos_stock_sentiment_payload("TSLA")
+
+        self.assertTrue(payload["available"])
+        self.assertEqual(payload["source"], "Adanos Market Sentiment API")
+        self.assertEqual(payload["sources"][0]["platform"], "reddit")
+        self.assertEqual(payload["sources"][0]["sentiment_score"], 0.22)
+        self.assertEqual(mock_get.call_count, 4)
+
+    @patch("market_intel.set_json")
+    @patch("market_intel.get_json", return_value=None)
     @patch("market_intel._get_stock_quote_payload")
+    @patch("market_intel._get_adanos_stock_sentiment_payload")
     @patch("market_intel._get_stock_analysis_snapshot_payload")
     def test_latest_payload_prefers_intraday_quote(
         self,
         mock_snapshot_payload,
+        mock_adanos_payload,
         mock_quote_payload,
         _mock_get_json,
         _mock_set_json,
     ) -> None:
         mock_snapshot_payload.return_value = _snapshot_payload("HD")
+        mock_adanos_payload.return_value = {"available": False, "reason": "ADANOS_API_KEY is not configured"}
         mock_quote_payload.return_value = {
             "available": True,
             "current_price": 352.11,
@@ -68,19 +124,23 @@ class MarketIntelLatestPayloadTests(unittest.TestCase):
         self.assertFalse(payload["price_stale"])
         self.assertEqual(payload["price_status"], "realtime")
         self.assertEqual(payload["analysis"]["as_of"], "2026-04-17")
+        self.assertFalse(payload["adanos_sentiment"]["available"])
 
     @patch("market_intel.set_json")
     @patch("market_intel.get_json", return_value=None)
     @patch("market_intel._get_stock_quote_payload", return_value=None)
+    @patch("market_intel._get_adanos_stock_sentiment_payload")
     @patch("market_intel._get_stock_analysis_snapshot_payload")
     def test_latest_payload_falls_back_to_daily_snapshot_when_quote_missing(
         self,
         mock_snapshot_payload,
+        mock_adanos_payload,
         _mock_quote_payload,
         _mock_get_json,
         _mock_set_json,
     ) -> None:
         mock_snapshot_payload.return_value = _snapshot_payload("AAPL")
+        mock_adanos_payload.return_value = {"available": False, "reason": "ADANOS_API_KEY is not configured"}
 
         with patch("market_intel._utc_now", return_value=datetime(2026, 4, 20, 14, 40, tzinfo=timezone.utc)):
             payload = market_intel.get_stock_analysis_latest_payload("AAPL")

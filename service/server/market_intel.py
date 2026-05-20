@@ -29,7 +29,7 @@ except ImportError:  # pragma: no cover - Python < 3.9 fallback
     ZoneInfo = None
 
 from cache import delete_pattern, get_json, set_json
-from config import ALPHA_VANTAGE_API_KEY
+from config import ADANOS_API_BASE_URL, ADANOS_API_KEY, ALPHA_VANTAGE_API_KEY
 from database import get_db_connection
 
 ALPHA_VANTAGE_BASE_URL = os.getenv("ALPHA_VANTAGE_BASE_URL", "https://www.alphavantage.co/query").strip()
@@ -53,6 +53,8 @@ STOCK_ANALYSIS_LATEST_CACHE_TTL_SECONDS = max(30, int(os.getenv("MARKET_INTEL_ST
 STOCK_ANALYSIS_FEATURED_CACHE_TTL_SECONDS = max(30, int(os.getenv("MARKET_INTEL_STOCK_FEATURED_CACHE_TTL", "300")))
 STOCK_QUOTE_CACHE_TTL_SECONDS = max(30, int(os.getenv("MARKET_INTEL_STOCK_QUOTE_CACHE_TTL", "300")))
 STOCK_QUOTE_FAILURE_CACHE_TTL_SECONDS = max(30, int(os.getenv("MARKET_INTEL_STOCK_QUOTE_FAILURE_CACHE_TTL", "60")))
+ADANOS_SENTIMENT_CACHE_TTL_SECONDS = max(30, int(os.getenv("ADANOS_SENTIMENT_CACHE_TTL_SECONDS", "300")))
+ADANOS_SENTIMENT_TIMEOUT_SECONDS = max(1, int(os.getenv("ADANOS_SENTIMENT_TIMEOUT_SECONDS", "4")))
 STOCK_QUOTE_STALE_AFTER_SECONDS = max(
     STOCK_QUOTE_CACHE_TTL_SECONDS,
     int(os.getenv("MARKET_INTEL_STOCK_QUOTE_STALE_AFTER_SECONDS", "900")),
@@ -71,6 +73,7 @@ FALLBACK_STOCK_ANALYSIS_SYMBOLS = [
     for symbol in os.getenv("MARKET_INTEL_STOCK_SYMBOLS", "NVDA,AAPL,MSFT,AMZN,TSLA,META").split(",")
     if symbol.strip()
 ]
+ADANOS_STOCK_SENTIMENT_PLATFORMS = ("reddit", "x", "news", "polymarket")
 
 NEWS_CATEGORY_DEFINITIONS: dict[str, dict[str, str]] = {
     "equities": {
@@ -367,6 +370,73 @@ def _decorate_stock_analysis_with_quote(base_payload: dict[str, Any]) -> dict[st
     payload["price_as_of"] = quote_payload.get("price_as_of")
     payload["price_source"] = quote_payload.get("price_source")
     payload.update(_build_stock_price_metadata(payload.get("price_as_of"), payload.get("price_source")))
+    return payload
+
+
+def _normalize_adanos_stock_sentiment(platform: str, payload: dict[str, Any]) -> Optional[dict[str, Any]]:
+    if not isinstance(payload, dict) or payload.get("found") is False:
+        return None
+    return {
+        "platform": platform,
+        "sentiment_score": payload.get("sentiment_score"),
+        "buzz_score": payload.get("buzz_score"),
+        "mentions": payload.get("mentions"),
+        "bullish_pct": payload.get("bullish_pct"),
+        "bearish_pct": payload.get("bearish_pct"),
+        "trend": payload.get("trend"),
+        "period_days": payload.get("period_days"),
+    }
+
+
+def _fetch_adanos_stock_sentiment(symbol: str, platform: str) -> Optional[dict[str, Any]]:
+    response = requests.get(
+        f"{ADANOS_API_BASE_URL}/{platform}/stocks/v1/stock/{symbol}",
+        headers={"X-API-Key": ADANOS_API_KEY},
+        timeout=ADANOS_SENTIMENT_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    return _normalize_adanos_stock_sentiment(platform, payload)
+
+
+def _get_adanos_stock_sentiment_payload(symbol: str) -> dict[str, Any]:
+    symbol = symbol.strip().upper()
+    if not ADANOS_API_KEY:
+        return {"available": False, "reason": "ADANOS_API_KEY is not configured"}
+
+    cache_key = _cache_key("adanos", "stock_sentiment_v1", symbol)
+    cached = get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
+    sources: list[dict[str, Any]] = []
+    errors: dict[str, str] = {}
+    for platform in ADANOS_STOCK_SENTIMENT_PLATFORMS:
+        try:
+            normalized = _fetch_adanos_stock_sentiment(symbol, platform)
+            if normalized:
+                sources.append(normalized)
+        except Exception as exc:
+            errors[platform] = str(exc)
+
+    payload = {
+        "available": bool(sources),
+        "source": "Adanos Market Sentiment API",
+        "docs_url": "https://api.adanos.org/docs",
+        "sources": sources,
+    }
+    if errors and not sources:
+        payload["errors"] = errors
+
+    set_json(cache_key, payload, ttl_seconds=ADANOS_SENTIMENT_CACHE_TTL_SECONDS)
+    return payload
+
+
+def _decorate_stock_analysis_with_adanos_sentiment(base_payload: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(base_payload)
+    if not payload.get("available"):
+        return payload
+    payload["adanos_sentiment"] = _get_adanos_stock_sentiment_payload(payload["symbol"])
     return payload
 
 
@@ -1629,12 +1699,14 @@ def _get_stock_analysis_snapshot_payload(symbol: str) -> dict[str, Any]:
 
 def get_stock_analysis_latest_payload(symbol: str) -> dict[str, Any]:
     symbol = symbol.strip().upper()
-    cache_key = _cache_key("stocks", "latest_v2", symbol)
+    cache_key = _cache_key("stocks", "latest_v3", symbol)
     cached = get_json(cache_key)
     if isinstance(cached, dict):
         return cached
 
-    payload = _decorate_stock_analysis_with_quote(_get_stock_analysis_snapshot_payload(symbol))
+    payload = _decorate_stock_analysis_with_adanos_sentiment(
+        _decorate_stock_analysis_with_quote(_get_stock_analysis_snapshot_payload(symbol))
+    )
     set_json(cache_key, payload, ttl_seconds=STOCK_ANALYSIS_LATEST_CACHE_TTL_SECONDS)
     return payload
 
