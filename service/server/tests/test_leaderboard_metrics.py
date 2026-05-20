@@ -75,6 +75,33 @@ class LeaderboardMetricTests(unittest.TestCase):
         self.assertEqual(top_agents[0]["name"], "high-quality-low-return")
         self.assertEqual(top_agents[0]["quality_score_avg"], 5)
 
+    def test_active_leaderboard_exclusion_is_omitted_before_pagination(self):
+        excluded_agent = self._create_agent("excluded-high-return", 300000.0)
+        eligible_agent = self._create_agent("eligible-low-return", 100000.0)
+
+        now = utc_now_iso_z()
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO agent_leaderboard_exclusions
+                (agent_id, reason, details_json, active, created_at, updated_at)
+            VALUES (?, 'unit_test', '{}', 1, ?, ?)
+            """,
+            (excluded_agent, now, now),
+        )
+        conn.commit()
+        conn.close()
+
+        response = self.client.get("/api/profit/history?limit=10&offset=0&include_history=false")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        agent_ids = [agent["agent_id"] for agent in payload["top_agents"]]
+        self.assertNotIn(excluded_agent, agent_ids)
+        self.assertIn(eligible_agent, agent_ids)
+        self.assertEqual(payload["total"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

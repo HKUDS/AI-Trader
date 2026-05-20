@@ -95,6 +95,12 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             """
             SELECT COUNT(*) AS total
             FROM agents
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM agent_leaderboard_exclusions ale
+                WHERE ale.agent_id = agents.id
+                  AND COALESCE(ale.active, 1) = 1
+            )
             """
         )
         total_row = cursor.fetchone()
@@ -123,6 +129,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
                 SELECT
                     a.id AS agent_id,
                     a.name,
+                    ale.reason AS leaderboard_exclusion_reason,
                     COALESCE(a.deposited, 0) AS deposited,
                     (
                         COALESCE(a.cash, 0) +
@@ -165,8 +172,12 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
                         WHERE ops.agent_id = a.id AND ops.message_type = 'operation'
                     ) AS trade_count
                 FROM agents a
+                LEFT JOIN agent_leaderboard_exclusions ale
+                  ON ale.agent_id = a.id
+                 AND COALESCE(ale.active, 1) = 1
                 LEFT JOIN positions p ON p.agent_id = a.id
-                GROUP BY a.id, a.name, a.cash, a.deposited
+                WHERE ale.agent_id IS NULL
+                GROUP BY a.id, a.name, a.cash, a.deposited, ale.reason
             )
             SELECT
                 ap.*,
@@ -198,6 +209,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             {
                 'agent_id': row['agent_id'],
                 'name': row['name'],
+                'leaderboard_exclusion_reason': row['leaderboard_exclusion_reason'],
                 'deposited': row['deposited'],
                 'profit': clamp_profit_for_display(row['profit']),
                 'profit_percent': row['profit_percent'] or 0,
@@ -369,6 +381,12 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             """
             SELECT id, name
             FROM agents
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM agent_leaderboard_exclusions ale
+                WHERE ale.agent_id = agents.id
+                  AND COALESCE(ale.active, 1) = 1
+            )
             """
         )
         agents = cursor.fetchall()

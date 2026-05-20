@@ -47,6 +47,15 @@ from routes_shared import (
 INITIAL_CAPITAL = 100000.0
 EPSILON = 1e-9
 BACKUP_DIR = SERVER_DIR / "data" / "repair_backups"
+US_STOCK_PLACEHOLDER_SYMBOLS = {"PORTFOLIO", "STRATEGY"}
+
+
+def normalized_market(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def normalized_symbol(value: Any) -> str:
+    return str(value or "").strip().upper()
 
 
 @dataclass
@@ -101,19 +110,38 @@ def instrument_key(row: dict[str, Any]) -> tuple[str, str, str, str]:
 
 
 def suspicious_reasons(signal: dict[str, Any]) -> list[str]:
-    market = str(signal.get("market") or "").lower()
-    symbol = str(signal.get("symbol") or "").upper()
+    market = normalized_market(signal.get("market"))
+    symbol = normalized_symbol(signal.get("symbol"))
     entry_price = to_float(signal.get("entry_price"))
+    quantity = abs(to_float(signal.get("quantity")))
+    position_current_price = to_float(signal.get("position_current_price"), default=0.0)
 
     reasons: list[str] = []
     if market == "polymarket" and entry_price > 1.0 + EPSILON:
         reasons.append("polymarket_price_gt_1")
     if market == "crypto" and symbol in {"AAPL", "TSLA"}:
         reasons.append("stock_symbol_in_crypto_market")
-    if market == "crypto" and symbol == "BTC" and entry_price < 1000.0 - EPSILON:
+    if market == "crypto" and symbol in {"BTC", "BTCUSDT"} and entry_price < 1000.0 - EPSILON:
         reasons.append("btc_price_too_low")
-    if market == "crypto" and symbol == "ETH" and entry_price < 100.0 - EPSILON:
+    if market == "crypto" and symbol in {"ETH", "ETHUSDT"} and entry_price < 100.0 - EPSILON:
         reasons.append("eth_price_too_low")
+    if market == "crypto" and symbol in {"BNB", "BNBUSDT"} and entry_price < 10.0 - EPSILON:
+        reasons.append("bnb_price_too_low")
+    if market == "crypto" and symbol in {"SOL", "SOLUSDT"} and entry_price < 10.0 - EPSILON:
+        reasons.append("sol_price_too_low")
+    if market == "crypto" and symbol == "HYPE" and entry_price < 10.0 - EPSILON:
+        reasons.append("hype_price_too_low")
+    if market == "crypto" and symbol in {"PAXG", "PAXGUSD"} and entry_price < 1000.0 - EPSILON:
+        reasons.append("paxg_price_too_low")
+    if (
+        market == "us-stock"
+        and symbol not in US_STOCK_PLACEHOLDER_SYMBOLS
+        and entry_price > EPSILON
+        and position_current_price > EPSILON
+        and position_current_price / entry_price >= 20.0
+        and abs(position_current_price - entry_price) * quantity >= 5000.0
+    ):
+        reasons.append("us_stock_entry_price_outlier")
     return reasons
 
 
@@ -126,17 +154,46 @@ def load_suspicious_operation_signals(cursor: Any) -> list[dict[str, Any]]:
     rows = fetch_all(
         cursor,
         """
+        WITH position_price_refs AS (
+            SELECT
+                agent_id,
+                LOWER(market) AS market_key,
+                UPPER(symbol) AS symbol_key,
+                COALESCE(token_id, '') AS token_key,
+                MAX(current_price) AS current_price
+            FROM positions
+            WHERE current_price IS NOT NULL
+            GROUP BY agent_id, LOWER(market), UPPER(symbol), COALESCE(token_id, '')
+        )
         SELECT
             s.*,
-            a.name AS agent_name
+            a.name AS agent_name,
+            ppr.current_price AS position_current_price
         FROM signals s
         JOIN agents a ON a.id = s.agent_id
+        LEFT JOIN position_price_refs ppr
+          ON ppr.agent_id = s.agent_id
+         AND ppr.market_key = LOWER(s.market)
+         AND ppr.symbol_key = UPPER(s.symbol)
+         AND ppr.token_key = COALESCE(s.token_id, '')
         WHERE s.message_type = 'operation'
           AND (
-            (s.market = 'polymarket' AND s.entry_price > 1.0)
-            OR (s.market = 'crypto' AND s.symbol IN ('AAPL', 'TSLA'))
-            OR (s.market = 'crypto' AND s.symbol = 'BTC' AND s.entry_price < 1000.0)
-            OR (s.market = 'crypto' AND s.symbol = 'ETH' AND s.entry_price < 100.0)
+            (LOWER(s.market) = 'polymarket' AND s.entry_price > 1.0)
+            OR (LOWER(s.market) = 'crypto' AND UPPER(s.symbol) IN ('AAPL', 'TSLA'))
+            OR (LOWER(s.market) = 'crypto' AND UPPER(s.symbol) IN ('BTC', 'BTCUSDT') AND s.entry_price < 1000.0)
+            OR (LOWER(s.market) = 'crypto' AND UPPER(s.symbol) IN ('ETH', 'ETHUSDT') AND s.entry_price < 100.0)
+            OR (LOWER(s.market) = 'crypto' AND UPPER(s.symbol) IN ('BNB', 'BNBUSDT') AND s.entry_price < 10.0)
+            OR (LOWER(s.market) = 'crypto' AND UPPER(s.symbol) IN ('SOL', 'SOLUSDT') AND s.entry_price < 10.0)
+            OR (LOWER(s.market) = 'crypto' AND UPPER(s.symbol) = 'HYPE' AND s.entry_price < 10.0)
+            OR (LOWER(s.market) = 'crypto' AND UPPER(s.symbol) IN ('PAXG', 'PAXGUSD') AND s.entry_price < 1000.0)
+            OR (
+                LOWER(s.market) = 'us-stock'
+                AND UPPER(s.symbol) NOT IN ('PORTFOLIO', 'STRATEGY')
+                AND s.entry_price > 0
+                AND ppr.current_price IS NOT NULL
+                AND ppr.current_price / s.entry_price >= 20.0
+                AND ABS(ppr.current_price - s.entry_price) * COALESCE(s.quantity, 0) >= 5000.0
+            )
           )
         ORDER BY a.name, COALESCE(s.executed_at, s.created_at), s.id
         """,
@@ -144,6 +201,15 @@ def load_suspicious_operation_signals(cursor: Any) -> list[dict[str, Any]]:
     for row in rows:
         row["suspicious_reasons"] = suspicious_reasons(row)
     return rows
+
+
+def filter_suspicious_rows(
+    rows: list[dict[str, Any]],
+    target_agent_ids: set[int] | None,
+) -> list[dict[str, Any]]:
+    if not target_agent_ids:
+        return rows
+    return [row for row in rows if int(row["agent_id"]) in target_agent_ids]
 
 
 def load_agent_rows(cursor: Any, agent_ids: list[int]) -> list[dict[str, Any]]:
@@ -343,11 +409,11 @@ def invalidate_caches() -> None:
     delete(TRENDING_CACHE_KEY)
 
 
-def apply_cleanup() -> dict[str, Any]:
+def apply_cleanup(target_agent_ids: set[int] | None = None) -> dict[str, Any]:
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    suspicious_rows = load_suspicious_operation_signals(cursor)
+    suspicious_rows = filter_suspicious_rows(load_suspicious_operation_signals(cursor), target_agent_ids)
     if not suspicious_rows:
         conn.close()
         return {
@@ -374,7 +440,7 @@ def apply_cleanup() -> dict[str, Any]:
         suspicious_ids_by_agent[int(row["agent_id"])].add(int(row["id"]))
 
     rebuilt_agents: list[dict[str, Any]] = []
-    deleted_signal_ids: set[int] = set(suspicious_ids)
+    deleted_row_ids: set[int] = set(suspicious_ids)
     skipped_rows_by_agent: dict[int, list[dict[str, Any]]] = {}
 
     for agent_id in sorted(agent_rows):
@@ -385,7 +451,7 @@ def apply_cleanup() -> dict[str, Any]:
             previous_positions.get(agent_id, {}),
         )
         skipped_rows_by_agent[agent_id] = skipped_rows
-        deleted_signal_ids.update(int(item["id"]) for item in skipped_rows)
+        deleted_row_ids.update(int(item["id"]) for item in skipped_rows)
         rebuilt_agents.append(
             {
                 "agent_id": agent_id,
@@ -400,15 +466,26 @@ def apply_cleanup() -> dict[str, Any]:
     affected_agent_ids = [int(row["id"]) for row in backup_payload["agents"]]
 
     try:
-        if deleted_signal_ids:
-            placeholders = ",".join("?" for _ in deleted_signal_ids)
+        if deleted_row_ids:
+            deleted_rows = [
+                row for row in backup_payload["signals"]
+                if int(row["id"]) in deleted_row_ids
+            ]
+            deleted_public_signal_ids = sorted({
+                int(row["signal_id"])
+                for row in deleted_rows
+                if row.get("signal_id") is not None
+            })
+            row_placeholders = ",".join("?" for _ in deleted_row_ids)
+            if deleted_public_signal_ids:
+                signal_placeholders = ",".join("?" for _ in deleted_public_signal_ids)
+                cursor.execute(
+                    f"DELETE FROM signal_replies WHERE signal_id IN ({signal_placeholders})",
+                    deleted_public_signal_ids,
+                )
             cursor.execute(
-                f"DELETE FROM signal_replies WHERE signal_id IN ({placeholders})",
-                list(deleted_signal_ids),
-            )
-            cursor.execute(
-                f"DELETE FROM signals WHERE id IN ({placeholders})",
-                list(deleted_signal_ids),
+                f"DELETE FROM signals WHERE id IN ({row_placeholders})",
+                list(deleted_row_ids),
             )
 
         placeholders = ",".join("?" for _ in affected_agent_ids)
@@ -456,16 +533,16 @@ def apply_cleanup() -> dict[str, Any]:
     return {
         "backup_path": str(backup_path),
         "affected_agents": rebuilt_agents,
-        "deleted_signal_ids": sorted(deleted_signal_ids),
+        "deleted_signal_ids": sorted(deleted_row_ids),
         "skipped_rows": skipped_rows_by_agent,
         "message": "Cleanup applied successfully.",
     }
 
 
-def dry_run() -> dict[str, Any]:
+def dry_run(target_agent_ids: set[int] | None = None) -> dict[str, Any]:
     conn = get_db_connection()
     cursor = conn.cursor()
-    suspicious_rows = load_suspicious_operation_signals(cursor)
+    suspicious_rows = filter_suspicious_rows(load_suspicious_operation_signals(cursor), target_agent_ids)
     conn.close()
 
     summary_by_agent: dict[str, dict[str, Any]] = defaultdict(lambda: {"count": 0, "reasons": defaultdict(int)})
@@ -493,17 +570,26 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Clean up known dirty trade data.")
     parser.add_argument("--apply", action="store_true", help="apply the cleanup")
     parser.add_argument("--dry-run", action="store_true", help="show what would be cleaned")
+    parser.add_argument(
+        "--agent-id",
+        action="append",
+        type=int,
+        default=[],
+        help="limit cleanup to one agent id; can be passed multiple times",
+    )
     args = parser.parse_args()
 
     if args.apply and args.dry_run:
         parser.error("choose either --apply or --dry-run, not both")
 
+    target_agent_ids = set(args.agent_id) if args.agent_id else None
+
     if not args.apply:
-        report = dry_run()
+        report = dry_run(target_agent_ids)
         print(json.dumps(report, indent=2, default=str))
         return 0
 
-    result = apply_cleanup()
+    result = apply_cleanup(target_agent_ids)
     print(json.dumps(result, indent=2, default=str))
     return 0
 

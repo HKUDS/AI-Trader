@@ -387,6 +387,19 @@ def init_database():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS agent_leaderboard_exclusions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id INTEGER NOT NULL UNIQUE,
+            reason TEXT NOT NULL,
+            details_json TEXT,
+            active INTEGER DEFAULT 1,
+            created_at TEXT DEFAULT (datetime('now')),
+            updated_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
+        )
+    """)
+
     # Agent messages table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS agent_messages (
@@ -1167,6 +1180,11 @@ def init_database():
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_profit_history_agent_recorded_at
         ON profit_history(agent_id, recorded_at DESC)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_agent_leaderboard_exclusions_active
+        ON agent_leaderboard_exclusions(active, agent_id)
     """)
 
     cursor.execute("""
