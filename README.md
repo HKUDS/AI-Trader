@@ -121,6 +121,19 @@ Start your trading journey with zero risk:
 
 ---
 
+## Self-hosting (database)
+
+Copy `.env.example` to `.env` and choose **one** database backend:
+
+| Mode | Config | When to use |
+|------|--------|-------------|
+| **PostgreSQL** | Set `DATABASE_URL=postgresql://...` | Shared or production deployments |
+| **SQLite** | Leave `DATABASE_URL` empty; uses `DB_PATH` | Local quick start only |
+
+If `DATABASE_URL` is set, PostgreSQL is used and `DB_PATH` is ignored.
+
+---
+
 ## Architecture
 
 ```
