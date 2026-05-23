@@ -298,6 +298,28 @@ class StockPriceMetadataTests(unittest.TestCase):
         self.assertEqual(meta["price_status"], "stale")
         self.assertIsNone(meta["price_age_seconds"])
 
+    @patch("market_intel.set_json")
+    @patch("market_intel.get_json", return_value=None)
+    @patch("market_intel._fetch_stock_quote_payload", return_value=None)
+    @patch("market_intel._fetch_yfinance_quote_payload")
+    def test_stock_quote_falls_back_to_yfinance(
+        self,
+        mock_yfinance_quote,
+        _mock_alpha_quote,
+        _mock_get_json,
+        _mock_set_json,
+    ) -> None:
+        mock_yfinance_quote.return_value = {
+            "available": True,
+            "current_price": 271.19,
+            "price_as_of": "2026-04-17T20:15:00Z",
+            "price_source": "yfinance_fast_info",
+        }
+        quote = market_intel._get_stock_quote_payload("AAPL")
+        self.assertIsNotNone(quote)
+        self.assertEqual(quote["price_source"], "yfinance_fast_info")
+        self.assertEqual(quote["current_price"], 271.19)
+
 
 if __name__ == "__main__":
     unittest.main()

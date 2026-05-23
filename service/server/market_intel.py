@@ -290,6 +290,44 @@ def _fetch_stock_quote_payload(symbol: str) -> Optional[dict[str, Any]]:
     return _extract_intraday_quote(payload)
 
 
+def _fetch_yfinance_quote_payload(symbol: str) -> Optional[dict[str, Any]]:
+    try:
+        import yfinance as yf
+    except ImportError:
+        return None
+
+    cleaned = (symbol or "").strip().upper()
+    if not cleaned:
+        return None
+
+    try:
+        ticker = yf.Ticker(cleaned)
+        price: Optional[float] = None
+        fast_info = getattr(ticker, "fast_info", None) or {}
+        for key in ("last_price", "lastPrice", "regular_market_price", "regularMarketPrice"):
+            value = fast_info.get(key) if isinstance(fast_info, dict) else getattr(fast_info, key, None)
+            if value is not None:
+                candidate = float(value)
+                if candidate > 0:
+                    price = candidate
+                    break
+        if price is None:
+            history = ticker.history(period="1d", interval="1m")
+            if history is not None and not history.empty:
+                price = float(history["Close"].iloc[-1])
+        if price is None or price <= 0:
+            return None
+    except Exception:
+        return None
+
+    return {
+        "available": True,
+        "current_price": round(price, 2),
+        "price_as_of": _utc_now_iso_z(),
+        "price_source": "yfinance_fast_info",
+    }
+
+
 def _get_stock_quote_payload(symbol: str) -> Optional[dict[str, Any]]:
     cached = _stock_quote_cache_get(symbol)
     if isinstance(cached, dict):
@@ -302,6 +340,11 @@ def _get_stock_quote_payload(symbol: str) -> Optional[dict[str, Any]]:
     except Exception:
         quote = None
 
+    if quote:
+        _stock_quote_cache_set(symbol, quote, ttl_seconds=STOCK_QUOTE_CACHE_TTL_SECONDS)
+        return quote
+
+    quote = _fetch_yfinance_quote_payload(symbol)
     if quote:
         _stock_quote_cache_set(symbol, quote, ttl_seconds=STOCK_QUOTE_CACHE_TTL_SECONDS)
         return quote
@@ -325,7 +368,7 @@ def _build_stock_price_metadata(price_as_of: Optional[str], price_source: Option
     stale = True
     status = "stale"
 
-    if price_source == "alpha_vantage_time_series_intraday":
+    if price_source in ("alpha_vantage_time_series_intraday", "yfinance_fast_info"):
         market_open = _is_us_market_open(now_utc)
         quote_et = parsed_as_of.astimezone(US_EASTERN_TZ)
         now_et = now_utc.astimezone(US_EASTERN_TZ)

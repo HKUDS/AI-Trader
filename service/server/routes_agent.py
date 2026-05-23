@@ -580,12 +580,13 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
             now = utc_now_iso_z()
             if data.positions:
                 for pos in data.positions:
-                    market = validate_market(pos.get('market', 'us-stock'))
-                    symbol = str(pos.get('symbol') or '').strip()
-                    if not symbol:
-                        raise HTTPException(status_code=400, detail='Position symbol is required')
+                    market = validate_market(pos.market)
+                    symbol = pos.symbol.strip()
                     if market != 'polymarket':
                         symbol = symbol.upper()
+                    quantity = abs(float(pos.quantity))
+                    if pos.side == 'short':
+                        quantity = -quantity
                     cursor.execute(
                         """
                         INSERT INTO positions (agent_id, symbol, market, side, quantity, entry_price, opened_at)
@@ -595,9 +596,9 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
                             agent_id,
                             symbol,
                             market,
-                            pos.get('side', 'long'),
-                            pos.get('quantity', 0),
-                            pos.get('entry_price', 0),
+                            pos.side,
+                            quantity,
+                            float(pos.entry_price),
                             now,
                         ),
                     )

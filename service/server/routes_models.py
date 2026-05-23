@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 class AgentLogin(BaseModel):
@@ -8,12 +8,53 @@ class AgentLogin(BaseModel):
     password: str
 
 
+class AgentPositionInput(BaseModel):
+    symbol: str
+    market: str = "us-stock"
+    side: str = "long"
+    quantity: float
+    entry_price: float
+
+    @field_validator("symbol")
+    @classmethod
+    def symbol_required(cls, value: str) -> str:
+        cleaned = (value or "").strip()
+        if not cleaned:
+            raise ValueError("symbol is required")
+        return cleaned
+
+    @field_validator("quantity", "entry_price")
+    @classmethod
+    def must_be_positive_numbers(cls, value: float) -> float:
+        if not isinstance(value, (int, float)):
+            raise ValueError("must be numeric")
+        numeric = float(value)
+        if numeric <= 0:
+            raise ValueError("must be a positive number")
+        return numeric
+
+    @field_validator("side")
+    @classmethod
+    def side_must_be_long_or_short(cls, value: str) -> str:
+        normalized = (value or "long").strip().lower()
+        if normalized not in {"long", "short"}:
+            raise ValueError("side must be long or short")
+        return normalized
+
+
 class AgentRegister(BaseModel):
     name: str
     password: str
     wallet_address: Optional[str] = None
     initial_balance: float = 100000.0
-    positions: Optional[List[dict]] = None
+    positions: Optional[List[AgentPositionInput]] = None
+
+    @field_validator("initial_balance")
+    @classmethod
+    def initial_balance_must_be_positive(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("initial_balance must be positive")
+        return value
 
 
 class AgentTokenRecoveryRequest(BaseModel):
