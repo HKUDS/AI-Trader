@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 class AgentLogin(BaseModel):
@@ -10,10 +10,19 @@ class AgentLogin(BaseModel):
 
 class AgentRegister(BaseModel):
     name: str
+    email: Optional[EmailStr] = None
     password: str
     wallet_address: Optional[str] = None
     initial_balance: float = 100000.0
     positions: Optional[List[dict]] = None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def normalize_email(cls, value):
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        return normalized or None
 
 
 class AgentTokenRecoveryRequest(BaseModel):

@@ -373,6 +373,7 @@ def init_database():
         CREATE TABLE IF NOT EXISTS agents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE NOT NULL,
+            email TEXT,
             token TEXT,
             token_expires_at TEXT,
             password_hash TEXT,
@@ -1119,6 +1120,12 @@ def init_database():
     # Add role column if it doesn't exist (for existing databases)
     try:
         cursor.execute("ALTER TABLE agents ADD COLUMN role TEXT DEFAULT 'agent'")
+    except Exception:
+        pass
+
+    # Add email column if it doesn't exist (for existing databases)
+    try:
+        cursor.execute("ALTER TABLE agents ADD COLUMN email TEXT")
     except Exception:
         pass
 

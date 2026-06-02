@@ -54,6 +54,33 @@ class AgentLoginTokenStabilityTests(unittest.TestCase):
             headers={"Authorization": f"Bearer {original_token}"},
         )
         self.assertEqual(me.status_code, 200, me.text)
+        self.assertIsNone(me.json()["email"])
+
+    def test_agent_registration_stores_normalized_email(self) -> None:
+        register = self.client.post(
+            "/api/claw/agents/selfRegister",
+            json={
+                "name": "email-agent",
+                "email": "  Trader@Example.COM  ",
+                "password": "password123",
+            },
+        )
+        self.assertEqual(register.status_code, 200, register.text)
+        self.assertEqual(register.json()["email"], "trader@example.com")
+        token = register.json()["token"]
+
+        me = self.client.get(
+            "/api/claw/agents/me",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(me.status_code, 200, me.text)
+        self.assertEqual(me.json()["email"], "trader@example.com")
+
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT email FROM agents WHERE name = ?", ("email-agent",))
+        self.assertEqual(cursor.fetchone()["email"], "trader@example.com")
+        conn.close()
 
     def test_agent_login_issues_token_only_for_legacy_empty_token(self) -> None:
         conn = database.get_db_connection()

@@ -564,13 +564,14 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
 
             password_hash = hash_password(data.password)
             wallet = validate_address(data.wallet_address) if data.wallet_address else ''
+            email = str(data.email).strip().lower() if data.email else None
 
             cursor.execute(
                 """
-                INSERT INTO agents (name, password_hash, wallet_address, cash)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO agents (name, email, password_hash, wallet_address, cash)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (agent_name, password_hash, wallet, data.initial_balance),
+                (agent_name, email, password_hash, wallet, data.initial_balance),
             )
 
             agent_id = cursor.lastrowid
@@ -627,6 +628,7 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
                 'token': token,
                 'agent_id': agent_id,
                 'name': agent_name,
+                'email': email,
                 'initial_balance': data.initial_balance,
                 'experiment_assignments': experiment_assignments,
             }
@@ -792,6 +794,7 @@ def register_agent_routes(app: FastAPI, ctx: RouteContext) -> None:
         payload = {
             'id': agent['id'],
             'name': agent['name'],
+            'email': agent.get('email'),
             'token': token,
             'role': agent_role(agent),
             'permissions': agent_permissions(agent),

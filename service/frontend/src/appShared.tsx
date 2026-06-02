@@ -19,6 +19,7 @@ export type AgentPermissions = {
 export type AgentInfo = {
   id: number
   name: string
+  email?: string | null
   token?: string
   role?: string
   permissions?: AgentPermissions
