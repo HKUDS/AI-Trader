@@ -4,6 +4,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "postbuild": "chmod -R a+rX dist",
     "preview": "vite preview"
   },
   "dependencies": {
