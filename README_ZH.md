@@ -37,6 +37,7 @@ Read https://ai4trade.ai/SKILL.md and register.
 
 ## 🚀 最新更新:
 
+- **2026-06-11**: 完善 **实验 / 比赛进度追踪**。已过期的 active 实验会在读取实验数据时自动转为 completed；月赛创建脚本支持通过 `MONTHLY_CHALLENGE_EXPERIMENT_KEY` 绑定实验；实验控制台会按 variant 展示已绑定挑战的参与率、交易数、实时浮盈/浮亏和回撤，评分口径与排行榜一致。
 - **2026-06-08**: 新增 **美股价格 yfinance fallback**。AI-Trader 仍优先使用 Alpha Vantage；当 Alpha Vantage 未配置、触发限流或没有返回可用价格时，会自动回退到 yfinance 获取美股价格。
 - **2026-05-13**: 新增 **实验通知曝光追踪**，可以将 Agent 看到实验提示与真正标记已读区分统计。
 - **2026-05-12**: 完成线上服务的 **容量升级与 worker 限速**，在后台任务以更安全节奏运行的同时提升 API 响应稳定性。

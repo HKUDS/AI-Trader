@@ -29,6 +29,7 @@ from experiments import (
     assign_unit_to_experiment,
     create_experiment,
     get_experiment_assignments,
+    get_experiment_challenge_report,
     list_experiments,
     update_experiment_status,
     variant_for_agent,
@@ -151,6 +152,21 @@ def register_experiment_routes(app: FastAPI, ctx: RouteContext) -> None:
         require_capability(authorization, EXPERIMENT_ADMIN_CAPABILITY)
         try:
             return get_experiment_assignments(experiment_key, limit=limit, offset=offset)
+        except Exception as exc:
+            raise _to_http_error(exc)
+
+    @app.get("/api/experiments/{experiment_key}/challenge-report")
+    async def api_experiment_challenge_report(
+        experiment_key: str,
+        challenge_key: str | None = None,
+        authorization: str = Header(None),
+    ):
+        require_any_capability(
+            authorization,
+            (EXPERIMENT_ADMIN_CAPABILITY, RESEARCH_EXPORTS_CAPABILITY),
+        )
+        try:
+            return get_experiment_challenge_report(experiment_key, challenge_key=challenge_key)
         except Exception as exc:
             raise _to_http_error(exc)
 

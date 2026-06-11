@@ -3099,6 +3099,77 @@ a {
   line-height: 1.55;
 }
 
+.experiment-challenge-reports {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.experiment-challenge-report {
+  min-width: 0;
+}
+
+.experiment-challenge-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.experiment-challenge-title strong {
+  color: var(--text-primary);
+  font-size: 15px;
+}
+
+.experiment-challenge-title span {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+}
+
+.experiment-challenge-table {
+  width: 100%;
+  overflow-x: auto;
+  border-top: 1px solid var(--border-color);
+}
+
+.experiment-challenge-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.2fr) repeat(7, minmax(86px, 0.8fr));
+  gap: 10px;
+  align-items: center;
+  min-width: 820px;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.experiment-challenge-row-head {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.experiment-challenge-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+}
+
+.experiment-challenge-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
 .experiment-assignment-row,
 .research-event-row {
   display: grid;

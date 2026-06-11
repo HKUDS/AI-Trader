@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 from database import begin_write_transaction, get_db_connection
-from experiment_events import record_assignment_event
+from experiment_events import record_assignment_event, record_event
 from routes_shared import utc_now_iso_z
 
 
@@ -80,6 +81,15 @@ def _normalize_key(value: Optional[str], fallback: str) -> str:
     if not candidate:
         raise ExperimentError("experiment_key is required")
     return candidate[:90]
+
+
+def _parse_dt(value: Optional[str]) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(timezone.utc)
+    except Exception:
+        return None
 
 
 def _serialize_experiment(row: Any) -> dict[str, Any]:
@@ -190,6 +200,18 @@ def _rows_by_variant(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return {str(row.get("variant_key") or ""): row for row in rows}
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        parsed = float(value)
+    except Exception:
+        return default
+    return parsed if math.isfinite(parsed) else default
+
+
+def _avg(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
 def _experiment_behavior_metrics(cursor: Any, experiment_key: str, *, since: str) -> list[dict[str, Any]]:
     """Return recent behavior metrics by variant without depending on message read state."""
     behavior_placeholders = ",".join("?" for _ in EXPERIMENT_BEHAVIOR_EVENT_TYPES)
@@ -253,37 +275,80 @@ def _experiment_read_diagnostics(cursor: Any, experiment_key: str) -> list[dict[
     return [dict(row) for row in cursor.fetchall()]
 
 
+def refresh_experiment_statuses(cursor: Any, *, now: Optional[str] = None) -> int:
+    """Complete active experiments whose end time has elapsed."""
+    now_text = now or utc_now_iso_z()
+    cursor.execute(
+        """
+        SELECT experiment_key, end_at
+        FROM experiments
+        WHERE status = 'active' AND end_at IS NOT NULL AND end_at != '' AND end_at <= ?
+        """,
+        (now_text,),
+    )
+    expired = [dict(row) for row in cursor.fetchall()]
+    if not expired:
+        return 0
+
+    cursor.execute(
+        """
+        UPDATE experiments
+        SET status = 'completed', updated_at = ?
+        WHERE status = 'active' AND end_at IS NOT NULL AND end_at != '' AND end_at <= ?
+        """,
+        (now_text, now_text),
+    )
+    for row in expired:
+        record_event(
+            "experiment_completed",
+            object_type="experiment",
+            object_id=row["experiment_key"],
+            experiment_key=row["experiment_key"],
+            metadata={"reason": "end_at_elapsed", "end_at": row.get("end_at")},
+            cursor=cursor,
+        )
+    return len(expired)
+
+
 def agent_experiment_behavior_context(agent_id: int) -> Optional[dict[str, Any]]:
     """Return active experiment context for high-frequency agent APIs without enrolling new agents."""
     now = utc_now_iso_z()
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        """
-        SELECT
-            e.experiment_key,
-            e.title,
-            e.description,
-            e.status,
-            e.unit_type,
-            e.start_at,
-            e.end_at,
-            ea.variant_key,
-            ea.assignment_reason,
-            ea.created_at AS assignment_created_at
-        FROM experiment_assignments ea
-        JOIN experiments e ON e.experiment_key = ea.experiment_key
-        WHERE ea.unit_type = 'agent'
-          AND ea.unit_id = ?
-          AND e.status = 'active'
-          AND (e.start_at IS NULL OR e.start_at <= ?)
-          AND (e.end_at IS NULL OR e.end_at >= ?)
-        ORDER BY e.created_at DESC, e.id DESC
-        """,
-        (agent_id, now, now),
-    )
-    rows = [dict(row) for row in cursor.fetchall()]
-    conn.close()
+    try:
+        begin_write_transaction(cursor)
+        refresh_experiment_statuses(cursor, now=now)
+        conn.commit()
+        cursor.execute(
+            """
+            SELECT
+                e.experiment_key,
+                e.title,
+                e.description,
+                e.status,
+                e.unit_type,
+                e.start_at,
+                e.end_at,
+                ea.variant_key,
+                ea.assignment_reason,
+                ea.created_at AS assignment_created_at
+            FROM experiment_assignments ea
+            JOIN experiments e ON e.experiment_key = ea.experiment_key
+            WHERE ea.unit_type = 'agent'
+              AND ea.unit_id = ?
+              AND e.status = 'active'
+              AND (e.start_at IS NULL OR e.start_at <= ?)
+              AND (e.end_at IS NULL OR e.end_at >= ?)
+            ORDER BY e.created_at DESC, e.id DESC
+            """,
+            (agent_id, now, now),
+        )
+        rows = [dict(row) for row in cursor.fetchall()]
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
     if not rows:
         return None
 
@@ -390,24 +455,37 @@ def list_experiments(status: Optional[str] = None, limit: int = 100, offset: int
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(f"SELECT COUNT(*) AS total FROM experiments WHERE {where}", params)
-    total = cursor.fetchone()["total"]
-    cursor.execute(
-        f"""
-        SELECT *
-        FROM experiments
-        WHERE {where}
-        ORDER BY created_at DESC, id DESC
-        LIMIT ? OFFSET ?
-        """,
-        params + [limit, offset],
-    )
-    experiments = [_serialize_experiment(row) for row in cursor.fetchall()]
-    conn.close()
-    return {"experiments": experiments, "total": total, "limit": limit, "offset": offset}
+    try:
+        begin_write_transaction(cursor)
+        refresh_experiment_statuses(cursor)
+        conn.commit()
+        cursor.execute(f"SELECT COUNT(*) AS total FROM experiments WHERE {where}", params)
+        total = cursor.fetchone()["total"]
+        cursor.execute(
+            f"""
+            SELECT *
+            FROM experiments
+            WHERE {where}
+            ORDER BY created_at DESC, id DESC
+            LIMIT ? OFFSET ?
+            """,
+            params + [limit, offset],
+        )
+        experiments = [_serialize_experiment(row) for row in cursor.fetchall()]
+        return {"experiments": experiments, "total": total, "limit": limit, "offset": offset}
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
-def get_active_experiments(unit_type: Optional[str] = None, *, now: Optional[str] = None) -> list[dict[str, Any]]:
+def get_active_experiments(
+    unit_type: Optional[str] = None,
+    *,
+    now: Optional[str] = None,
+    refresh_statuses: bool = True,
+) -> list[dict[str, Any]]:
     now = now or utc_now_iso_z()
     conditions = ["status = 'active'", "(start_at IS NULL OR start_at <= ?)", "(end_at IS NULL OR end_at >= ?)"]
     params: list[Any] = [now, now]
@@ -417,18 +495,27 @@ def get_active_experiments(unit_type: Optional[str] = None, *, now: Optional[str
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute(
-        f"""
-        SELECT *
-        FROM experiments
-        WHERE {' AND '.join(conditions)}
-        ORDER BY created_at DESC, id DESC
-        """,
-        params,
-    )
-    experiments = [_serialize_experiment(row) for row in cursor.fetchall()]
-    conn.close()
-    return experiments
+    try:
+        if refresh_statuses:
+            begin_write_transaction(cursor)
+            refresh_experiment_statuses(cursor, now=now)
+            conn.commit()
+        cursor.execute(
+            f"""
+            SELECT *
+            FROM experiments
+            WHERE {' AND '.join(conditions)}
+            ORDER BY created_at DESC, id DESC
+            """,
+            params,
+        )
+        experiments = [_serialize_experiment(row) for row in cursor.fetchall()]
+        return experiments
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def get_assignment(experiment_key: str, unit_type: str, unit_id: int | str) -> Optional[dict[str, Any]]:
@@ -464,11 +551,22 @@ def assign_unit_to_experiment(
     cursor = conn.cursor()
     try:
         begin_write_transaction(cursor)
+        refresh_experiment_statuses(cursor)
         cursor.execute("SELECT * FROM experiments WHERE experiment_key = ?", (experiment_key,))
         experiment = cursor.fetchone()
         if not experiment:
             raise ExperimentError("Experiment not found")
         experiment_data = _serialize_experiment(experiment)
+        now = utc_now_iso_z()
+        starts_at = _parse_dt(experiment_data.get("start_at"))
+        ends_at = _parse_dt(experiment_data.get("end_at"))
+        now_dt = _parse_dt(now) or datetime.now(timezone.utc)
+        if experiment_data.get("status") != "active":
+            raise ExperimentError("Experiment is not active")
+        if starts_at and starts_at > now_dt:
+            raise ExperimentError("Experiment has not started")
+        if ends_at and ends_at <= now_dt:
+            raise ExperimentError("Experiment has ended")
         variants = experiment_data["variants"]
         if not experiment_accepts_unit(experiment_data, unit_type, unit_id):
             raise ExperimentError(f"Experiment enrollment is closed for {unit_type} {unit_id}")
@@ -529,6 +627,14 @@ def get_experiment_assignments(experiment_key: str, limit: int = 1000, offset: i
     offset = max(0, offset)
     conn = get_db_connection()
     cursor = conn.cursor()
+    try:
+        begin_write_transaction(cursor)
+        refresh_experiment_statuses(cursor)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        conn.close()
+        raise
     cursor.execute("SELECT * FROM experiments WHERE experiment_key = ?", (experiment_key,))
     experiment_row = cursor.fetchone()
     if not experiment_row:
@@ -638,6 +744,175 @@ def get_experiment_assignments(experiment_key: str, limit: int = 1000, offset: i
         "limit": limit,
         "offset": offset,
     }
+
+
+def get_experiment_challenge_report(
+    experiment_key: str,
+    *,
+    challenge_key: Optional[str] = None,
+) -> dict[str, Any]:
+    """Return linked challenge performance grouped by experiment variant."""
+    from challenges import (
+        _fetch_participants_and_trades,
+        _score_challenge_results_with_live_marks,
+        _serialize_challenge,
+    )
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        begin_write_transaction(cursor)
+        refresh_experiment_statuses(cursor)
+        conn.commit()
+
+        cursor.execute("SELECT * FROM experiments WHERE experiment_key = ?", (experiment_key,))
+        experiment_row = cursor.fetchone()
+        if not experiment_row:
+            raise ExperimentError("Experiment not found")
+        experiment = _serialize_experiment(experiment_row)
+
+        cursor.execute(
+            """
+            SELECT unit_id, variant_key
+            FROM experiment_assignments
+            WHERE experiment_key = ? AND unit_type = 'agent'
+            """,
+            (experiment_key,),
+        )
+        assignments_by_agent = {int(row["unit_id"]): row["variant_key"] for row in cursor.fetchall()}
+        assigned_counts: dict[str, int] = {}
+        for variant_key in assignments_by_agent.values():
+            assigned_counts[variant_key] = assigned_counts.get(variant_key, 0) + 1
+
+        params: list[Any] = [experiment_key]
+        challenge_filter = ""
+        if challenge_key:
+            challenge_filter = "AND challenge_key = ?"
+            params.append(challenge_key)
+        cursor.execute(
+            f"""
+            SELECT *
+            FROM challenges
+            WHERE experiment_key = ?
+              {challenge_filter}
+            ORDER BY start_at DESC, id DESC
+            """,
+            params,
+        )
+        challenge_rows = [dict(row) for row in cursor.fetchall()]
+
+        variant_order = [str(variant.get("key")) for variant in experiment.get("variants", []) if variant.get("key")]
+        for variant_key in sorted(assigned_counts):
+            if variant_key not in variant_order:
+                variant_order.append(variant_key)
+
+        challenge_reports = []
+        for challenge in challenge_rows:
+            participants, trades_by_agent = _fetch_participants_and_trades(cursor, challenge["id"])
+            scored_results = _score_challenge_results_with_live_marks(challenge, participants, trades_by_agent)
+            participants_by_agent = {int(row["agent_id"]): row for row in participants}
+
+            by_variant: dict[str, dict[str, Any]] = {}
+
+            def ensure_variant(variant_key: Optional[str]) -> dict[str, Any]:
+                resolved = (variant_key or "").strip() or "unassigned"
+                if resolved not in by_variant:
+                    by_variant[resolved] = {
+                        "variant_key": resolved,
+                        "assigned_agent_count": assigned_counts.get(resolved, 0),
+                        "participant_count": 0,
+                        "trading_participant_count": 0,
+                        "trade_count": 0,
+                        "ranked_count": 0,
+                        "disqualified_count": 0,
+                        "return_values": [],
+                        "drawdown_values": [],
+                        "score_values": [],
+                        "ranks": [],
+                    }
+                return by_variant[resolved]
+
+            for variant_key in variant_order:
+                ensure_variant(variant_key)
+
+            for result in scored_results:
+                agent_id = int(result.get("agent_id") or 0)
+                participant = participants_by_agent.get(agent_id, {})
+                variant_key = participant.get("variant_key") or assignments_by_agent.get(agent_id) or "unassigned"
+                if variant_key not in variant_order:
+                    variant_order.append(variant_key)
+                row = ensure_variant(variant_key)
+                trade_count = int(result.get("trade_count") or 0)
+                row["participant_count"] += 1
+                row["trade_count"] += trade_count
+                if trade_count > 0:
+                    row["trading_participant_count"] += 1
+                if result.get("disqualified_reason"):
+                    row["disqualified_count"] += 1
+                if result.get("rank") is not None:
+                    row["ranked_count"] += 1
+                    row["ranks"].append(int(result["rank"]))
+                if result.get("final_score") is not None:
+                    row["score_values"].append(_safe_float(result.get("final_score")))
+                row["return_values"].append(_safe_float(result.get("return_pct")))
+                row["drawdown_values"].append(_safe_float(result.get("max_drawdown")))
+
+            variant_summary = []
+            for variant_key in variant_order:
+                row = ensure_variant(variant_key)
+                participant_count = int(row["participant_count"])
+                assigned_count = int(row["assigned_agent_count"])
+                disqualified_count = int(row["disqualified_count"])
+                returns = row.pop("return_values")
+                drawdowns = row.pop("drawdown_values")
+                scores = row.pop("score_values")
+                ranks = row.pop("ranks")
+                row.update({
+                    "participation_rate_pct": (participant_count / assigned_count * 100) if assigned_count else 0.0,
+                    "trading_participation_rate_pct": (row["trading_participant_count"] / participant_count * 100) if participant_count else 0.0,
+                    "disqualification_rate_pct": (disqualified_count / participant_count * 100) if participant_count else 0.0,
+                    "avg_return_pct": _avg(returns),
+                    "best_return_pct": max(returns) if returns else 0.0,
+                    "worst_return_pct": min(returns) if returns else 0.0,
+                    "avg_max_drawdown_pct": _avg(drawdowns),
+                    "max_drawdown_pct": max(drawdowns) if drawdowns else 0.0,
+                    "avg_final_score": _avg(scores),
+                    "best_final_score": max(scores) if scores else None,
+                    "best_rank": min(ranks) if ranks else None,
+                })
+                variant_summary.append(row)
+
+            totals = {
+                "assigned_agent_count": sum(row["assigned_agent_count"] for row in variant_summary),
+                "participant_count": sum(row["participant_count"] for row in variant_summary),
+                "trading_participant_count": sum(row["trading_participant_count"] for row in variant_summary),
+                "trade_count": sum(row["trade_count"] for row in variant_summary),
+                "ranked_count": sum(row["ranked_count"] for row in variant_summary),
+                "disqualified_count": sum(row["disqualified_count"] for row in variant_summary),
+            }
+            totals["participation_rate_pct"] = (
+                totals["participant_count"] / totals["assigned_agent_count"] * 100
+                if totals["assigned_agent_count"]
+                else 0.0
+            )
+            challenge_reports.append({
+                "challenge": _serialize_challenge(challenge, participant_count=len(participants)),
+                "variant_summary": variant_summary,
+                "totals": totals,
+                "provisional": challenge.get("status") != "settled",
+            })
+
+        return {
+            "experiment": experiment,
+            "challenge_count": len(challenge_reports),
+            "report_generated_at": utc_now_iso_z(),
+            "challenges": challenge_reports,
+        }
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def update_experiment_status(experiment_key: str, status: str) -> dict[str, Any]:

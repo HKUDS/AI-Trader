@@ -60,7 +60,7 @@ def _variant_config(experiment: dict[str, Any], variant_key: str | None) -> dict
 def _agent_experiment_context(agent_id: int) -> list[dict[str, Any]]:
     contexts = []
     try:
-        for experiment in get_active_experiments('agent'):
+        for experiment in get_active_experiments('agent', refresh_statuses=False):
             if not experiment_accepts_unit(experiment, 'agent', agent_id):
                 continue
             assignment = variant_for_agent(agent_id, experiment['experiment_key'])
@@ -393,7 +393,6 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            begin_write_transaction(cursor)
             cursor.execute(
                 """
                 SELECT follower_id FROM subscriptions
@@ -401,10 +400,14 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 """,
                 (agent_id,),
             )
-            followers = cursor.fetchall()
+            follower_ids = [row['follower_id'] for row in cursor.fetchall()]
+            conn.close()
+            follower_contexts = {follower_id: _primary_experiment_context(follower_id) for follower_id in follower_ids}
 
-            for follower in followers:
-                follower_id = follower['follower_id']
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            begin_write_transaction(cursor)
+            for follower_id in follower_ids:
                 try:
                     cursor.execute(f'SAVEPOINT follower_{follower_id}')
                     follower_position = None
@@ -498,7 +501,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                         },
                         cursor=cursor,
                     )
-                    follower_context = _primary_experiment_context(follower_id)
+                    follower_context = follower_contexts.get(follower_id)
                     follower_experiment_key, follower_variant_key = _context_keys(follower_context)
                     record_signal_event(
                         'signal_published',

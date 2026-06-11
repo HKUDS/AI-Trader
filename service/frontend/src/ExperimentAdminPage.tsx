@@ -21,6 +21,9 @@ const experimentMessageTypes = [
   'team_mission_invite'
 ]
 
+const formatPct = (value: any) => `${Number(value || 0).toFixed(2)}%`
+const formatNumber = (value: any) => Number(value || 0).toLocaleString()
+
 export function ExperimentAdminPage({ token }: ExperimentAdminPageProps) {
   const { language } = useLanguage()
   const [experiments, setExperiments] = useState<any[]>([])
@@ -28,6 +31,7 @@ export function ExperimentAdminPage({ token }: ExperimentAdminPageProps) {
   const [assignments, setAssignments] = useState<any[]>([])
   const [variantCounts, setVariantCounts] = useState<any[]>([])
   const [variantMetrics, setVariantMetrics] = useState<any[]>([])
+  const [challengeReport, setChallengeReport] = useState<any | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [notificationBusy, setNotificationBusy] = useState(false)
@@ -86,11 +90,18 @@ export function ExperimentAdminPage({ token }: ExperimentAdminPageProps) {
       setVariantCounts(data.variant_counts || [])
       setVariantMetrics(data.variant_metrics || [])
       setNotificationForm((prev) => ({ ...prev, experiment_key: experimentKey }))
+      const reportRes = await fetch(`${API_BASE}/experiments/${experimentKey}/challenge-report`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      })
+      const reportData = await reportRes.json()
+      if (!reportRes.ok) throw new Error(reportData.detail || 'challenge_report_load_failed')
+      setChallengeReport(reportData)
     } catch (e) {
       console.error(e)
       setAssignments([])
       setVariantCounts([])
       setVariantMetrics([])
+      setChallengeReport(null)
     }
   }
 
@@ -452,6 +463,43 @@ export function ExperimentAdminPage({ token }: ExperimentAdminPageProps) {
               </div>
             ))}
           </div>
+          {challengeReport?.challenges?.length > 0 && (
+            <div className="experiment-challenge-reports">
+              {challengeReport.challenges.map((item: any) => (
+                <div key={item.challenge.challenge_key} className="experiment-challenge-report">
+                  <div className="experiment-challenge-title">
+                    <strong>{item.challenge.title}</strong>
+                    <span>{item.challenge.challenge_key}</span>
+                    <span>{item.provisional ? (language === 'zh' ? '实时口径' : 'Live marks') : (language === 'zh' ? '已结算' : 'Settled')}</span>
+                  </div>
+                  <div className="experiment-challenge-table">
+                    <div className="experiment-challenge-row experiment-challenge-row-head">
+                      <span>Variant</span>
+                      <span>{language === 'zh' ? '分配' : 'Assigned'}</span>
+                      <span>{language === 'zh' ? '参赛' : 'Joined'}</span>
+                      <span>{language === 'zh' ? '交易人数' : 'Traders'}</span>
+                      <span>{language === 'zh' ? '交易' : 'Trades'}</span>
+                      <span>{language === 'zh' ? '平均收益' : 'Avg return'}</span>
+                      <span>{language === 'zh' ? '最佳收益' : 'Best return'}</span>
+                      <span>{language === 'zh' ? '平均回撤' : 'Avg DD'}</span>
+                    </div>
+                    {item.variant_summary.map((row: any) => (
+                      <div key={`${item.challenge.challenge_key}-${row.variant_key}`} className="experiment-challenge-row">
+                        <strong>{row.variant_key}</strong>
+                        <span>{formatNumber(row.assigned_agent_count)}</span>
+                        <span>{formatNumber(row.participant_count)} <small>{formatPct(row.participation_rate_pct)}</small></span>
+                        <span>{formatNumber(row.trading_participant_count)} <small>{formatPct(row.trading_participation_rate_pct)}</small></span>
+                        <span>{formatNumber(row.trade_count)}</span>
+                        <span>{formatPct(row.avg_return_pct)}</span>
+                        <span>{formatPct(row.best_return_pct)}</span>
+                        <span>{formatPct(row.avg_max_drawdown_pct)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="experiment-assignment-table">
             {assignments.slice(0, 60).map((assignment) => (
               <div key={assignment.id} className="experiment-assignment-row">

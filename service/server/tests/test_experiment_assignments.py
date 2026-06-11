@@ -2,7 +2,9 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
@@ -14,10 +16,13 @@ from experiments import (
     ExperimentError,
     assign_unit_to_experiment,
     create_experiment,
+    get_experiment_challenge_report,
     get_experiment_assignments,
+    list_experiments,
     stable_bucket,
     variant_for_agent,
 )
+from challenges import create_challenge, create_challenge_trade, join_challenge
 from routes_shared import utc_now_iso_z
 
 
@@ -46,6 +51,23 @@ class ExperimentAssignmentTests(unittest.TestCase):
         conn.commit()
         conn.close()
         return agent_id
+
+    def _iso(self, value: datetime) -> str:
+        return value.astimezone(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+    def _insert_assignment(self, experiment_key: str, agent_id: int, variant_key: str) -> None:
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO experiment_assignments
+            (experiment_key, unit_type, unit_id, variant_key, assignment_reason, metadata_json, created_at)
+            VALUES (?, 'agent', ?, ?, 'test_fixture', '{}', ?)
+            """,
+            (experiment_key, agent_id, variant_key, utc_now_iso_z()),
+        )
+        conn.commit()
+        conn.close()
 
     def test_same_agent_stably_assigns_to_same_variant(self):
         create_experiment({
@@ -184,6 +206,98 @@ class ExperimentAssignmentTests(unittest.TestCase):
         )
         self.assertEqual(cursor.fetchone()["count"], 0)
         conn.close()
+
+    def test_expired_active_experiment_auto_completes_on_list(self):
+        ended_at = self._iso(datetime.now(timezone.utc) - timedelta(days=1))
+        create_experiment({
+            "experiment_key": "expired-exp",
+            "title": "Expired experiment",
+            "status": "active",
+            "end_at": ended_at,
+            "variants_json": [{"key": "control", "weight": 1}, {"key": "treatment", "weight": 1}],
+        })
+
+        active = list_experiments(status="active")
+        self.assertNotIn("expired-exp", {row["experiment_key"] for row in active["experiments"]})
+
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT status FROM experiments WHERE experiment_key = 'expired-exp'")
+        self.assertEqual(cursor.fetchone()["status"], "completed")
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS count
+            FROM experiment_events
+            WHERE experiment_key = 'expired-exp' AND event_type = 'experiment_completed'
+            """
+        )
+        self.assertEqual(cursor.fetchone()["count"], 1)
+        conn.close()
+
+    def test_challenge_report_groups_live_leaderboard_by_variant(self):
+        now = datetime.now(timezone.utc)
+        create_experiment({
+            "experiment_key": "challenge-report-exp",
+            "title": "Challenge report experiment",
+            "variants_json": [{"key": "control", "weight": 1}, {"key": "treatment", "weight": 1}],
+        })
+        self._insert_assignment("challenge-report-exp", self.agent_ids[0], "control")
+        self._insert_assignment("challenge-report-exp", self.agent_ids[1], "treatment")
+
+        create_challenge(
+            {
+                "challenge_key": "variant-report-challenge",
+                "title": "Variant report challenge",
+                "market": "crypto",
+                "symbol": "all",
+                "experiment_key": "challenge-report-exp",
+                "initial_capital": 1000.0,
+                "max_position_pct": 100.0,
+                "start_at": self._iso(now - timedelta(hours=1)),
+                "end_at": self._iso(now + timedelta(hours=1)),
+            },
+            self.agent_ids[0],
+        )
+        join_challenge("variant-report-challenge", self.agent_ids[0])
+        join_challenge("variant-report-challenge", self.agent_ids[1])
+
+        with patch("challenges._fetch_authoritative_challenge_trade_price", side_effect=[100.0, 110.0]):
+            create_challenge_trade(
+                "variant-report-challenge",
+                self.agent_ids[0],
+                {
+                    "side": "buy",
+                    "symbol": "BTC",
+                    "price": 1.0,
+                    "quantity": 1.0,
+                    "executed_at": self._iso(now),
+                },
+            )
+            create_challenge_trade(
+                "variant-report-challenge",
+                self.agent_ids[0],
+                {
+                    "side": "sell",
+                    "symbol": "BTC",
+                    "price": 1.0,
+                    "quantity": 1.0,
+                    "executed_at": self._iso(now + timedelta(minutes=1)),
+                },
+            )
+
+        report = get_experiment_challenge_report("challenge-report-exp")
+        challenge_report = report["challenges"][0]
+        rows = {row["variant_key"]: row for row in challenge_report["variant_summary"]}
+
+        self.assertEqual(report["challenge_count"], 1)
+        self.assertEqual(rows["control"]["assigned_agent_count"], 1)
+        self.assertEqual(rows["control"]["participant_count"], 1)
+        self.assertEqual(rows["control"]["trading_participant_count"], 1)
+        self.assertEqual(rows["control"]["trade_count"], 2)
+        self.assertAlmostEqual(rows["control"]["avg_return_pct"], 1.0)
+        self.assertEqual(rows["treatment"]["assigned_agent_count"], 1)
+        self.assertEqual(rows["treatment"]["participant_count"], 1)
+        self.assertEqual(rows["treatment"]["trade_count"], 0)
 
 
 if __name__ == "__main__":

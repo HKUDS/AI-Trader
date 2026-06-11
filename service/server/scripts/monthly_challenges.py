@@ -136,9 +136,10 @@ def build_payload(
     max_position_pct: float,
     max_drawdown_pct: float,
     scoring_method: str,
+    experiment_key: str = "",
 ) -> dict[str, Any]:
     month_label = f"{calendar.month_name[start.month]} {start.year}"
-    return {
+    payload = {
         "challenge_key": challenge_key_for(track, start),
         "title": f"{month_label} {track.title} Monthly Challenge",
         "description": f"Auto-created monthly {track.market} track competition for {start:%Y-%m}.",
@@ -157,6 +158,9 @@ def build_payload(
             "reward_points": {"1": 100, "2": 50, "3": 25},
         },
     }
+    if experiment_key:
+        payload["experiment_key"] = experiment_key
+    return payload
 
 
 def ensure_month(
@@ -169,6 +173,7 @@ def ensure_month(
     max_position_pct: float = DEFAULT_MAX_POSITION_PCT,
     max_drawdown_pct: float = DEFAULT_MAX_DRAWDOWN_PCT,
     scoring_method: str = DEFAULT_SCORING_METHOD,
+    experiment_key: str = "",
 ) -> list[dict[str, Any]]:
     local_now = now.astimezone(tz)
     start = month_start(local_now)
@@ -190,6 +195,7 @@ def ensure_month(
             max_position_pct=max_position_pct,
             max_drawdown_pct=max_drawdown_pct,
             scoring_method=scoring_method,
+            experiment_key=experiment_key,
         )
         if dry_run:
             results.append({"challenge_key": key, "market": track.market, "status": "dry-run", "payload": payload})
@@ -218,6 +224,7 @@ def run_once(args: argparse.Namespace) -> list[dict[str, Any]]:
         max_position_pct=args.max_position_pct,
         max_drawdown_pct=args.max_drawdown_pct,
         scoring_method=args.scoring_method,
+        experiment_key=args.experiment_key,
     )
 
 
@@ -256,6 +263,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-position-pct", type=float, default=float(os.getenv("MONTHLY_CHALLENGE_MAX_POSITION_PCT", DEFAULT_MAX_POSITION_PCT)))
     parser.add_argument("--max-drawdown-pct", type=float, default=float(os.getenv("MONTHLY_CHALLENGE_MAX_DRAWDOWN_PCT", DEFAULT_MAX_DRAWDOWN_PCT)))
     parser.add_argument("--scoring-method", default=os.getenv("MONTHLY_CHALLENGE_SCORING_METHOD", DEFAULT_SCORING_METHOD))
+    parser.add_argument("--experiment-key", default=os.getenv("MONTHLY_CHALLENGE_EXPERIMENT_KEY", ""))
     parser.add_argument("--retry-seconds", type=int, default=int(os.getenv("MONTHLY_CHALLENGE_RETRY_SECONDS", "3600")))
     parser.add_argument(
         "--no-catch-up-current-month",

@@ -80,6 +80,20 @@ class MonthlyChallengeScriptTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             ensure_month(now, tz, creator_identifier="not-admin")
 
+    def test_ensure_month_applies_experiment_key(self):
+        tz = ZoneInfo("Asia/Shanghai")
+        now = datetime(2026, 6, 3, 10, 0, tzinfo=tz)
+
+        ensure_month(now, tz, creator_identifier="admin_ai-trader", experiment_key="monthly-exp")
+
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT experiment_key FROM challenges")
+        rows = cursor.fetchall()
+        conn.close()
+
+        self.assertEqual({row["experiment_key"] for row in rows}, {"monthly-exp"})
+
 
 if __name__ == "__main__":
     unittest.main()
