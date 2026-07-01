@@ -6,12 +6,20 @@ with price refreshes, profit-history compaction, and market-intel snapshots.
 """
 
 import asyncio
-import fcntl
 import logging
 import os
 import signal
 import sys
 from contextlib import suppress
+
+try:  # POSIX single-instance file locking
+    import fcntl
+except ImportError:  # Windows has no fcntl; fall back to msvcrt
+    fcntl = None
+    try:
+        import msvcrt
+    except ImportError:  # pragma: no cover - neither backend available
+        msvcrt = None
 
 from database import init_database, get_database_status
 from tasks import DEFAULT_BACKGROUND_TASKS, _prune_profit_history, start_background_tasks
@@ -39,8 +47,13 @@ def _acquire_file_lock():
     lock_path = os.getenv("AI_TRADER_WORKER_LOCK_FILE", "/tmp/ai-trader-worker.lock")
     handle = open(lock_path, "w", encoding="utf-8")
     try:
-        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:
+        if fcntl is not None:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        elif msvcrt is not None:
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:  # pragma: no cover - no locking backend on this platform
+            logger.warning("No file-locking backend available; worker singleton not enforced.")
+    except (BlockingIOError, OSError):
         handle.close()
         logger.warning("Another AI-Trader worker is already running; lock_file=%s", lock_path)
         return None
@@ -55,7 +68,11 @@ def _release_file_lock(handle) -> None:
     if handle is None:
         return
     with suppress(Exception):
-        fcntl.flock(handle, fcntl.LOCK_UN)
+        if fcntl is not None:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+        elif msvcrt is not None:
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
     with suppress(Exception):
         handle.close()
 
