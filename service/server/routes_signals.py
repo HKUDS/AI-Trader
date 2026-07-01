@@ -941,12 +941,12 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             for pos_row in position_rows:
                 current_price = pos_row['current_price']
                 pnl = None
-                if current_price and pos_row['entry_price']:
+                if current_price is not None and pos_row['entry_price'] is not None:
                     if pos_row['side'] == 'long':
                         pnl = (current_price - pos_row['entry_price']) * abs(pos_row['quantity'])
                     else:
                         pnl = (pos_row['entry_price'] - current_price) * abs(pos_row['quantity'])
-                if pnl:
+                if pnl is not None:
                     total_position_pnl += pnl
                 position_summary.append({
                     'symbol': pos_row['symbol'],

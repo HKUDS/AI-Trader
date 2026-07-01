@@ -445,7 +445,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             total_position_pnl = 0
             for pos in positions:
                 current_price = pos['current_price']
-                if current_price and pos['entry_price']:
+                if current_price is not None and pos['entry_price'] is not None:
                     if pos['side'] == 'long':
                         pnl = (current_price - pos['entry_price']) * abs(pos['quantity'])
                     else:
@@ -646,7 +646,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         for row in rows:
             current_price = resolved_prices.get(position_price_cache_key(row))
             pnl = None
-            if current_price and row['entry_price']:
+            if current_price is not None and row['entry_price'] is not None:
                 if row['side'] == 'long':
                     pnl = (current_price - row['entry_price']) * abs(row['quantity'])
                 else:
@@ -709,12 +709,12 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         for row in rows:
             current_price = resolved_prices.get(position_price_cache_key(row))
             pnl = None
-            if current_price and row['entry_price']:
+            if current_price is not None and row['entry_price'] is not None:
                 if row['side'] == 'long':
                     pnl = (current_price - row['entry_price']) * abs(row['quantity'])
                 else:
                     pnl = (row['entry_price'] - current_price) * abs(row['quantity'])
-            if pnl:
+            if pnl is not None:
                 total_pnl += pnl
 
             positions.append({
