@@ -108,6 +108,13 @@ def score_agent_trades(
                 disqualified_reason = f'buy_used_while_short:{symbol}'
                 break
             cash -= price * quantity
+            if cash < -1e-9:
+                # Live trading rejects buys that exceed available cash; replaying
+                # with the challenge's starting cash must enforce the same rule,
+                # otherwise spreading buys across symbols yields hidden leverage
+                # that inflates return_pct against starting_cash.
+                disqualified_reason = f'insufficient_challenge_cash:{symbol}'
+                break
             new_qty = current_qty + quantity
             new_entry = (
                 ((current_qty * current_entry) + (quantity * price)) / new_qty
@@ -140,6 +147,11 @@ def score_agent_trades(
                 disqualified_reason = f'short_used_while_long:{symbol}'
                 break
             cash -= price * quantity
+            if cash < -1e-9:
+                # Shorts escrow price * quantity in the live model, so they are
+                # cash-bounded exactly like buys.
+                disqualified_reason = f'insufficient_challenge_cash:{symbol}'
+                break
             new_qty = current_qty - quantity
             current_short_qty = abs(current_qty)
             new_entry = (
