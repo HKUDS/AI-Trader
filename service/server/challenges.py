@@ -568,6 +568,8 @@ def join_challenge(challenge_key: str, agent_id: int, data: Any = None) -> dict[
 
         variant_key = _resolve_variant(cursor, challenge.get('experiment_key'), agent_id, payload.get('variant_key'))
         starting_cash = float(payload.get('starting_cash') or challenge.get('initial_capital') or 100000.0)
+        if not math.isfinite(starting_cash) or starting_cash <= 0:
+            raise ChallengeError('starting_cash must be a positive finite number')
         cursor.execute(
             """
             INSERT INTO challenge_participants
