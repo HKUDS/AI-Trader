@@ -1687,6 +1687,39 @@ def init_database():
         ON stock_analysis_snapshots(market, symbol)
     """)
 
+    # Token usage table - per-call LLM token usage reported by agents (issue #74)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS token_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            agent_id INTEGER NOT NULL,
+            model TEXT NOT NULL,
+            provider TEXT,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            cost_usd REAL,
+            client_event_id TEXT,
+            created_at TEXT DEFAULT (datetime('now')),
+            FOREIGN KEY (agent_id) REFERENCES agents(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_token_usage_agent_created
+        ON token_usage(agent_id, created_at)
+    """)
+
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_token_usage_model_created
+        ON token_usage(model, created_at)
+    """)
+
+    # Deduplicate retried reports. Multiple NULL client_event_id rows stay
+    # distinct in both SQLite and PostgreSQL, so unkeyed reports are unaffected.
+    cursor.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_token_usage_agent_event
+        ON token_usage(agent_id, client_event_id)
+    """)
+
     if not using_postgres():
         conn.commit()
     elif previous_autocommit is not None:
