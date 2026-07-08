@@ -57,6 +57,8 @@ AGENT_MESSAGE_SUMMARY_CACHE_TTL_SECONDS = 5
 EXPERIMENT_NOTICE_CACHE_TTL_SECONDS = 5
 SIGNAL_FEED_CACHE_TTL_SECONDS = 10
 POSITIONS_CACHE_TTL_SECONDS = 10
+TOKEN_USAGE_OVERVIEW_CACHE_KEY_PREFIX = 'token_usage:overview'
+TOKEN_USAGE_OVERVIEW_CACHE_TTL_SECONDS = 60
 
 MENTION_PATTERN = re.compile(r'@([A-Za-z0-9_\-]{2,64})')
 _EXPERIMENT_NOTICE_EXPOSURE_EVENT_CACHE: dict[tuple[int, str, str], float] = {}
@@ -156,6 +158,8 @@ class RouteContext:
     agent_message_summary_cache: dict[str, tuple[float, dict[str, Any]]] = field(default_factory=dict)
     experiment_notice_cache: dict[int, tuple[float, Optional[dict[str, Any]]]] = field(default_factory=dict)
     content_rate_limit_state: dict[tuple[int, str], dict[str, Any]] = field(default_factory=dict)
+    token_usage_rate_limit_state: dict[int, list[float]] = field(default_factory=dict)
+    token_usage_overview_cache: dict[str, tuple[float, Any]] = field(default_factory=dict)
     ws_connections: dict[int, WebSocket] = field(default_factory=dict)
     verification_codes: dict[str, dict[str, Any]] = field(default_factory=dict)
     agent_token_recovery_requests: dict[int, dict[str, Any]] = field(default_factory=dict)

@@ -1,6 +1,8 @@
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from token_usage import MAX_REPORTS_PER_BATCH, MAX_TOKENS_PER_REPORT
 
 
 class AgentLogin(BaseModel):
@@ -307,3 +309,30 @@ class PointsTransferRequest(BaseModel):
 
 class PointsExchangeRequest(BaseModel):
     amount: int
+
+
+class TokenUsageReport(BaseModel):
+    model: str = Field(min_length=1, max_length=128)
+    provider: Optional[str] = Field(default=None, max_length=64)
+    input_tokens: int = Field(ge=0, le=MAX_TOKENS_PER_REPORT)
+    output_tokens: int = Field(ge=0, le=MAX_TOKENS_PER_REPORT)
+    client_event_id: Optional[str] = Field(default=None, max_length=128)
+
+    @field_validator("model", mode="before")
+    @classmethod
+    def normalize_model(cls, value):
+        if not isinstance(value, str):
+            return value
+        return value.strip()
+
+    @field_validator("provider", "client_event_id", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value):
+        if value is None or not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        return normalized or None
+
+
+class TokenUsageBatchReport(BaseModel):
+    reports: List[TokenUsageReport] = Field(min_length=1, max_length=MAX_REPORTS_PER_BATCH)
