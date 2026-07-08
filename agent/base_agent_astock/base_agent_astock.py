@@ -474,47 +474,14 @@ class BaseAgentAStock:
         Returns:
             List of trading dates (excluding weekends and holidays)
         """
-        from tools.price_tools import is_trading_day
+        from tools.price_tools import compute_trading_dates
 
-        dates = []
-        max_date = None
-
-        if not os.path.exists(self.position_file):
+        position_file = self.position_file
+        if not os.path.exists(position_file):
             self.register_agent()
-            max_date = init_date
-        else:
-            # Read existing position file, find latest date
-            with open(self.position_file, "r") as f:
-                for line in f:
-                    doc = json.loads(line)
-                    current_date = doc["date"]
-                    if max_date is None:
-                        max_date = current_date
-                    else:
-                        current_date_obj = datetime.strptime(current_date, "%Y-%m-%d")
-                        max_date_obj = datetime.strptime(max_date, "%Y-%m-%d")
-                        if current_date_obj > max_date_obj:
-                            max_date = current_date
+            position_file = None
 
-        # Check if new dates need to be processed
-        max_date_obj = datetime.strptime(max_date, "%Y-%m-%d")
-        end_date_obj = datetime.strptime(end_date, "%Y-%m-%d")
-
-        if end_date_obj <= max_date_obj:
-            return []
-
-        # Generate trading date list, filtered by actual trading days (A-shares market)
-        trading_dates = []
-        current_date = max_date_obj + timedelta(days=1)
-
-        while current_date <= end_date_obj:
-            date_str = current_date.strftime("%Y-%m-%d")
-            # Check if this is an actual trading day in A-shares market
-            if is_trading_day(date_str, market="cn"):
-                trading_dates.append(date_str)
-            current_date += timedelta(days=1)
-
-        return trading_dates
+        return compute_trading_dates(position_file, init_date, end_date, market="cn")
 
     async def run_with_retry(self, today_date: str) -> None:
         """Run method with retry"""

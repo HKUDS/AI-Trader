@@ -14,6 +14,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 from tools.general_tools import get_config_value
+from utils.date_utils import parse_date
 
 def _normalize_timestamp_str(ts: str) -> str:
     """
@@ -331,6 +332,50 @@ def is_trading_day(date: str, market: str = "us") -> bool:
     except Exception as e:
         print(f"⚠️  Error checking trading day: {e}")
         return False
+
+
+def compute_trading_dates(
+    position_file: Optional[str],
+    init_date: str,
+    end_date: str,
+    market: str = "us",
+) -> List[str]:
+    """Trading days in (last processed date, end_date], filtered by market calendar.
+
+    The latest processed date is read from position_file when it exists,
+    otherwise scheduling starts from init_date. Date fields are parsed with
+    parse_date, so both "YYYY-MM-DD" and "YYYY-MM-DD HH:MM:SS" are accepted
+    (issue #69: intraday timestamps in the data crashed date-only parsing).
+    """
+    max_date = None
+    if position_file and os.path.exists(position_file):
+        with open(position_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                doc = json.loads(line)
+                current_date = doc["date"]
+                if max_date is None or parse_date(current_date) > parse_date(max_date):
+                    max_date = current_date
+    if max_date is None:
+        max_date = init_date
+
+    # Iterate on calendar dates only; dropping any time component keeps the
+    # last day inclusive regardless of an intraday timestamp on max_date.
+    max_date_obj = parse_date(max_date).date()
+    end_date_obj = parse_date(end_date).date()
+    if end_date_obj <= max_date_obj:
+        return []
+
+    trading_dates: List[str] = []
+    current_date = max_date_obj + timedelta(days=1)
+    while current_date <= end_date_obj:
+        date_str = current_date.strftime("%Y-%m-%d")
+        if is_trading_day(date_str, market=market):
+            trading_dates.append(date_str)
+        current_date += timedelta(days=1)
+    return trading_dates
 
 
 def get_all_trading_days(market: str = "us") -> List[str]:
