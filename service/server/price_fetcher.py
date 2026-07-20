@@ -31,6 +31,15 @@ HYPERLIQUID_API_URL = os.environ.get("HYPERLIQUID_API_URL", "https://api.hyperli
 # Polymarket public endpoints (no API key required for reads)
 POLYMARKET_GAMMA_BASE_URL = os.environ.get("POLYMARKET_GAMMA_BASE_URL", "https://gamma-api.polymarket.com").strip()
 POLYMARKET_CLOB_BASE_URL = os.environ.get("POLYMARKET_CLOB_BASE_URL", "https://clob.polymarket.com").strip()
+
+# London Strategic Edge (LSE) unified market data API (optional).
+# One key covers US stocks, ETFs and crypto with 1m/5m OHLCV candles.
+# When LSE_API_KEY is set, LSE is tried first for us-stock and crypto prices;
+# the existing Alpha Vantage / yfinance / Hyperliquid paths remain as automatic
+# fallbacks, so leaving the key unset changes nothing.
+# Free API key: https://londonstrategicedge.com/data?ref=ai-trader
+LSE_API_KEY = os.environ.get("LSE_API_KEY", "").strip()
+LSE_API_BASE_URL = os.environ.get("LSE_API_BASE_URL", "https://api.londonstrategicedge.com/iso").strip()
 PRICE_FETCH_TIMEOUT_SECONDS = float(os.environ.get("PRICE_FETCH_TIMEOUT_SECONDS", "10"))
 PRICE_FETCH_MAX_RETRIES = max(0, int(os.environ.get("PRICE_FETCH_MAX_RETRIES", "2")))
 PRICE_FETCH_BACKOFF_BASE_SECONDS = max(0.0, float(os.environ.get("PRICE_FETCH_BACKOFF_BASE_SECONDS", "0.35")))
@@ -112,8 +121,9 @@ def _request_json_with_retry(
     method: str,
     url: str,
     *,
-    params: Optional[dict] = None,
+    params: Optional[object] = None,
     json_payload: Optional[dict] = None,
+    headers: Optional[dict] = None,
 ) -> object:
     remaining = _provider_cooldown_remaining(provider)
     if remaining > 0:
@@ -125,9 +135,9 @@ def _request_json_with_retry(
     for attempt in range(attempts):
         try:
             if method == "POST":
-                resp = requests.post(url, json=json_payload, timeout=PRICE_FETCH_TIMEOUT_SECONDS)
+                resp = requests.post(url, json=json_payload, headers=headers, timeout=PRICE_FETCH_TIMEOUT_SECONDS)
             else:
-                resp = requests.get(url, params=params, timeout=PRICE_FETCH_TIMEOUT_SECONDS)
+                resp = requests.get(url, params=params, headers=headers, timeout=PRICE_FETCH_TIMEOUT_SECONDS)
 
             if resp.status_code in _RETRYABLE_STATUS_CODES:
                 resp.raise_for_status()
@@ -674,6 +684,111 @@ def _get_hyperliquid_candle_close(symbol: str, executed_at: str) -> Optional[flo
     return float(f"{closest:.6f}")
 
 
+def _lse_symbol_slug(symbol: str) -> str:
+    """
+    Map an instrument symbol to LSE's per-symbol 1m candle table slug.
+    Examples: 'BTC/USD' -> 'btc_usd', 'BRK.B' -> 'brk_b'.
+    """
+    return symbol.strip().lower().replace("/", "_").replace("-", "_").replace(".", "_")
+
+
+def _lse_get_json(table: str, params: list) -> object:
+    if not LSE_API_KEY or not LSE_API_BASE_URL:
+        raise RuntimeError("LSE_API_KEY is not configured")
+    url = f"{LSE_API_BASE_URL.rstrip('/')}/{table}"
+    return _request_json_with_retry(
+        "lse",
+        "GET",
+        url,
+        params=params,
+        headers={"x-api-key": LSE_API_KEY},
+    )
+
+
+def _lse_candle_close(table: str, target_utc: datetime, extra_params: Optional[list] = None) -> Optional[float]:
+    """
+    Latest candle close at-or-before target_utc from one LSE candle table.
+    Filters use PostgREST syntax; repeated `timestamp` params are AND'ed
+    server-side. The gte bound keeps the scan short: 7 days covers weekends
+    and market holidays for "price at time" lookups on non-24/7 instruments.
+    """
+    since = (target_utc - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    until = target_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    params = list(extra_params or [])
+    params += [
+        ("timestamp", f"gte.{since}"),
+        ("timestamp", f"lte.{until}"),
+        ("order", "timestamp.desc"),
+        ("limit", "1"),
+    ]
+    rows = _lse_get_json(table, params)
+    if isinstance(rows, list) and rows and isinstance(rows[0], dict):
+        try:
+            price = float(rows[0].get("close"))
+        except (TypeError, ValueError):
+            return None
+        if price > 0:
+            return float(f"{price:.6f}")
+    return None
+
+
+def _lse_target_utc(executed_at: str) -> datetime:
+    # "now"-style queries normally arrive with a concrete timestamp, but be
+    # lenient: an unparseable executed_at falls back to the current time
+    # rather than failing the whole LSE path.
+    return _parse_executed_at_to_utc(executed_at) or datetime.now(UTC)
+
+
+def _get_lse_us_stock_price(symbol: str, executed_at: str) -> Optional[float]:
+    """
+    US stock/ETF price from LSE 1m candles. US listings live in
+    d_candles_<sym>; other instruments in candles_<sym>. The x_candles_5m
+    aggregate is the last resort so a thin 1m table still yields a price.
+    """
+    target_utc = _lse_target_utc(executed_at)
+    ticker = _normalize_yfinance_us_symbol(symbol)
+    if not ticker:
+        return None
+    slug = _lse_symbol_slug(ticker)
+    for table in (f"d_candles_{slug}", f"candles_{slug}"):
+        try:
+            price = _lse_candle_close(table, target_utc)
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else None
+            if status == 404:
+                # Symbol not in the LSE universe under this table name; try the
+                # next naming scheme before giving up.
+                continue
+            _price_log(f"[Price API] LSE HTTP {status} for {ticker}")
+            return None
+        except Exception as exc:
+            _price_log(f"[Price API] LSE error for {ticker}: {exc}")
+            return None
+        if price is not None:
+            return price
+    try:
+        return _lse_candle_close("x_candles_5m", target_utc, [("symbol", f"eq.{ticker}")])
+    except Exception as exc:
+        _price_log(f"[Price API] LSE 5m fallback error for {ticker}: {exc}")
+        return None
+
+
+def _get_lse_crypto_price(symbol: str, executed_at: str) -> Optional[float]:
+    """
+    Crypto price from LSE 1m candles. LSE quotes crypto as COIN/USD, so the
+    Hyperliquid coin normalization ('BTC-PERP' -> 'BTC') is reused here.
+    """
+    target_utc = _lse_target_utc(executed_at)
+    coin = _normalize_hyperliquid_symbol(symbol)
+    if not coin or ":" in coin:
+        return None  # dex/builder listings exist only on Hyperliquid
+    try:
+        return _lse_candle_close(f"candles_{_lse_symbol_slug(coin + '/USD')}", target_utc)
+    except Exception as exc:
+        _price_log(f"[Price API] LSE crypto error for {coin}: {exc}")
+        return None
+
+
 def get_price_from_market(
     symbol: str,
     executed_at: str,
@@ -701,19 +816,32 @@ def get_price_from_market(
             market = (market or "").strip().lower()
 
         if market == "crypto":
-            # Crypto pricing now uses Hyperliquid public endpoints.
-            # Try historical candle (when executed_at is provided), then fall back to mid price.
-            price = _get_hyperliquid_candle_close(symbol, executed_at) or _get_hyperliquid_mid_price(symbol)
+            # Crypto pricing: LSE candles first when a key is configured, then
+            # Hyperliquid public endpoints (historical candle, then mid price).
+            price = None
+            if LSE_API_KEY:
+                price = _get_lse_crypto_price(symbol, executed_at)
+                if price is None:
+                    _price_log(f"[Price API] LSE unavailable for {symbol}; falling back to Hyperliquid")
+            if price is None:
+                price = _get_hyperliquid_candle_close(symbol, executed_at) or _get_hyperliquid_mid_price(symbol)
         elif market == "polymarket":
             # Polymarket pricing uses public Gamma + CLOB endpoints.
             # We use the current orderbook mid price (paper trading).
             price = _get_polymarket_mid_price(symbol, token_id=token_id, outcome=outcome)
         elif market == "us-stock":
+            # US stock pricing: LSE candles first when a key is configured,
+            # then Alpha Vantage, then yfinance.
             price = None
-            if ALPHA_VANTAGE_API_KEY and ALPHA_VANTAGE_API_KEY != "demo":
-                price = _get_us_stock_price(symbol, executed_at)
-            else:
-                _price_log("Warning: ALPHA_VANTAGE_API_KEY not set, trying yfinance fallback")
+            if LSE_API_KEY:
+                price = _get_lse_us_stock_price(symbol, executed_at)
+                if price is None:
+                    _price_log(f"[Price API] LSE unavailable for {symbol}; falling back to Alpha Vantage/yfinance")
+            if price is None:
+                if ALPHA_VANTAGE_API_KEY and ALPHA_VANTAGE_API_KEY != "demo":
+                    price = _get_us_stock_price(symbol, executed_at)
+                else:
+                    _price_log("Warning: ALPHA_VANTAGE_API_KEY not set, trying yfinance fallback")
             if price is None:
                 _price_log(f"[Price API] Alpha Vantage unavailable for {symbol}; trying yfinance fallback")
                 price = _get_yfinance_us_stock_price(symbol, executed_at)
