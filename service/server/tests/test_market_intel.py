@@ -175,6 +175,58 @@ class MarketIntelLatestPayloadTests(unittest.TestCase):
         self.assertEqual([item["symbol"] for item in payload["items"]], ["AAPL", "MSFT"])
 
 
+class StockAnalysisSummaryProviderTests(unittest.TestCase):
+    def _analysis(self) -> dict:
+        return {
+            "symbol": "AAPL",
+            "signal": "hold",
+            "trend_status": "constructive",
+            "signal_score": 1.5,
+            "current_price": 210.0,
+            "return_5d_pct": 1.2,
+            "return_20d_pct": 3.4,
+            "moving_averages": {"sma_20": 205.0},
+            "support_levels": [200.0],
+            "resistance_levels": [215.0],
+            "bullish_factors": ["Momentum improved."],
+            "risk_factors": ["Resistance is nearby."],
+        }
+
+    @patch("market_intel.requests.post")
+    def test_atlas_cloud_uses_openai_compatible_chat_completions(self, mock_post) -> None:
+        mock_post.return_value.json.return_value = {
+            "choices": [{"message": {"content": "Atlas generated summary."}}]
+        }
+        with patch.multiple(
+            market_intel,
+            ATLAS_CLOUD_API_KEY="atlas-test-key",
+            ATLAS_CLOUD_BASE_URL="https://api.atlascloud.ai/v1",
+            ATLAS_CLOUD_MODEL="deepseek-ai/deepseek-v4-pro",
+        ):
+            summary = market_intel._generate_stock_analysis_summary(self._analysis())
+
+        self.assertEqual(summary, "Atlas generated summary.")
+        mock_post.assert_called_once()
+        call = mock_post.call_args
+        self.assertEqual(call.args[0], "https://api.atlascloud.ai/v1/chat/completions")
+        self.assertEqual(call.kwargs["headers"]["Authorization"], "Bearer atlas-test-key")
+        self.assertEqual(call.kwargs["json"]["model"], "deepseek-ai/deepseek-v4-pro")
+        mock_post.return_value.raise_for_status.assert_called_once()
+
+    @patch("market_intel.requests.post", side_effect=RuntimeError("provider unavailable"))
+    def test_atlas_cloud_failure_keeps_local_fallback(self, _mock_post) -> None:
+        with patch.multiple(
+            market_intel,
+            ATLAS_CLOUD_API_KEY="atlas-test-key",
+            OPENROUTER_API_KEY="",
+            OPENROUTER_MODEL="",
+        ):
+            summary = market_intel._generate_stock_analysis_summary(self._analysis())
+
+        self.assertIn("AAPL", summary)
+        self.assertIn("setup", summary)
+
+
 class StockPriceMetadataTests(unittest.TestCase):
     """Coverage for _build_stock_price_metadata staleness classification.
 
