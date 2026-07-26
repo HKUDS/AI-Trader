@@ -35,6 +35,19 @@ from database import get_db_connection
 ALPHA_VANTAGE_BASE_URL = os.getenv("ALPHA_VANTAGE_BASE_URL", "https://www.alphavantage.co/query").strip()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "").strip()
+ATLAS_CLOUD_API_KEY = (
+    os.getenv("ATLASCLOUD_API_KEY", "") or os.getenv("ATLAS_CLOUD_API_KEY", "")
+).strip()
+ATLAS_CLOUD_BASE_URL = (
+    os.getenv("ATLASCLOUD_BASE_URL", "")
+    or os.getenv("ATLAS_CLOUD_BASE_URL", "")
+    or "https://api.atlascloud.ai/v1"
+).strip().rstrip("/")
+ATLAS_CLOUD_MODEL = (
+    os.getenv("ATLASCLOUD_MODEL", "")
+    or os.getenv("ATLAS_CLOUD_MODEL", "")
+    or "deepseek-ai/deepseek-v4-pro"
+).strip()
 MARKET_NEWS_LOOKBACK_HOURS = int(os.getenv("MARKET_NEWS_LOOKBACK_HOURS", "48"))
 MARKET_NEWS_CATEGORY_LIMIT = int(os.getenv("MARKET_NEWS_CATEGORY_LIMIT", "12"))
 MARKET_NEWS_HISTORY_PER_CATEGORY = int(os.getenv("MARKET_NEWS_HISTORY_PER_CATEGORY", "96"))
@@ -470,7 +483,7 @@ def _alpha_vantage_get(params: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def _extract_openrouter_text(response: Any) -> str:
+def _extract_chat_completion_text(response: Any) -> str:
     choices = getattr(response, "choices", None)
     if choices is None and isinstance(response, dict):
         choices = response.get("choices")
@@ -582,9 +595,6 @@ def _build_stock_analysis_fallback_summary(analysis: dict[str, Any]) -> str:
 
 def _generate_stock_analysis_summary(analysis: dict[str, Any]) -> str:
     fallback_summary = _build_stock_analysis_fallback_summary(analysis)
-    if not OPENROUTER_API_KEY or not OPENROUTER_MODEL or OpenRouter is None:
-        return fallback_summary
-
     prompt = (
         "Write one concise market snapshot paragraph in English for a trading dashboard.\n"
         "Rules:\n"
@@ -607,13 +617,38 @@ def _generate_stock_analysis_summary(analysis: dict[str, Any]) -> str:
         f"Risk factors: {json.dumps(analysis.get('risk_factors') or [], ensure_ascii=True)}\n"
     )
 
+    if ATLAS_CLOUD_API_KEY and ATLAS_CLOUD_MODEL:
+        try:
+            response = requests.post(
+                f"{ATLAS_CLOUD_BASE_URL}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {ATLAS_CLOUD_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": ATLAS_CLOUD_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 120,
+                },
+                timeout=20,
+            )
+            response.raise_for_status()
+            content = _extract_chat_completion_text(response.json())
+            if content:
+                return content[:500].strip()
+        except Exception:
+            pass
+
+    if not OPENROUTER_API_KEY or not OPENROUTER_MODEL or OpenRouter is None:
+        return fallback_summary
+
     try:
         with OpenRouter(api_key=OPENROUTER_API_KEY) as client:
             response = client.chat.send(
                 model=OPENROUTER_MODEL,
                 messages=[{"role": "user", "content": prompt}],
             )
-        content = _extract_openrouter_text(response)
+        content = _extract_chat_completion_text(response)
         return content[:500].strip() if content else fallback_summary
     except Exception:
         return fallback_summary
