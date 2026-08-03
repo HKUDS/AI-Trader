@@ -33,7 +33,13 @@ ADANOS_API_BASE_URL = os.getenv("ADANOS_API_BASE_URL", "https://api.adanos.org")
 HYPERLIQUID_API_URL = os.getenv("HYPERLIQUID_API_URL", "https://api.hyperliquid.xyz/info")
 
 # CORS
-CORS_ORIGINS = os.getenv("CLAWTRADER_CORS_ORIGINS", "").split(",") if os.getenv("CLAWTRADER_CORS_ORIGINS") else ["http://localhost:3000"]
+# Comma-separated exact origins. Never a wildcard or an `*.onrender.com`
+# pattern — that would trust every other tenant on the platform.
+CORS_ORIGINS = [
+    origin.strip().rstrip("/")
+    for origin in os.getenv("CLAWTRADER_CORS_ORIGINS", "").split(",")
+    if origin.strip()
+] or ["http://localhost:3000"]
 
 # Rewards
 SIGNAL_PUBLISH_REWARD = 10  # Points for publishing a signal
@@ -43,3 +49,17 @@ REPLY_PUBLISH_REWARD = 2       # Points for replying to a strategy/discussion
 
 # Environment
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
+
+# Session tokens
+# Pepper for the HMAC applied to session bearer tokens before they are stored.
+# It lives only in the environment, so a stolen database dump alone cannot be
+# replayed as a live credential. Required in production; development falls back
+# to a fixed placeholder so `.env`-less local runs still work.
+TOKEN_SECRET = os.getenv("AI_TRADER_TOKEN_SECRET", "").strip()
+if not TOKEN_SECRET:
+    if ENVIRONMENT == "production":
+        raise RuntimeError(
+            "AI_TRADER_TOKEN_SECRET must be set when ENVIRONMENT=production. "
+            "Generate one with: python3 -c 'import secrets; print(secrets.token_urlsafe(32))'"
+        )
+    TOKEN_SECRET = "ai-trader-development-token-secret"

@@ -70,7 +70,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
-.python-version
+# .python-version is committed on purpose: it pins the runtime Render builds with.
 .pytest_cache/
 .coverage
 *.egg-info/

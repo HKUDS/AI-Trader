@@ -31,6 +31,19 @@ def verify_password(password: str, password_hash: str) -> bool:
     return hmac.compare_digest(candidate, hashed)
 
 
+def hash_token(token: str) -> str:
+    """Derive the at-rest digest of a session bearer token.
+
+    Session tokens are already high-entropy, so a keyed digest is enough — no
+    per-row salt is needed and the result stays deterministic, which keeps the
+    token column indexable for lookups. The pepper lives only in the
+    environment, so a database dump on its own yields no usable credentials.
+    """
+    from config import TOKEN_SECRET
+
+    return hmac.new(TOKEN_SECRET.encode(), (token or "").encode(), hashlib.sha256).hexdigest()
+
+
 def generate_verification_code() -> str:
     """Generate a cryptographically random 6-digit verification code."""
     return f"{secrets.randbelow(1_000_000):06d}"

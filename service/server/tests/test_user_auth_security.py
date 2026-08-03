@@ -126,5 +126,69 @@ class RegistrationBruteForceLockoutTests(unittest.TestCase):
             self.assertEqual(r.status_code, 429, r.text)
 
 
+class SessionTokenAtRestTests(unittest.TestCase):
+    """Session bearer tokens must be stored as a keyed digest, never in the clear."""
+
+    def setUp(self) -> None:
+        import tempfile
+
+        import database
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        database.DATABASE_URL = ""
+        database._SQLITE_DB_PATH = os.path.join(self.tmp.name, "test.db")
+        database.init_database()
+
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO users (email, password_hash) VALUES (?, ?)", ("t@example.com", "x"))
+        self.user_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+
+    def _stored_tokens(self) -> list:
+        import database
+
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT token FROM user_tokens WHERE user_id = ?", (self.user_id,))
+        rows = [row["token"] for row in cursor.fetchall()]
+        conn.close()
+        return rows
+
+    def test_raw_token_is_not_persisted_but_still_authenticates(self) -> None:
+        from services import _create_user_session, _get_user_by_token
+        from utils import hash_token
+
+        token = _create_user_session(self.user_id)
+
+        self.assertNotIn(token, self._stored_tokens())
+        self.assertEqual(self._stored_tokens(), [hash_token(token)])
+
+        # The raw token the client holds must still resolve to its user.
+        user = _get_user_by_token(token)
+        self.assertIsNotNone(user)
+        self.assertEqual(user["id"], self.user_id)
+
+    def test_stored_digest_is_not_itself_a_usable_bearer_token(self) -> None:
+        from services import _create_user_session, _get_user_by_token
+        from utils import hash_token
+
+        token = _create_user_session(self.user_id)
+        self.assertIsNone(_get_user_by_token(hash_token(token)))
+
+    def test_digest_depends_on_the_env_pepper(self) -> None:
+        import config
+        from utils import hash_token
+
+        with patch.object(config, "TOKEN_SECRET", "pepper-a"):
+            first = hash_token("same-token")
+        with patch.object(config, "TOKEN_SECRET", "pepper-b"):
+            second = hash_token("same-token")
+
+        self.assertNotEqual(first, second)
+
+
 if __name__ == '__main__':
     unittest.main()

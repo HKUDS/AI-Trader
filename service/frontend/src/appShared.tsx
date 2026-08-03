@@ -87,7 +87,18 @@ export const useTheme = () => {
   return context
 }
 
-export const API_BASE = '/api'
+// Where the backend lives. Defaults to same-origin `/api`, which is what the
+// Vite dev proxy and any reverse proxy in front of both surfaces serve. On
+// Render the SPA and the API are separate origins, so VITE_API_BASE is baked in
+// at build time from the API service's public URL. Accepts either an origin
+// (`https://api.example.com`) or a full base (`https://api.example.com/api`).
+const resolveApiBase = (): string => {
+  const configured = String(import.meta.env.VITE_API_BASE ?? '').trim().replace(/\/+$/, '')
+  if (!configured) return '/api'
+  return configured.endsWith('/api') ? configured : `${configured}/api`
+}
+
+export const API_BASE = resolveApiBase()
 export const REFRESH_INTERVAL = parseInt(import.meta.env.VITE_REFRESH_INTERVAL || '300000', 10)
 export const NOTIFICATION_POLL_INTERVAL = 60 * 1000
 export const FIVE_MINUTES_MS = 5 * 60 * 1000

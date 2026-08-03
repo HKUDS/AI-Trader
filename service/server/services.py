@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from database import get_db_connection, is_retryable_db_error
+from utils import hash_token
 
 
 # ==================== Agent Services ====================
@@ -80,7 +81,11 @@ def _get_or_issue_agent_token(agent: Dict) -> str:
 
 
 def _get_user_by_token(token: str) -> Optional[Dict]:
-    """Get user by token."""
+    """Get user by session token.
+
+    Only the token's digest is stored, so the raw bearer token from the request
+    is hashed before the lookup.
+    """
     if not token:
         return None
     conn = get_db_connection()
@@ -90,15 +95,18 @@ def _get_user_by_token(token: str) -> Optional[Dict]:
         FROM users u
         JOIN user_tokens t ON t.user_id = u.id
         WHERE t.token = ? AND t.expires_at > datetime('now')
-    """, (token,))
+    """, (hash_token(token),))
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
 
 
 def _create_user_session(user_id: int) -> str:
-    """Create a new session for user."""
-    import secrets
+    """Create a new session for user.
+
+    Returns the raw token to the caller exactly once; only its digest is
+    persisted.
+    """
     from datetime import timedelta
 
     token = secrets.token_urlsafe(32)
@@ -109,7 +117,7 @@ def _create_user_session(user_id: int) -> str:
     cursor.execute("""
         INSERT INTO user_tokens (user_id, token, expires_at)
         VALUES (?, ?, ?)
-    """, (user_id, token, expires_at))
+    """, (user_id, hash_token(token), expires_at))
     conn.commit()
     conn.close()
 

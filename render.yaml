@@ -1,0 +1,141 @@
+previews:
+  generation: off
+
+envVarGroups:
+  # Shared by the API and the worker: both run the same market-data and
+  # market-intel code paths, and both must agree on the session-token pepper.
+  - name: ai-trader-secrets
+    envVars:
+      # https://www.alphavantage.co/support/#api-key — the literal string
+      # `demo` is Alpha Vantage's own public sample key and is rate-limited to
+      # a handful of hardcoded symbols. Replace it to get real market data.
+      - key: ALPHA_VANTAGE_API_KEY
+        sync: false
+      # Optional. Adds social/news/prediction-market sentiment to US stock
+      # market-intel snapshots. Leave blank to skip that enrichment.
+      - key: ADANOS_API_KEY
+        sync: false
+      # Optional. Without it, stock-analysis summaries fall back to a
+      # deterministic template instead of an LLM-written paragraph.
+      - key: OPENROUTER_API_KEY
+        sync: false
+      # Pepper for the HMAC applied to session tokens before they are stored.
+      # Generated once and shared, so a Postgres dump alone yields no live
+      # credentials. Rotating it logs everyone out.
+      - key: AI_TRADER_TOKEN_SECRET
+        generateValue: true
+      # Pepper for the pseudonymisation applied to research exports.
+      - key: RESEARCH_EXPORT_HASH_SALT
+        generateValue: true
+
+projects:
+  - name: ai-trader
+    environments:
+      - name: production
+        services:
+          - type: web
+            name: ai-trader-api
+            runtime: python
+            region: oregon
+            # pandas, web3 and yfinance do not fit comfortably in 512 MB.
+            plan: standard
+            rootDir: service
+            buildCommand: pip install -r requirements.txt
+            startCommand: cd server && uvicorn main:app --host 0.0.0.0 --port $PORT
+            healthCheckPath: /health
+            envVars:
+              - fromGroup: ai-trader-secrets
+              - key: DATABASE_URL
+                fromDatabase:
+                  name: ai-trader-db
+                  property: connectionString
+              - key: REDIS_URL
+                fromService:
+                  type: keyvalue
+                  name: ai-trader-cache
+                  property: connectionString
+              - key: REDIS_ENABLED
+                value: "true"
+              # Exact origin only — never a *.onrender.com pattern, which would
+              # trust every other tenant on the platform.
+              - key: CLAWTRADER_CORS_ORIGINS
+                fromService:
+                  type: web
+                  name: ai-trader-web
+                  envVarKey: RENDER_EXTERNAL_URL
+              - key: ENVIRONMENT
+                value: production
+              # Without this the app only writes to a rotating file on the
+              # ephemeral disk and nothing reaches Render's log stream.
+              - key: API_STDERR_LOG
+                value: "true"
+              - key: OPENROUTER_MODEL
+                value: anthropic/claude-haiku-4.5
+              # Reserved for the public-demo gating added on top of this Blueprint.
+              - key: DEMO
+                value: "false"
+
+          - type: worker
+            name: ai-trader-worker
+            runtime: python
+            region: oregon
+            plan: starter
+            rootDir: service
+            buildCommand: pip install -r requirements.txt
+            startCommand: cd server && python worker.py
+            envVars:
+              - fromGroup: ai-trader-secrets
+              - key: DATABASE_URL
+                fromDatabase:
+                  name: ai-trader-db
+                  property: connectionString
+              # Required: the worker takes a Redis lock so only one instance
+              # ever refreshes prices and settles positions.
+              - key: REDIS_URL
+                fromService:
+                  type: keyvalue
+                  name: ai-trader-cache
+                  property: connectionString
+              - key: REDIS_ENABLED
+                value: "true"
+              - key: ENVIRONMENT
+                value: production
+              - key: OPENROUTER_MODEL
+                value: anthropic/claude-haiku-4.5
+              - key: DEMO
+                value: "false"
+
+          - type: web
+            name: ai-trader-web
+            runtime: static
+            rootDir: service/frontend
+            buildCommand: npm ci && npm run build
+            staticPublishPath: dist
+            envVars:
+              # Baked into the bundle at build time: on Render the SPA and the
+              # API are separate origins, so the default same-origin `/api`
+              # would resolve to the static site itself.
+              - key: VITE_API_BASE
+                fromService:
+                  type: web
+                  name: ai-trader-api
+                  envVarKey: RENDER_EXTERNAL_URL
+            routes:
+              # SPA fallback: client-side routes must not 404 on hard refresh.
+              - type: rewrite
+                source: /*
+                destination: /index.html
+
+          - type: keyvalue
+            name: ai-trader-cache
+            region: oregon
+            plan: starter
+            # The worker's singleton lock must never be evicted under memory
+            # pressure — two workers double-settling positions corrupts balances.
+            maxmemoryPolicy: noeviction
+            ipAllowList: []
+
+        databases:
+          - name: ai-trader-db
+            plan: basic-256mb
+            region: oregon
