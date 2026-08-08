@@ -133,3 +133,4 @@ change.md
 
 # Local agent config symlink
 .codex
+.claude/

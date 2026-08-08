@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 2,
+  "name": "AI-Trader Stack",
+  "catalog": {
+    "package": "agentic-awesome-skills",
+    "version": "15.11.0",
+    "integrity": "sha256-d924c577e3120126ec38fc9940d2daef38f39866f178c167e0dafcbc73616033"
+  },
+  "targets": [
+    { "host": "claude", "scope": "project" }
+  ],
+  "profile": {
+    "goals": [
+      "Harden and extend the FastAPI backend (routes, workers, tasks, db layer)",
+      "Optimize the dual Postgres/SQLite data layer and schema",
+      "Secure APIs, auth, and secrets for a financial trading platform",
+      "Maintain the React + TypeScript + Vite frontend and its dashboards",
+      "Integrate market data providers and web3 wallet flows via ethers",
+      "Build and validate backtesting and quant research tooling",
+      "Establish CI/CD, observability, and incident response for prod",
+      "Maintain a clean OSS git/PR workflow for the open-source repo",
+      "Author and maintain the project's own agent-facing SKILL.md files",
+      "Generate and maintain OpenAPI specs for the documented REST API"
+    ],
+    "projectType": "Full-stack agent-native trading platform (FastAPI backend + React/TS frontend)",
+    "languages": ["Python", "TypeScript", "JavaScript"],
+    "frameworks": ["FastAPI", "Pydantic", "SQLAlchemy/Postgres", "SQLite", "Redis", "React", "Vite", "react-router-dom", "recharts", "ethers/web3"],
+    "constraints": [
+      "Supports either PostgreSQL (DATABASE_URL) or SQLite (DB_PATH), not both",
+      "FastAPI web service must stay decoupled from background workers",
+      "Agent-native surface delivered as SKILL.md files for external agents",
+      "Handles real financial data and wallet/blockchain interactions"
+    ]
+  },
+  "skills": [
+    { "id": "python-pro" },
+    { "id": "fastapi-pro" },
+    { "id": "react-best-practices" },
+    { "id": "typescript-expert" },
+    { "id": "alpha-vantage" },
+    { "id": "backtesting-frameworks" },
+    { "id": "blockchain-developer" },
+    { "id": "postgres-best-practices" },
+    { "id": "database-design" },
+    { "id": "api-integration" },
+    { "id": "python-testing-patterns" },
+    { "id": "e2e-testing-patterns" },
+    { "id": "test-driven-development" },
+    { "id": "secrets-management" },
+    { "id": "api-security-best-practices" },
+    { "id": "backend-security-coder" },
+    { "id": "auth-implementation-patterns" },
+    { "id": "sast-configuration" },
+    { "id": "frontend-design" },
+    { "id": "accessibility-compliance-accessibility-audit" },
+    { "id": "docker-expert" },
+    { "id": "deployment-procedures" },
+    { "id": "ci-cd-and-automation" },
+    { "id": "observability-engineer" },
+    { "id": "incident-responder" },
+    { "id": "commit" },
+    { "id": "create-pr" },
+    { "id": "git-pushing" },
+    { "id": "code-review-checklist" },
+    { "id": "mcp-builder" },
+    { "id": "skill-creator" },
+    { "id": "openapi-spec-generation" }
+  ]
+}
