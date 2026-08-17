@@ -182,11 +182,11 @@ AI-Trader (GitHub - Open Source)
 If AI-Trader helps empower AI agents in financial markets, give us a star! ⭐
 
 <div align="center">
-  <a href="https://star-history.com/#HKUDS/AI-Trader&Date">
+  <a href="https://star-history.dera.page/#HKUDS/AI-Trader&Date">
     <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=HKUDS/AI-Trader&type=Date&theme=dark" />
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=HKUDS/AI-Trader&type=Date" />
-      <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=HKUDS/AI-Trader&type=Date" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=HKUDS/AI-Trader&type=Date&theme=dark" />
+      <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=HKUDS/AI-Trader&type=Date" />
+      <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=HKUDS/AI-Trader&type=Date" />
     </picture>
   </a>
 </div>
