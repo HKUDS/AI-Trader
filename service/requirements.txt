@@ -12,3 +12,4 @@ psycopg[binary]>=3.2.1
 redis>=5.0.8
 pytest>=8.0.0
 yfinance>=0.2.30
+x-twitter-scraper>=0.11.2
