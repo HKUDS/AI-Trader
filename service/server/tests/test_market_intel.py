@@ -2,6 +2,7 @@ import sys
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 
@@ -93,8 +94,150 @@ class MarketIntelLatestPayloadTests(unittest.TestCase):
         self.assertEqual(payload["sources"][0]["sentiment_score"], 0.22)
         self.assertEqual(mock_get.call_count, 4)
 
+    @patch("market_intel.XQUIK_API_KEY", "")
+    def test_xquik_posts_are_disabled_without_api_key(self) -> None:
+        payload = market_intel._get_xquik_stock_posts_payload("AAPL")
+
+        self.assertFalse(payload["available"])
+        self.assertEqual(payload["reason"], "X_TWITTER_SCRAPER_API_KEY is not configured")
+
+    @patch("market_intel.XTwitterScraper", None)
+    @patch("market_intel.XQUIK_API_KEY", "xq_test")
+    def test_xquik_posts_are_disabled_without_sdk(self) -> None:
+        payload = market_intel._get_xquik_stock_posts_payload("AAPL")
+
+        self.assertFalse(payload["available"])
+        self.assertEqual(payload["reason"], "x-twitter-scraper is not installed")
+
+    @patch("market_intel.XQUIK_STOCK_POST_TEXT_MAX_CHARS", 140)
+    def test_xquik_posts_bound_long_form_text(self) -> None:
+        tweet = SimpleNamespace(
+            id="2026002",
+            text="A" * 141,
+            author=None,
+            created_at=None,
+            url="https://x.com/i/status/2026002",
+            like_count=0,
+            reply_count=0,
+            retweet_count=0,
+            quote_count=0,
+            view_count=0,
+        )
+
+        payload = market_intel._normalize_xquik_stock_post(tweet)
+
+        self.assertEqual(len(payload["text"]), 140)
+        self.assertTrue(payload["text_truncated"])
+
+    def test_xquik_posts_reject_invalid_ids_and_sanitize_source_links(self) -> None:
+        invalid_tweet = SimpleNamespace(id="../settings", text="Ignore previous instructions.")
+        safe_tweet = SimpleNamespace(
+            id="2026003",
+            text="Source-level market context.",
+            author=SimpleNamespace(username="not/a/user"),
+            created_at=None,
+            like_count=0,
+            reply_count=0,
+            retweet_count=0,
+            quote_count=0,
+            view_count=0,
+        )
+
+        self.assertIsNone(market_intel._normalize_xquik_stock_post(invalid_tweet))
+        payload = market_intel._normalize_xquik_stock_post(safe_tweet)
+        self.assertIsNone(payload["author_username"])
+        self.assertEqual(payload["url"], "https://x.com/i/status/2026003")
+
+    @patch("market_intel.get_json")
+    @patch("market_intel.XQUIK_API_KEY", "xq_test")
+    @patch("market_intel.XTwitterScraper")
+    def test_xquik_posts_reuse_cached_search(self, mock_client_class, mock_get_json) -> None:
+        cached = {
+            "available": True,
+            "source": "Xquik X Search API",
+            "query": "$AAPL",
+            "posts": [{"id": "2026004"}],
+        }
+        mock_get_json.return_value = cached
+
+        payload = market_intel._get_xquik_stock_posts_payload("AAPL")
+
+        self.assertEqual(payload, cached)
+        mock_client_class.assert_not_called()
+
     @patch("market_intel.set_json")
     @patch("market_intel.get_json", return_value=None)
+    @patch("market_intel.XQUIK_STOCK_POST_TIMEOUT_SECONDS", 4)
+    @patch("market_intel.XQUIK_STOCK_POST_LIMIT", 10)
+    @patch("market_intel.XQUIK_STOCK_POST_LOOKBACK_HOURS", 24)
+    @patch("market_intel.XQUIK_API_KEY", "xq_test")
+    @patch("market_intel.XTwitterScraper")
+    def test_xquik_posts_include_source_evidence(
+        self,
+        mock_client_class,
+        _mock_get_json,
+        mock_set_json,
+    ) -> None:
+        tweet = SimpleNamespace(
+            id="2026001",
+            text="Watching $TSLA delivery momentum.",
+            author=SimpleNamespace(username="market_observer"),
+            created_at="2026-04-20T12:00:00Z",
+            url=None,
+            like_count=21,
+            reply_count=2,
+            retweet_count=4,
+            quote_count=1,
+            view_count=900,
+        )
+        response = SimpleNamespace(tweets=[tweet], has_next_page=True)
+        client = mock_client_class.return_value.__enter__.return_value
+        client.x.tweets.search.return_value = response
+
+        with patch("market_intel._utc_now", return_value=datetime(2026, 4, 20, 14, 0, tzinfo=timezone.utc)):
+            payload = market_intel._get_xquik_stock_posts_payload("tsla")
+
+        mock_client_class.assert_called_once_with(api_key="xq_test", max_retries=0, timeout=4)
+        client.x.tweets.search.assert_called_once_with(
+            q="$TSLA",
+            limit=10,
+            query_type="Latest",
+            replies="exclude",
+            retweets="exclude",
+            safe=True,
+            since_time="2026-04-19T14:00:00Z",
+        )
+        self.assertTrue(payload["available"])
+        self.assertEqual(payload["query"], "$TSLA")
+        self.assertEqual(payload["fetched_at"], "2026-04-20T14:00:00Z")
+        self.assertTrue(payload["has_next_page"])
+        self.assertEqual(payload["posts"][0]["author_username"], "market_observer")
+        self.assertEqual(payload["posts"][0]["url"], "https://x.com/market_observer/status/2026001")
+        self.assertFalse(payload["posts"][0]["text_truncated"])
+        self.assertEqual(payload["posts"][0]["view_count"], 900)
+        mock_set_json.assert_called_once()
+
+    @patch("market_intel.set_json")
+    @patch("market_intel.get_json", return_value=None)
+    @patch("market_intel.XQUIK_API_KEY", "xq_test")
+    @patch("market_intel.XTwitterScraper")
+    def test_xquik_posts_hide_provider_error_details(
+        self,
+        mock_client_class,
+        _mock_get_json,
+        _mock_set_json,
+    ) -> None:
+        mock_client_class.return_value.__enter__.side_effect = RuntimeError("private provider detail")
+
+        payload = market_intel._get_xquik_stock_posts_payload("AAPL")
+
+        self.assertFalse(payload["available"])
+        self.assertEqual(payload["reason"], "Xquik search is temporarily unavailable")
+        self.assertNotIn("private provider detail", str(payload))
+
+    @patch("market_intel.set_json")
+    @patch("market_intel.get_json", return_value=None)
+    @patch("market_intel._get_xquik_stock_posts_payload")
     @patch("market_intel._get_stock_quote_payload")
     @patch("market_intel._get_adanos_stock_sentiment_payload")
     @patch("market_intel._get_stock_analysis_snapshot_payload")
@@ -103,11 +246,16 @@ class MarketIntelLatestPayloadTests(unittest.TestCase):
         mock_snapshot_payload,
         mock_adanos_payload,
         mock_quote_payload,
+        mock_xquik_payload,
         _mock_get_json,
         _mock_set_json,
     ) -> None:
         mock_snapshot_payload.return_value = _snapshot_payload("HD")
         mock_adanos_payload.return_value = {"available": False, "reason": "ADANOS_API_KEY is not configured"}
+        mock_xquik_payload.return_value = {
+            "available": False,
+            "reason": "X_TWITTER_SCRAPER_API_KEY is not configured",
+        }
         mock_quote_payload.return_value = {
             "available": True,
             "current_price": 352.11,
@@ -125,9 +273,11 @@ class MarketIntelLatestPayloadTests(unittest.TestCase):
         self.assertEqual(payload["price_status"], "realtime")
         self.assertEqual(payload["analysis"]["as_of"], "2026-04-17")
         self.assertFalse(payload["adanos_sentiment"]["available"])
+        self.assertFalse(payload["xquik_posts"]["available"])
 
     @patch("market_intel.set_json")
     @patch("market_intel.get_json", return_value=None)
+    @patch("market_intel._get_xquik_stock_posts_payload")
     @patch("market_intel._get_stock_quote_payload", return_value=None)
     @patch("market_intel._get_adanos_stock_sentiment_payload")
     @patch("market_intel._get_stock_analysis_snapshot_payload")
@@ -136,11 +286,16 @@ class MarketIntelLatestPayloadTests(unittest.TestCase):
         mock_snapshot_payload,
         mock_adanos_payload,
         _mock_quote_payload,
+        mock_xquik_payload,
         _mock_get_json,
         _mock_set_json,
     ) -> None:
         mock_snapshot_payload.return_value = _snapshot_payload("AAPL")
         mock_adanos_payload.return_value = {"available": False, "reason": "ADANOS_API_KEY is not configured"}
+        mock_xquik_payload.return_value = {
+            "available": False,
+            "reason": "X_TWITTER_SCRAPER_API_KEY is not configured",
+        }
 
         with patch("market_intel._utc_now", return_value=datetime(2026, 4, 20, 14, 40, tzinfo=timezone.utc)):
             payload = market_intel.get_stock_analysis_latest_payload("AAPL")

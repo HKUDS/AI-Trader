@@ -24,12 +24,16 @@ try:
 except ImportError:  # pragma: no cover - optional dependency in some environments
     OpenRouter = None
 try:
+    from x_twitter_scraper import XTwitterScraper
+except ImportError:  # pragma: no cover - optional dependency in some environments
+    XTwitterScraper = None
+try:
     from zoneinfo import ZoneInfo
 except ImportError:  # pragma: no cover - Python < 3.9 fallback
     ZoneInfo = None
 
 from cache import delete_pattern, get_json, set_json
-from config import ADANOS_API_BASE_URL, ADANOS_API_KEY, ALPHA_VANTAGE_API_KEY
+from config import ADANOS_API_BASE_URL, ADANOS_API_KEY, ALPHA_VANTAGE_API_KEY, XQUIK_API_KEY
 from database import get_db_connection
 
 ALPHA_VANTAGE_BASE_URL = os.getenv("ALPHA_VANTAGE_BASE_URL", "https://www.alphavantage.co/query").strip()
@@ -55,6 +59,11 @@ STOCK_QUOTE_CACHE_TTL_SECONDS = max(30, int(os.getenv("MARKET_INTEL_STOCK_QUOTE_
 STOCK_QUOTE_FAILURE_CACHE_TTL_SECONDS = max(30, int(os.getenv("MARKET_INTEL_STOCK_QUOTE_FAILURE_CACHE_TTL", "60")))
 ADANOS_SENTIMENT_CACHE_TTL_SECONDS = max(30, int(os.getenv("ADANOS_SENTIMENT_CACHE_TTL_SECONDS", "300")))
 ADANOS_SENTIMENT_TIMEOUT_SECONDS = max(1, int(os.getenv("ADANOS_SENTIMENT_TIMEOUT_SECONDS", "4")))
+XQUIK_STOCK_POST_CACHE_TTL_SECONDS = max(30, int(os.getenv("XQUIK_STOCK_POST_CACHE_TTL_SECONDS", "300")))
+XQUIK_STOCK_POST_LOOKBACK_HOURS = max(1, min(int(os.getenv("XQUIK_STOCK_POST_LOOKBACK_HOURS", "24")), 168))
+XQUIK_STOCK_POST_LIMIT = max(1, min(int(os.getenv("XQUIK_STOCK_POST_LIMIT", "10")), 20))
+XQUIK_STOCK_POST_TEXT_MAX_CHARS = max(140, min(int(os.getenv("XQUIK_STOCK_POST_TEXT_MAX_CHARS", "500")), 4000))
+XQUIK_STOCK_POST_TIMEOUT_SECONDS = max(1, int(os.getenv("XQUIK_STOCK_POST_TIMEOUT_SECONDS", "4")))
 STOCK_QUOTE_STALE_AFTER_SECONDS = max(
     STOCK_QUOTE_CACHE_TTL_SECONDS,
     int(os.getenv("MARKET_INTEL_STOCK_QUOTE_STALE_AFTER_SECONDS", "900")),
@@ -437,6 +446,106 @@ def _decorate_stock_analysis_with_adanos_sentiment(base_payload: dict[str, Any])
     if not payload.get("available"):
         return payload
     payload["adanos_sentiment"] = _get_adanos_stock_sentiment_payload(payload["symbol"])
+    return payload
+
+
+def _normalize_xquik_stock_post(tweet: Any) -> Optional[dict[str, Any]]:
+    tweet_id = str(getattr(tweet, "id", "") or "").strip()
+    raw_text = str(getattr(tweet, "text", "") or "").strip()
+    if not tweet_id.isdigit() or not raw_text:
+        return None
+    text_truncated = len(raw_text) > XQUIK_STOCK_POST_TEXT_MAX_CHARS
+    text = raw_text[:XQUIK_STOCK_POST_TEXT_MAX_CHARS]
+
+    author = getattr(tweet, "author", None)
+    raw_username = str(getattr(author, "username", "") or "").strip()
+    author_username = raw_username if re.fullmatch(r"[A-Za-z0-9_]{1,15}", raw_username) else None
+    url = f"https://x.com/{author_username or 'i'}/status/{tweet_id}"
+
+    return {
+        "id": tweet_id,
+        "text": text,
+        "text_truncated": text_truncated,
+        "author_username": author_username,
+        "created_at": getattr(tweet, "created_at", None),
+        "url": url,
+        "like_count": getattr(tweet, "like_count", 0),
+        "reply_count": getattr(tweet, "reply_count", 0),
+        "retweet_count": getattr(tweet, "retweet_count", 0),
+        "quote_count": getattr(tweet, "quote_count", 0),
+        "view_count": getattr(tweet, "view_count", 0),
+    }
+
+
+def _get_xquik_stock_posts_payload(symbol: str) -> dict[str, Any]:
+    symbol = symbol.strip().upper()
+    query = f"${symbol}"
+    if not XQUIK_API_KEY:
+        return {"available": False, "reason": "X_TWITTER_SCRAPER_API_KEY is not configured"}
+    if XTwitterScraper is None:
+        return {"available": False, "reason": "x-twitter-scraper is not installed"}
+
+    cache_key = _cache_key(
+        "xquik",
+        "stock_posts_v1",
+        symbol,
+        XQUIK_STOCK_POST_LOOKBACK_HOURS,
+        XQUIK_STOCK_POST_LIMIT,
+        XQUIK_STOCK_POST_TEXT_MAX_CHARS,
+    )
+    cached = get_json(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
+    since_time = _datetime_to_iso_z(_utc_now() - timedelta(hours=XQUIK_STOCK_POST_LOOKBACK_HOURS))
+    payload: dict[str, Any] = {
+        "available": False,
+        "source": "Xquik X Search API",
+        "docs_url": "https://docs.xquik.com/api-reference/x/search-tweets",
+        "query": query,
+        "lookback_hours": XQUIK_STOCK_POST_LOOKBACK_HOURS,
+        "posts": [],
+        "fetched_at": _utc_now_iso_z(),
+    }
+    try:
+        with XTwitterScraper(
+            api_key=XQUIK_API_KEY,
+            max_retries=0,
+            timeout=XQUIK_STOCK_POST_TIMEOUT_SECONDS,
+        ) as client:
+            response = client.x.tweets.search(
+                q=query,
+                limit=XQUIK_STOCK_POST_LIMIT,
+                query_type="Latest",
+                replies="exclude",
+                retweets="exclude",
+                safe=True,
+                since_time=since_time,
+            )
+        posts = [
+            normalized
+            for tweet in response.tweets
+            if (normalized := _normalize_xquik_stock_post(tweet)) is not None
+        ]
+        payload.update({
+            "available": bool(posts),
+            "posts": posts,
+            "has_next_page": bool(response.has_next_page),
+        })
+        if not posts:
+            payload["reason"] = "No matching X posts were found"
+    except Exception:
+        payload["reason"] = "Xquik search is temporarily unavailable"
+
+    set_json(cache_key, payload, ttl_seconds=XQUIK_STOCK_POST_CACHE_TTL_SECONDS)
+    return payload
+
+
+def _decorate_stock_analysis_with_xquik_posts(base_payload: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(base_payload)
+    if not payload.get("available"):
+        return payload
+    payload["xquik_posts"] = _get_xquik_stock_posts_payload(payload["symbol"])
     return payload
 
 
@@ -1699,13 +1808,15 @@ def _get_stock_analysis_snapshot_payload(symbol: str) -> dict[str, Any]:
 
 def get_stock_analysis_latest_payload(symbol: str) -> dict[str, Any]:
     symbol = symbol.strip().upper()
-    cache_key = _cache_key("stocks", "latest_v3", symbol)
+    cache_key = _cache_key("stocks", "latest_v4", symbol)
     cached = get_json(cache_key)
     if isinstance(cached, dict):
         return cached
 
-    payload = _decorate_stock_analysis_with_adanos_sentiment(
-        _decorate_stock_analysis_with_quote(_get_stock_analysis_snapshot_payload(symbol))
+    payload = _decorate_stock_analysis_with_xquik_posts(
+        _decorate_stock_analysis_with_adanos_sentiment(
+            _decorate_stock_analysis_with_quote(_get_stock_analysis_snapshot_payload(symbol))
+        )
     )
     set_json(cache_key, payload, ttl_seconds=STOCK_ANALYSIS_LATEST_CACHE_TTL_SECONDS)
     return payload
