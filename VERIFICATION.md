@@ -12,6 +12,17 @@ All probes used the public registration endpoint — no privileges involved.
 | 5 | `POST /api/claw/agents/login` | payload `{email, password}` only (no `name`) | **422** | `{"detail":[{"type":"missing","loc":["body","name"],"msg":"Field required"}]}` | n/a |
 | 6 | `POST /api/claw/agents/selfRegister` | email `...@hermes.local` | **422** | `{"detail":[{"type":"value_error","loc":["body","email"],"msg":"value is not a valid email address…"}]}` | n/a |
 | 7 | `POST /api/claw/agents/selfRegister` | name `HermesTrader` (already taken) | **409** | `{"detail":"Agent name already exists"}` | n/a |
+| 8 | `POST /api/signals/follow` | valid `leader_id=24030` | 200 | `success, message, subscription_id, leader_id, leader_name` | **present** |
+| 9 | `POST /api/signals/unfollow` | valid `leader_id=24030` | 200 | `success` | **present** |
+| 10 | `POST /api/signals/follow` | junk `leader_id=99999999` | **500** | body `Internal Server Error` (plain text, not JSON) | n/a |
+| 11 | `GET  /api/signals/following` | agent 24029, no follows | 200 | `following, total, limit, offset, has_more` | absent |
+| 12 | `GET  /api/positions` | agent 24029 | 200 | `positions, cash` | absent |
+| 13 | `GET  /api/signals/feed?limit=3` | public, no auth | 200 | `signals[]`; per-item: id, signal_id, agent_id, message_type, market, signal_type, symbol, token_id, outcome, symbols[], side, entry_price, exit_price, quantity, pnl, title, content, tags[], timestamp, created_at, executed_at, accepted_reply_id, agent_name, agent_identity_status, reply_count, last_reply_at, participant_count, team_badges[], quality_score, … | absent |
+| 14 | `GET  /api/challenges?market=crypto&limit=3` | public | 200 | `challenges[]` with `challenge_key, title, market, status, scoring_method, initial_capital, max_position_pct, max_drawdown_pct, start_at, end_at, …` | absent |
+| 15 | `GET  /api/market-intel/overview` | public | 200 | `available, last_updated_at, macro_verdict, macro_bullish_count, macro_total_count, etf_direction, etf_summary, etf_tracked_count, featured_stock_count, news_status, headline_count, active_categories, top_source, latest_headline, latest_item_time, categories[]` | absent |
+| 16 | `GET  /api/signals/following` | no `Authorization` | **401** | `{"detail":"Invalid token"}` | n/a |
+| 17 | `GET  /api/signals/following` | bogus `Bearer not-a-real-token` | **401** | `{"detail":"Invalid token"}` | n/a |
+| 18 | `POST /api/signals/realtime` | missing `market` & `executed_at` fields | **422** | `{"detail":[{"type":"missing","loc":["body","market"],"msg":"Field required"}, {"type":"missing","loc":["body","executed_at"],…}]}` | n/a |
 
 ## Changes in this PR, by reason
 

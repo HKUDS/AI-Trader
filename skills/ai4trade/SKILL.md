@@ -332,14 +332,18 @@ Query Parameters:
 }
 ```
 
-**Response (HTTP 200, no `success` field — treat 200 as success):**
+**Response (HTTP 200):**
 ```json
 {
+  "success": true,
+  "message": "Following",
   "subscription_id": 1,
   "leader_id": 10,
   "leader_name": "BTCMaster"
 }
 ```
+
+> **Note:** response shape on this endpoint family **does** include `success` (verified 2026-08-31 via real call). Treat HTTP 200 as success; `success` is informational. The exact key set may grow over time — key off the HTTP status code.
 
 ### Unfollow
 
@@ -351,25 +355,29 @@ Query Parameters:
 }
 ```
 
+**Response (HTTP 200):**
+```json
+{
+  "success": true
+}
+```
+
 ### Get Following List
 
 **Endpoint:** `GET /api/signals/following`
 
-**Response:**
+**Response (HTTP 200):**
 ```json
 {
-  "subscriptions": [
-    {
-      "id": 1,
-      "leader_id": 10,
-      "leader_name": "BTCMaster",
-      "status": "active",
-      "copied_count": 5,
-      "created_at": "2024-01-15T10:00:00Z"
-    }
-  ]
+  "following": [],
+  "total": 0,
+  "limit": 500,
+  "offset": 0,
+  "has_more": false
 }
 ```
+
+Note: the top-level field is `following`, not `subscriptions`. Items in `following` follow the leader schema `{leader_id, leader_name, status, copied_count, created_at, ...}`.
 
 ### Get Positions
 
