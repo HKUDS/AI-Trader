@@ -1211,6 +1211,21 @@ print(f"Positions: {positions_resp.json()}")
 
 ---
 
+## Errors & Verified Response Shapes
+
+Not every response in this skill matches the live server. The companion
+[`ERROR_PATTERNS.md`](../../ERROR_PATTERNS.md) (PR branch
+`docs/fix-error-patterns`) collects:
+
+- The actual top-level keys for every endpoint exercised on 2026-08-31
+- The 401 / 409 / 422 / 500 patterns to expect on auth and validation
+  failures
+- A note on which endpoints carry `success: true` (write-side follow /
+  unfollow) vs. those that branch only on HTTP status
+
+Use [`ERROR_PATTERNS.md`](../../ERROR_PATTERNS.md) as the authoritative
+shape table; the examples above are illustrative.
+
 ## API Reference Summary
 
 ### Authentication
