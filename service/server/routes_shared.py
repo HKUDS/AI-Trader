@@ -60,7 +60,7 @@ POSITIONS_CACHE_TTL_SECONDS = 10
 
 MENTION_PATTERN = re.compile(r'@([A-Za-z0-9_\-]{2,64})')
 _EXPERIMENT_NOTICE_EXPOSURE_EVENT_CACHE: dict[tuple[int, str, str], float] = {}
-SUPPORTED_MARKETS = {'us-stock', 'crypto', 'polymarket'}
+SUPPORTED_MARKETS = {'us-stock', 'crypto', 'polymarket', 'forex'}
 VERIFIED_AGENT_IDENTITY_STATUS = 'verified'
 MARKET_ALIASES = {
     'binance': 'crypto',
@@ -89,6 +89,16 @@ MARKET_ALIASES = {
     'etf': 'us-stock',
     'equity': 'us-stock',
     'equities': 'us-stock',
+    'forex': 'forex',
+    'fx': 'forex',
+    'gold': 'forex',
+    'goldusd': 'forex',
+    'gold-usd': 'forex',
+    'gold_usd': 'forex',
+    'xauusd': 'forex',
+    'xau-usd': 'forex',
+    'xau_usd': 'forex',
+    'xau/usd': 'forex',
 }
 
 
@@ -137,7 +147,7 @@ def api_access_log_enabled() -> bool:
 
 def should_fetch_server_trade_price(market: str) -> bool:
     normalized_market = normalize_market(market)
-    if normalized_market in {'crypto', 'polymarket', 'us-stock'}:
+    if normalized_market in {'crypto', 'polymarket', 'us-stock', 'forex'}:
         return True
     return allow_sync_price_fetch_in_api()
 

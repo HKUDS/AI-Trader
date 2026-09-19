@@ -28,6 +28,8 @@ class TradePriceSourceTests(unittest.TestCase):
             self.assertTrue(should_fetch_server_trade_price('binance'))
             self.assertTrue(should_fetch_server_trade_price('polymarket'))
             self.assertTrue(should_fetch_server_trade_price('us-stock'))
+            self.assertTrue(should_fetch_server_trade_price('forex'))
+            self.assertTrue(should_fetch_server_trade_price('xauusd'))
 
     def test_env_flag_keeps_server_fetch_for_unknown_markets(self) -> None:
         with patch.dict(os.environ, {'ALLOW_SYNC_PRICE_FETCH_IN_API': 'true'}, clear=False):
@@ -39,11 +41,14 @@ class TradePriceSourceTests(unittest.TestCase):
         self.assertEqual(normalize_market('OKX'), 'crypto')
         self.assertEqual(normalize_market('US Stock'), 'us-stock')
         self.assertEqual(normalize_market('NASDAQ'), 'us-stock')
+        self.assertEqual(normalize_market('XAUUSD'), 'forex')
+        self.assertEqual(normalize_market('gold'), 'forex')
         self.assertEqual(validate_market('stock'), 'us-stock')
+        self.assertEqual(validate_market('forex'), 'forex')
 
     def test_unknown_market_is_rejected(self) -> None:
         with self.assertRaises(HTTPException):
-            validate_market('forex')
+            validate_market('invalid-market')
 
 
 class ExperimentUnreadNoticeTests(unittest.TestCase):
