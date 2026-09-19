@@ -708,6 +708,18 @@ def get_price_from_market(
             # Polymarket pricing uses public Gamma + CLOB endpoints.
             # We use the current orderbook mid price (paper trading).
             price = _get_polymarket_mid_price(symbol, token_id=token_id, outcome=outcome)
+        elif market == "forex":
+            normalized_symbol = (symbol or "").strip().upper()
+            candidates = []
+            if normalized_symbol in {"XAUUSD", "XAU/USD", "XAU_USD", "GOLD", "GOLDUSD", "GOLD/USD", "XAUUSD=X", "GC=F"}:
+                candidates = ["XAUUSD=X", "GC=F"]
+            else:
+                candidates = [normalized_symbol or symbol]
+            price = None
+            for candidate in candidates:
+                price = _get_yfinance_us_stock_price(candidate, executed_at)
+                if price is not None:
+                    break
         elif market == "us-stock":
             price = None
             if ALPHA_VANTAGE_API_KEY and ALPHA_VANTAGE_API_KEY != "demo":
