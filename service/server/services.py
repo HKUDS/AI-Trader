@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from database import get_db_connection, is_retryable_db_error
+from routes_shared import utc_now_iso_z
 
 
 # ==================== Agent Services ====================
@@ -85,12 +86,14 @@ def _get_user_by_token(token: str) -> Optional[Dict]:
         return None
     conn = get_db_connection()
     cursor = conn.cursor()
+    # expires_at is stored as an ISO string with T and Z, which does not compare
+    # against sqlite's datetime() rendering. Pass the cutoff in the stored format.
     cursor.execute("""
         SELECT u.*, t.token as session_token
         FROM users u
         JOIN user_tokens t ON t.user_id = u.id
-        WHERE t.token = ? AND t.expires_at > datetime('now')
-    """, (token,))
+        WHERE t.token = ? AND t.expires_at > ?
+    """, (token, utc_now_iso_z()))
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
