@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter, defaultdict
 
-from research_common import as_float, ensure_dir, mean, read_csv, stddev, variant_summary, write_csv
+from research_common import as_float, as_int, ensure_dir, mean, read_csv, read_json_cell, stddev, variant_summary, write_csv
 
 
 def compute_metrics(input_dir: str, output_dir: str) -> dict[str, str]:
@@ -45,13 +45,24 @@ def compute_metrics(input_dir: str, output_dir: str) -> dict[str, str]:
         {"metric": "discussion_gain", "value": len(replies), "n": len(replies)},
     ]
 
+    duplicate_counts = [
+        as_int(payload.get("duplicate_count"))
+        for payload in (read_json_cell(row.get("metadata_json")) for row in quality)
+        if isinstance(payload, dict) and payload.get("duplicate_count") is not None
+    ]
+    duplicate_rate = (
+        sum(1 for count in duplicate_counts if count > 0) / len(duplicate_counts)
+        if duplicate_counts
+        else 0.0
+    )
+
     content_rows = [
         {"metric": "verifiability", "value": round(mean(as_float(row.get("verifiability_score")) for row in quality), 6), "n": len(quality)},
         {"metric": "evidence_score", "value": round(mean(as_float(row.get("evidence_score")) for row in quality), 6), "n": len(quality)},
         {"metric": "specificity", "value": round(mean(as_float(row.get("specificity_score")) for row in quality), 6), "n": len(quality)},
         {"metric": "novelty", "value": round(mean(as_float(row.get("novelty_score")) for row in quality), 6), "n": len(quality)},
         {"metric": "review_score", "value": round(mean(as_float(row.get("review_score")) for row in quality), 6), "n": len(quality)},
-        {"metric": "duplicate_content_rate", "value": 0.0, "n": len(quality)},
+        {"metric": "duplicate_content_rate", "value": round(duplicate_rate, 6), "n": len(duplicate_counts)},
     ]
 
     out = ensure_dir(output_dir)
