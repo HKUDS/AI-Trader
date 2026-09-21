@@ -145,7 +145,14 @@ def did_rows(rows: list[dict[str, Any]], metric: str, family: str) -> list[dict[
             variant_post = [as_float(row.get(metric)) for row in variant_rows if not split or row_time(row) > split]
             control_pre = [as_float(row.get(metric)) for row in control_rows if not split or row_time(row) <= split]
             control_post = [as_float(row.get(metric)) for row in control_rows if not split or row_time(row) > split]
-            did_effect = (mean(variant_post) - mean(variant_pre)) - (mean(control_post) - mean(control_pre))
+            # mean([]) is 0.0, so a side with no rows would enter the difference
+            # as a level of zero instead of being reported as not measured.
+            measurable = all((variant_pre, variant_post, control_pre, control_post))
+            did_effect = (
+                (mean(variant_post) - mean(variant_pre)) - (mean(control_post) - mean(control_pre))
+                if measurable
+                else None
+            )
             row = effect_row(
                 family=family,
                 method="difference_in_differences",
@@ -159,14 +166,24 @@ def did_rows(rows: list[dict[str, Any]], metric: str, family: str) -> list[dict[
                 time_window_end=window_end,
                 segment=f"pre_post_split:{split}",
             )
-            row["effect"] = round(did_effect, 6)
-            row["p_value"] = 1.0
+            row["effect"] = round(did_effect, 6) if did_effect is not None else None
+            # effect_row builds stderr from single element lists here, so there is
+            # no test behind this number. Leaving p_value unset keeps "not tested"
+            # apart from "tested, not significant".
+            row["p_value"] = None
             output.append(row)
     return output
 
 
 def regression_rows(rows: list[dict[str, Any]], metric: str, family: str) -> list[dict[str, Any]]:
-    control_column = next((column for column in CONTROL_COLUMNS if any(row.get(column) not in (None, "") for row in rows)), "")
+    control_column = next(
+        (
+            column
+            for column in CONTROL_COLUMNS
+            if column != metric and any(row.get(column) not in (None, "") for row in rows)
+        ),
+        "",
+    )
     adjusted_rows = []
     if control_column:
         x_values = [as_float(row.get(control_column)) for row in rows]
@@ -194,7 +211,14 @@ def regression_rows(rows: list[dict[str, Any]], metric: str, family: str) -> lis
 
 
 def hte_rows(rows: list[dict[str, Any]], metric: str, family: str) -> list[dict[str, Any]]:
-    segmentation_column = next((column for column in CONTROL_COLUMNS if any(row.get(column) not in (None, "") for row in rows)), "")
+    segmentation_column = next(
+        (
+            column
+            for column in CONTROL_COLUMNS
+            if column != metric and any(row.get(column) not in (None, "") for row in rows)
+        ),
+        "",
+    )
     if not segmentation_column:
         output = ab_test_rows(rows, metric, family)
         for row in output:
