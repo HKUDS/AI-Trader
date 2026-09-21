@@ -18,8 +18,10 @@ import json
 try:
     from zoneinfo import ZoneInfo
     _ET_ZONEINFO = ZoneInfo("America/New_York")
-except ImportError:
-    _ET_ZONEINFO = None  # Python < 3.9 fallback: use fixed offset below
+except (ImportError, KeyError):
+    # ZoneInfoNotFoundError subclasses KeyError and is raised when the host has
+    # no tz database, for example a slim container or Windows without tzdata.
+    _ET_ZONEINFO = None
 
 # Alpha Vantage API configuration
 ALPHA_VANTAGE_API_KEY = os.environ.get("ALPHA_VANTAGE_API_KEY", "demo")
