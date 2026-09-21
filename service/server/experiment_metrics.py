@@ -61,8 +61,17 @@ def refresh_agent_metric_snapshots(window_days: int = 7, window_key: str | None 
                 (agent_id, start_at, end_at),
             )
             history = [dict(row) for row in cursor.fetchall()]
+            # profit is a level since account start, so the window return is the
+            # change between the first and the last row inside the window, taken
+            # against the equity the window opened with.
+            opening_profit = float(history[0]["profit"] or 0) if history else 0.0
             latest_profit = float(history[-1]["profit"] or 0) if history else 0.0
-            return_pct = latest_profit / INITIAL_CAPITAL * 100.0
+            opening_equity = INITIAL_CAPITAL + opening_profit
+            return_pct = (
+                (latest_profit - opening_profit) / opening_equity * 100.0
+                if opening_equity > 0
+                else 0.0
+            )
             max_drawdown = _max_drawdown_from_history(history)
 
             cursor.execute(
