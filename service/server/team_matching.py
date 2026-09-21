@@ -42,22 +42,29 @@ def _agent_feature(cursor: Any, agent_id: int) -> dict[str, Any]:
     )
     market_row = cursor.fetchone()
 
+    # profit is a level since account start, so the window return is the change
+    # between the first and the last row inside the window, taken against the
+    # equity the window opened with.
     cursor.execute(
         """
         SELECT profit
         FROM profit_history
-        WHERE agent_id = ?
-        ORDER BY recorded_at DESC, id DESC
-        LIMIT 1
+        WHERE agent_id = ? AND recorded_at >= ?
+        ORDER BY recorded_at ASC, id ASC
         """,
-        (agent_id,),
+        (agent_id, cutoff),
     )
-    profit_row = cursor.fetchone()
+    profit_rows = cursor.fetchall()
 
     trade_count = int(activity["trade_count"] or 0) if activity else 0
     strategy_count = int(activity["strategy_count"] or 0) if activity else 0
     discussion_count = int(activity["discussion_count"] or 0) if activity else 0
-    return_pct_30d = float(profit_row["profit"] or 0) / 100000.0 * 100 if profit_row else 0.0
+    opening_profit = float(profit_rows[0]["profit"] or 0) if profit_rows else 0.0
+    latest_profit = float(profit_rows[-1]["profit"] or 0) if profit_rows else 0.0
+    opening_equity = 100000.0 + opening_profit
+    return_pct_30d = (
+        (latest_profit - opening_profit) / opening_equity * 100 if opening_equity > 0 else 0.0
+    )
     activity_score = trade_count * 2 + strategy_count * 1.4 + discussion_count
 
     return {
