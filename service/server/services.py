@@ -249,6 +249,8 @@ def _update_position_from_signal(
 
     if action_lower == "buy":
         # Increase long position
+        if current_qty < 0:
+            raise ValueError("Cannot buy while a short position is open; cover it first")
         if current_qty > 0:
             # Average in price
             new_qty = current_qty + quantity
@@ -293,6 +295,8 @@ def _update_position_from_signal(
 
     elif action_lower == "short":
         # Increase short position
+        if current_qty > 0:
+            raise ValueError("Cannot short while a long position is open; sell it first")
         if current_qty < 0:
             # Add to existing short
             new_qty = current_qty - quantity

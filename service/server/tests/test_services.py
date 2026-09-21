@@ -38,6 +38,23 @@ class UpdatePositionFromSignalTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.conn.close()
 
+    def _insert_position(self, side: str, quantity: float, entry_price: float) -> None:
+        self.cursor.execute(
+            """
+            INSERT INTO positions (
+                agent_id, leader_id, symbol, market, token_id, outcome,
+                side, quantity, entry_price, opened_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (1, None, "BTC", "crypto", None, None, side, quantity, entry_price, "2026-04-13T14:16:45Z"),
+        )
+
+    def _rows(self) -> list:
+        self.cursor.execute(
+            "SELECT side, quantity, entry_price FROM positions WHERE agent_id = 1 ORDER BY id"
+        )
+        return [dict(row) for row in self.cursor.fetchall()]
+
     def test_short_add_updates_weighted_entry_price(self) -> None:
         self.cursor.execute(
             """
@@ -85,6 +102,72 @@ class UpdatePositionFromSignalTests(unittest.TestCase):
         self.assertAlmostEqual(row["quantity"], -0.5)
         self.assertAlmostEqual(row["entry_price"], 112.0)
         self.assertEqual(row["opened_at"], "2026-04-13T15:16:45Z")
+
+    def test_buy_is_rejected_while_a_short_position_is_open(self) -> None:
+        self._insert_position("short", -0.2, 100.0)
+
+        with self.assertRaises(ValueError) as caught:
+            _update_position_from_signal(
+                agent_id=1,
+                symbol="BTC",
+                market="crypto",
+                action="buy",
+                quantity=0.3,
+                price=120.0,
+                executed_at="2026-04-13T15:16:45Z",
+                cursor=self.cursor,
+            )
+
+        self.assertIn("short position", str(caught.exception))
+        self.assertEqual(self._rows(), [{"side": "short", "quantity": -0.2, "entry_price": 100.0}])
+
+    def test_short_is_rejected_while_a_long_position_is_open(self) -> None:
+        self._insert_position("long", 0.2, 100.0)
+
+        with self.assertRaises(ValueError) as caught:
+            _update_position_from_signal(
+                agent_id=1,
+                symbol="BTC",
+                market="crypto",
+                action="short",
+                quantity=0.3,
+                price=120.0,
+                executed_at="2026-04-13T15:16:45Z",
+                cursor=self.cursor,
+            )
+
+        self.assertIn("long position", str(caught.exception))
+        self.assertEqual(self._rows(), [{"side": "long", "quantity": 0.2, "entry_price": 100.0}])
+
+    def test_buy_still_averages_into_an_existing_long(self) -> None:
+        self._insert_position("long", 0.2, 100.0)
+
+        _update_position_from_signal(
+            agent_id=1,
+            symbol="BTC",
+            market="crypto",
+            action="buy",
+            quantity=0.3,
+            price=120.0,
+            executed_at="2026-04-13T15:16:45Z",
+            cursor=self.cursor,
+        )
+
+        self.assertEqual(self._rows(), [{"side": "long", "quantity": 0.5, "entry_price": 112.0}])
+
+    def test_buy_still_opens_a_position_when_none_is_held(self) -> None:
+        _update_position_from_signal(
+            agent_id=1,
+            symbol="BTC",
+            market="crypto",
+            action="buy",
+            quantity=0.3,
+            price=120.0,
+            executed_at="2026-04-13T15:16:45Z",
+            cursor=self.cursor,
+        )
+
+        self.assertEqual(self._rows(), [{"side": "long", "quantity": 0.3, "entry_price": 120.0}])
 
 
 if __name__ == "__main__":
