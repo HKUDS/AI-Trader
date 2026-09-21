@@ -6,6 +6,8 @@ import hashlib
 import random
 from typing import Any
 
+from routes_shared import utc_iso_days_ago
+
 
 def stable_seed(value: str) -> int:
     digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
@@ -13,6 +15,7 @@ def stable_seed(value: str) -> int:
 
 
 def _agent_feature(cursor: Any, agent_id: int) -> dict[str, Any]:
+    cutoff = utc_iso_days_ago(30)
     cursor.execute(
         """
         SELECT
@@ -20,9 +23,9 @@ def _agent_feature(cursor: Any, agent_id: int) -> dict[str, Any]:
             SUM(CASE WHEN message_type = 'strategy' THEN 1 ELSE 0 END) AS strategy_count,
             SUM(CASE WHEN message_type = 'discussion' THEN 1 ELSE 0 END) AS discussion_count
         FROM signals
-        WHERE agent_id = ? AND created_at >= datetime('now', '-30 day')
+        WHERE agent_id = ? AND created_at >= ?
         """,
-        (agent_id,),
+        (agent_id, cutoff),
     )
     activity = cursor.fetchone()
 
@@ -30,31 +33,38 @@ def _agent_feature(cursor: Any, agent_id: int) -> dict[str, Any]:
         """
         SELECT market, COUNT(*) AS count
         FROM signals
-        WHERE agent_id = ? AND created_at >= datetime('now', '-30 day')
+        WHERE agent_id = ? AND created_at >= ?
         GROUP BY market
         ORDER BY count DESC, market ASC
         LIMIT 1
         """,
-        (agent_id,),
+        (agent_id, cutoff),
     )
     market_row = cursor.fetchone()
 
+    # profit is a level since account start, so the window return is the change
+    # between the first and the last row inside the window, taken against the
+    # equity the window opened with.
     cursor.execute(
         """
         SELECT profit
         FROM profit_history
-        WHERE agent_id = ?
-        ORDER BY recorded_at DESC, id DESC
-        LIMIT 1
+        WHERE agent_id = ? AND recorded_at >= ?
+        ORDER BY recorded_at ASC, id ASC
         """,
-        (agent_id,),
+        (agent_id, cutoff),
     )
-    profit_row = cursor.fetchone()
+    profit_rows = cursor.fetchall()
 
     trade_count = int(activity["trade_count"] or 0) if activity else 0
     strategy_count = int(activity["strategy_count"] or 0) if activity else 0
     discussion_count = int(activity["discussion_count"] or 0) if activity else 0
-    return_pct_30d = float(profit_row["profit"] or 0) / 100000.0 * 100 if profit_row else 0.0
+    opening_profit = float(profit_rows[0]["profit"] or 0) if profit_rows else 0.0
+    latest_profit = float(profit_rows[-1]["profit"] or 0) if profit_rows else 0.0
+    opening_equity = 100000.0 + opening_profit
+    return_pct_30d = (
+        (latest_profit - opening_profit) / opening_equity * 100 if opening_equity > 0 else 0.0
+    )
     activity_score = trade_count * 2 + strategy_count * 1.4 + discussion_count
 
     return {
