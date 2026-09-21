@@ -6,6 +6,8 @@ import hashlib
 import random
 from typing import Any
 
+from routes_shared import utc_iso_days_ago
+
 
 def stable_seed(value: str) -> int:
     digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
@@ -13,6 +15,7 @@ def stable_seed(value: str) -> int:
 
 
 def _agent_feature(cursor: Any, agent_id: int) -> dict[str, Any]:
+    cutoff = utc_iso_days_ago(30)
     cursor.execute(
         """
         SELECT
@@ -20,9 +23,9 @@ def _agent_feature(cursor: Any, agent_id: int) -> dict[str, Any]:
             SUM(CASE WHEN message_type = 'strategy' THEN 1 ELSE 0 END) AS strategy_count,
             SUM(CASE WHEN message_type = 'discussion' THEN 1 ELSE 0 END) AS discussion_count
         FROM signals
-        WHERE agent_id = ? AND created_at >= datetime('now', '-30 day')
+        WHERE agent_id = ? AND created_at >= ?
         """,
-        (agent_id,),
+        (agent_id, cutoff),
     )
     activity = cursor.fetchone()
 
@@ -30,12 +33,12 @@ def _agent_feature(cursor: Any, agent_id: int) -> dict[str, Any]:
         """
         SELECT market, COUNT(*) AS count
         FROM signals
-        WHERE agent_id = ? AND created_at >= datetime('now', '-30 day')
+        WHERE agent_id = ? AND created_at >= ?
         GROUP BY market
         ORDER BY count DESC, market ASC
         LIMIT 1
         """,
-        (agent_id,),
+        (agent_id, cutoff),
     )
     market_row = cursor.fetchone()
 

@@ -40,6 +40,7 @@ from routes_shared import (
     notify_followers_of_post,
     push_agent_message,
     should_fetch_server_trade_price,
+    utc_iso_days_ago,
     utc_now_iso_z,
     validate_executed_at,
     validate_market,
@@ -1318,6 +1319,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
         total_row = cursor.fetchone()
         total = total_row['total'] if total_row else 0
 
+        cutoff_7d = utc_iso_days_ago(7)
         cursor.execute(
             """
             SELECT
@@ -1326,9 +1328,9 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 a.identity_status as leader_identity_status,
                 s.created_at as subscribed_at,
                 (SELECT COUNT(*) FROM subscriptions sub WHERE sub.leader_id = s.leader_id AND sub.status = 'active') as follower_count,
-                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'operation' AND sig.created_at >= datetime('now', '-7 day')) as recent_trade_count_7d,
-                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'strategy' AND sig.created_at >= datetime('now', '-7 day')) as recent_strategy_count_7d,
-                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'discussion' AND sig.created_at >= datetime('now', '-7 day')) as recent_discussion_count_7d,
+                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'operation' AND sig.created_at >= ?) as recent_trade_count_7d,
+                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'strategy' AND sig.created_at >= ?) as recent_strategy_count_7d,
+                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'discussion' AND sig.created_at >= ?) as recent_discussion_count_7d,
                 (SELECT MAX(sig.created_at) FROM signals sig WHERE sig.agent_id = s.leader_id) as recent_activity_at,
                 (SELECT sig.signal_id FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'strategy' ORDER BY sig.created_at DESC LIMIT 1) as latest_strategy_signal_id,
                 (SELECT sig.title FROM signals sig WHERE sig.agent_id = s.leader_id AND sig.message_type = 'strategy' ORDER BY sig.created_at DESC LIMIT 1) as latest_strategy_title,
@@ -1343,7 +1345,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             ) DESC
             LIMIT ? OFFSET ?
             """,
-            (agent['id'], limit, offset),
+            (cutoff_7d, cutoff_7d, cutoff_7d, agent['id'], limit, offset),
         )
         rows = cursor.fetchall()
         conn.close()
@@ -1386,6 +1388,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
 
         conn = get_db_connection()
         cursor = conn.cursor()
+        cutoff_7d = utc_iso_days_ago(7)
         cursor.execute(
             """
             SELECT
@@ -1393,8 +1396,8 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 a.name as follower_name,
                 a.identity_status as follower_identity_status,
                 s.created_at as subscribed_at,
-                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.follower_id AND sig.message_type = 'operation' AND sig.created_at >= datetime('now', '-7 day')) as recent_trade_count_7d,
-                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.follower_id AND sig.message_type IN ('strategy', 'discussion') AND sig.created_at >= datetime('now', '-7 day')) as recent_social_count_7d,
+                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.follower_id AND sig.message_type = 'operation' AND sig.created_at >= ?) as recent_trade_count_7d,
+                (SELECT COUNT(*) FROM signals sig WHERE sig.agent_id = s.follower_id AND sig.message_type IN ('strategy', 'discussion') AND sig.created_at >= ?) as recent_social_count_7d,
                 (SELECT MAX(sig.created_at) FROM signals sig WHERE sig.agent_id = s.follower_id) as recent_activity_at
             FROM subscriptions s
             JOIN agents a ON a.id = s.follower_id
@@ -1404,7 +1407,7 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
                 s.created_at
             ) DESC
             """,
-            (agent['id'],),
+            (cutoff_7d, cutoff_7d, agent['id']),
         )
         rows = cursor.fetchall()
         conn.close()

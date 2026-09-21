@@ -27,6 +27,7 @@ from routes_shared import (
     position_price_cache_key,
     push_agent_message,
     resolve_position_prices,
+    utc_iso_days_ago,
     utc_now_iso_z,
     validate_market,
 )
@@ -354,10 +355,10 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             FROM signals
             WHERE agent_id IN ({placeholders})
               AND message_type IN ('strategy', 'discussion')
-              AND created_at >= datetime('now', '-7 day')
+              AND created_at >= ?
             GROUP BY agent_id, message_type
             """,
-            agent_ids,
+            [*agent_ids, utc_iso_days_ago(7)],
         )
         for row in cursor.fetchall():
             for item in result:
