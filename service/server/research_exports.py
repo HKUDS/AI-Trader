@@ -478,6 +478,7 @@ def export_challenge_tables(
 # contract: all research datasets, default anonymization, content gating,
 # metadata redaction, schema generation, agent allowlists, and generic filters.
 
+import functools as _functools
 import hashlib as _hashlib
 import json as _json
 import os as _os
@@ -1274,11 +1275,30 @@ def _sanitize_json_string(value: Any, *, include_content: bool) -> Any:
     return _json.dumps(sanitized, ensure_ascii=False, sort_keys=True, default=str)
 
 
+@_functools.lru_cache(maxsize=None)
+def _hashed_id_columns(columns: tuple[str, ...]) -> frozenset[str]:
+    """Id columns that ship a hashed counterpart in the same dataset.
+
+    Keeping the raw id next to its hash makes the hash decorative, so these are
+    the columns anonymization has to drop. Derived from the column list rather
+    than listed by hand, because a hand kept list and the export definitions
+    drift apart without anything failing.
+    """
+    return frozenset(
+        column
+        for column in columns
+        if column.endswith("_id") and column[: -len("_id")] + "_hash" in columns
+    )
+
+
 def _postprocess_row(row: dict[str, Any], columns: list[str], *, anonymize: bool, include_content: bool) -> dict[str, Any]:
+    masked_id_columns = _hashed_id_columns(tuple(columns)) if anonymize else frozenset()
     processed: dict[str, Any] = {}
     for column in columns:
         value = row.get(column)
-        if column.endswith("_hash") or column == "unit_hash":
+        if column in masked_id_columns:
+            processed[column] = None
+        elif column.endswith("_hash") or column == "unit_hash":
             processed[column] = _hash_agent_id(value)
         elif column == "name" and anonymize:
             processed[column] = _hash_value("name", value)
