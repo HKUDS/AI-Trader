@@ -5,7 +5,7 @@ import re
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, WebSocket
@@ -225,6 +225,17 @@ def check_price_api_rate_limit(ctx: RouteContext, agent_id: int) -> bool:
 
 def utc_now_iso_z() -> str:
     return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def utc_iso_days_ago(days: int) -> str:
+    """Cutoff `days` before now, in the same ISO format the tables store.
+
+    SQLite's datetime() renders '2026-08-22 16:51:45', which compares below any
+    stored '...T...Z' value of the same day, so the window would reach a day too
+    far back. Passing the cutoff as a parameter keeps the comparison in one
+    format and behaves the same on both backends.
+    """
+    return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat().replace('+00:00', 'Z')
 
 
 def get_short_cached_payload(
