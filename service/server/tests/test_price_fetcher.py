@@ -1,4 +1,6 @@
+import subprocess
 import sys
+import textwrap
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -118,6 +120,53 @@ class UsStockPriceTimezoneTests(unittest.TestCase):
             price = price_fetcher._get_polymarket_mid_price("market-slug", token_id="123", outcome="Yes")
 
         self.assertEqual(price, 0.4215)
+
+
+class ZoneinfoFallbackTests(unittest.TestCase):
+    """price_fetcher must import on a host without a tz database."""
+
+    SCRIPT = textwrap.dedent(
+        """
+        import sys
+        import zoneinfo
+
+
+        class _BlockTzdata:
+            def find_spec(self, name, path=None, target=None):
+                if name == "tzdata" or name.startswith("tzdata."):
+                    raise ImportError("tzdata is blocked for this test")
+                return None
+
+
+        sys.meta_path.insert(0, _BlockTzdata())
+        zoneinfo.reset_tzpath([])
+
+        try:
+            zoneinfo.ZoneInfo("America/New_York")
+        except zoneinfo.ZoneInfoNotFoundError:
+            pass
+        else:
+            print("tz database still reachable")
+            raise SystemExit(2)
+
+        sys.path.insert(0, sys.argv[1])
+        import price_fetcher
+
+        print(price_fetcher.ET_TZ.utcoffset(None).total_seconds())
+        """
+    )
+
+    def test_import_succeeds_without_a_tz_database(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-c", self.SCRIPT, str(SERVER_DIR)],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode == 2:
+            self.fail("precondition not met: " + result.stdout.strip())
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(float(result.stdout.strip()), -5 * 3600)
 
 
 if __name__ == "__main__":
