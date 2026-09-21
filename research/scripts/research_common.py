@@ -6,6 +6,7 @@ import argparse
 import csv
 import json
 import math
+import random
 import sys
 from pathlib import Path
 from statistics import NormalDist
@@ -136,16 +137,24 @@ def normal_p_value(effect: float, stderr: float) -> float:
     return 2.0 * (1.0 - NormalDist().cdf(z_score))
 
 
+BOOTSTRAP_ITERATIONS = 1000
+BOOTSTRAP_SEED = 0
+
+
 def bootstrap_ci(values: list[float]) -> tuple[float, float]:
+    """Percentile interval for the mean, resampled with replacement.
+
+    Determinism comes from a fixed seed, not from walking the sample in a
+    fixed stride: a stride that is coprime with the sample size visits every
+    index exactly once, which is a permutation, and the mean of a permutation
+    is the mean of the sample. That collapses the interval onto the point
+    estimate.
+    """
     if not values:
         return 0.0, 0.0
-    # Deterministic light-weight bootstrap by rotating samples rather than
-    # relying on a random seed.
-    estimates = []
+    rng = random.Random(BOOTSTRAP_SEED)
     n = len(values)
-    for offset in range(max(50, min(500, n * 20))):
-        sample = [values[(offset + i * 7) % n] for i in range(n)]
-        estimates.append(mean(sample))
+    estimates = [mean(rng.choices(values, k=n)) for _ in range(BOOTSTRAP_ITERATIONS)]
     return quantile(estimates, 0.025), quantile(estimates, 0.975)
 
 
