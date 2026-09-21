@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from fastapi import HTTPException, WebSocket
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from database import get_db_connection
 
@@ -686,11 +686,10 @@ def validate_executed_at(executed_at: str, market: str) -> tuple[bool, str]:
                 'Use ISO 8601 UTC format (e.g., 2026-03-07T14:30:00Z)',
             )
 
-        dt_et = dt_utc.astimezone(ZoneInfo('America/New_York'))
-        day = dt_et.weekday()
-        time_in_minutes = dt_et.hour * 60 + dt_et.minute
-
         if normalized_market == 'us-stock':
+            dt_et = dt_utc.astimezone(ZoneInfo('America/New_York'))
+            day = dt_et.weekday()
+            time_in_minutes = dt_et.hour * 60 + dt_et.minute
             is_weekday = day < 5
             is_market_hours = 570 <= time_in_minutes < 960
             if not (is_weekday and is_market_hours):
@@ -702,6 +701,10 @@ def validate_executed_at(executed_at: str, market: str) -> tuple[bool, str]:
                 )
 
         return True, ''
+    except ZoneInfoNotFoundError:
+        # A host without a tz database cannot answer this. Let it surface instead
+        # of reporting it as a fault in the caller's timestamp.
+        raise
     except Exception as exc:
         return False, f'Invalid executed_at: {exc}'
 
