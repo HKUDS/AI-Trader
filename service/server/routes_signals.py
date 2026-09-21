@@ -253,11 +253,17 @@ def register_signal_routes(app: FastAPI, ctx: RouteContext) -> None:
             begin_write_transaction(cursor)
             signal_id = _reserve_signal_id(cursor)
 
-            if action_lower in ('sell', 'cover'):
+            if action_lower in ('buy', 'sell', 'short', 'cover'):
                 pos = get_position_snapshot(cursor, agent_id, market, symbol, polymarket_token_id)
                 current_qty = float(pos['quantity']) if pos else 0.0
                 position_entry_price = float(pos['entry_price']) if pos and pos['entry_price'] is not None else None
-                if action_lower == 'sell':
+                if action_lower == 'buy':
+                    if current_qty < 0:
+                        raise HTTPException(status_code=400, detail='Cannot buy while a short position is open; cover it first')
+                elif action_lower == 'short':
+                    if current_qty > 0:
+                        raise HTTPException(status_code=400, detail='Cannot short while a long position is open; sell it first')
+                elif action_lower == 'sell':
                     if current_qty <= 0:
                         raise HTTPException(status_code=400, detail='No long position to sell')
                     if qty > current_qty + 1e-12:
