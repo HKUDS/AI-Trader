@@ -150,16 +150,25 @@ def bootstrap_ci(values: list[float]) -> tuple[float, float]:
 
 
 def benjamini_hochberg(rows: list[dict[str, Any]], p_key: str = "p_value") -> list[dict[str, Any]]:
-    indexed = sorted(enumerate(rows), key=lambda item: as_float(item[1].get(p_key), 1.0))
+    """Adjust the rows that carry a p-value, and leave the others unset.
+
+    A row without a p-value was not tested. Counting it as 1.0 would inflate the
+    number of comparisons and push every real q-value up, and it would leave the
+    reader unable to tell an untested row from one that was tested and came out
+    insignificant.
+    """
+    tested = [(index, row) for index, row in enumerate(rows) if row.get(p_key) is not None]
+    indexed = sorted(tested, key=lambda item: as_float(item[1].get(p_key), 1.0))
     n = len(indexed)
-    adjusted = [1.0] * n
+    adjusted: dict[int, float] = {}
     running = 1.0
     for rank, (original_index, row) in reversed(list(enumerate(indexed, start=1))):
         p_value = as_float(row.get(p_key), 1.0)
         running = min(running, p_value * n / max(rank, 1))
         adjusted[original_index] = min(running, 1.0)
-    for row, q_value in zip(rows, adjusted):
-        row["q_value"] = round(q_value, 6)
+    for index, row in enumerate(rows):
+        q_value = adjusted.get(index)
+        row["q_value"] = round(q_value, 6) if q_value is not None else None
     return rows
 
 
