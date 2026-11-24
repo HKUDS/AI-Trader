@@ -323,6 +323,7 @@ export const MARKETS = [
   { value: 'all', label: 'All', labelZh: '全部', supported: true },
   { value: 'us-stock', label: 'US Stock', labelZh: '美股', supported: true },
   { value: 'crypto', label: 'Crypto (Testing)', labelZh: '加密货币（测试中）', supported: true },
+  { value: 'india-index', label: 'India Index / BankNifty (Testing)', labelZh: '印度指数 / BankNifty（测试中）', supported: true },
   { value: 'a-stock', label: 'A-Share (Developing)', labelZh: 'A股（开发中）', supported: false },
   { value: 'polymarket', label: 'Polymarket (Testing)', labelZh: '预测市场（测试中）', supported: true },
   { value: 'forex', label: 'Forex (Developing)', labelZh: '外汇（开发中）', supported: false },

@@ -46,6 +46,17 @@ UTC = timezone.utc
 # off during EDT (summer) but at least correct during the longer EST winter period.
 # The zoneinfo path is always preferred and available on Python 3.9+.
 ET_TZ = _ET_ZONEINFO if _ET_ZONEINFO is not None else timezone(timedelta(hours=-5))
+# IST is a fixed +5:30 offset year-round (no DST), so a fixed offset is exact.
+IST_TZ = ZoneInfo("Asia/Kolkata") if _ET_ZONEINFO is not None else timezone(timedelta(hours=5, minutes=30))
+
+# India index paper-trading symbols -> Yahoo Finance tickers.
+INDIA_INDEX_SYMBOL_MAP = {
+    "BANKNIFTY": "^NSEBANK",
+    "NIFTY": "^NSEI",
+    "NIFTY50": "^NSEI",
+    "FINNIFTY": "NIFTY_FIN_SERVICE.NS",
+    "SENSEX": "^BSESN",
+}
 
 _POLYMARKET_CONDITION_ID_RE = re.compile(r"^0x[a-fA-F0-9]{64}$")
 _POLYMARKET_TOKEN_ID_RE = re.compile(r"^\d+$")
@@ -717,6 +728,9 @@ def get_price_from_market(
             if price is None:
                 _price_log(f"[Price API] Alpha Vantage unavailable for {symbol}; trying yfinance fallback")
                 price = _get_yfinance_us_stock_price(symbol, executed_at)
+        elif market == "india-index":
+            # Indian index levels (BankNifty, Nifty, FinNifty, Sensex) via yfinance.
+            price = _get_india_index_price(symbol, executed_at)
         else:
             _price_log(f"[Price API] Unsupported market for server price fetch: {market}")
             return None
@@ -847,6 +861,99 @@ def _get_yfinance_us_stock_price(symbol: str, executed_at: str) -> Optional[floa
         return None
     except Exception as exc:
         _price_log(f"[Price API] yfinance fallback failed for {yf_symbol}: {exc}")
+        return None
+
+
+def _normalize_india_index_symbol(symbol: str) -> Optional[str]:
+    """Map a paper-trading symbol (e.g. BANKNIFTY) to a Yahoo Finance ticker."""
+    normalized = (symbol or "").strip().upper().replace(" ", "").replace("-", "").replace("_", "")
+    if normalized in INDIA_INDEX_SYMBOL_MAP:
+        return INDIA_INDEX_SYMBOL_MAP[normalized]
+    # Allow passing a raw Yahoo ticker straight through (e.g. "^NSEBANK").
+    if normalized.startswith("^") or normalized.endswith(".NS"):
+        return symbol.strip()
+    return None
+
+
+def _india_index_close_at(frame: Any, target_utc: datetime) -> Optional[float]:
+    """Pick the last close at or before target_utc from a yfinance Ticker.history frame.
+
+    `Ticker.history` returns a single-level column index and a tz-aware
+    DatetimeIndex (IST for NSE/BSE tickers), so parsing is simpler than the
+    `yf.download` MultiIndex path used for US stocks.
+    """
+    if frame is None or getattr(frame, "empty", True):
+        return None
+    try:
+        import pandas as pd
+
+        column = "Close" if "Close" in frame.columns else ("close" if "close" in frame.columns else None)
+        if column is None:
+            return None
+        series = pd.to_numeric(frame[column], errors="coerce").dropna()
+        if series.empty:
+            return None
+        index = pd.DatetimeIndex(pd.to_datetime(series.index))
+        if getattr(index, "tz", None) is None:
+            index = index.tz_localize(IST_TZ)
+        series.index = index.tz_convert(UTC)
+        target = pd.Timestamp(target_utc)
+        target = target.tz_localize(UTC) if target.tzinfo is None else target.tz_convert(UTC)
+        candidates = series[series.index <= target]
+        if candidates.empty:
+            # target predates the frame (e.g. very first bar) — take the earliest.
+            price = float(series.iloc[0])
+        else:
+            price = float(candidates.iloc[-1])
+        return price if price > 0 else None
+    except Exception as exc:
+        _price_log(f"[Price API] India index parse error: {exc}")
+        return None
+
+
+def _get_india_index_price(symbol: str, executed_at: str) -> Optional[float]:
+    """Fetch an Indian index level (BankNifty etc.) via Yahoo Finance / yfinance.
+
+    Uses `Ticker.history(period=...)` rather than `yf.download(start=, end=)`:
+    Yahoo's 1-minute feed only reliably serves a recent rolling window and
+    returns a single day when handed an old explicit range. Granularity is
+    1-minute bars, not ticks, and NSE data can lag real time by 1-2 minutes.
+    """
+    target_utc = _parse_executed_at_to_utc(executed_at)
+    if not target_utc:
+        return None
+
+    yf_symbol = _normalize_india_index_symbol(symbol)
+    if not yf_symbol:
+        _price_log(f"[Price API] Unknown India index symbol: {symbol}")
+        return None
+
+    age_days = (datetime.now(UTC) - target_utc).days
+
+    try:
+        import yfinance as yf
+
+        ticker = yf.Ticker(yf_symbol)
+        # 1-minute bars for the recent window (covers live scalping + a few days back).
+        if age_days <= 6:
+            frame = ticker.history(period="7d", interval="1m", timeout=PRICE_FETCH_TIMEOUT_SECONDS)
+            price = _india_index_close_at(frame, target_utc)
+            if price is not None:
+                _price_log(f"[Price API] yfinance 1m fetched {yf_symbol}: {price}")
+                return price
+
+        # Older timestamps (or empty intraday): fall back to daily closes.
+        daily_period = "3mo" if age_days <= 80 else "2y"
+        frame = ticker.history(period=daily_period, interval="1d", timeout=PRICE_FETCH_TIMEOUT_SECONDS)
+        price = _india_index_close_at(frame, target_utc)
+        if price is not None:
+            _price_log(f"[Price API] yfinance 1d fetched {yf_symbol}: {price}")
+        return price
+    except ImportError as exc:
+        _price_log(f"[Price API] yfinance unavailable: {exc}")
+        return None
+    except Exception as exc:
+        _price_log(f"[Price API] India index fetch failed for {yf_symbol}: {exc}")
         return None
 
 
