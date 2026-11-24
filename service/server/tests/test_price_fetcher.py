@@ -15,6 +15,27 @@ def _time_series_payload(rows: dict) -> dict:
     return {"Time Series (1min)": rows}
 
 
+class IndiaIndexSymbolTests(unittest.TestCase):
+    def test_paper_symbols_map_to_yahoo_tickers(self) -> None:
+        self.assertEqual(price_fetcher._normalize_india_index_symbol("BANKNIFTY"), "^NSEBANK")
+        self.assertEqual(price_fetcher._normalize_india_index_symbol("bank nifty"), "^NSEBANK")
+        self.assertEqual(price_fetcher._normalize_india_index_symbol("NIFTY50"), "^NSEI")
+        self.assertEqual(price_fetcher._normalize_india_index_symbol("SENSEX"), "^BSESN")
+
+    def test_raw_yahoo_tickers_pass_through_and_unknown_is_none(self) -> None:
+        self.assertEqual(price_fetcher._normalize_india_index_symbol("^NSEBANK"), "^NSEBANK")
+        self.assertIsNone(price_fetcher._normalize_india_index_symbol("AAPL"))
+
+    def test_get_price_from_market_dispatches_india_index(self) -> None:
+        with patch.object(price_fetcher, "_get_india_index_price", return_value=51234.5) as mock_idx, \
+             patch.object(price_fetcher, "_get_us_stock_price") as mock_stock:
+            price = price_fetcher.get_price_from_market("BANKNIFTY", "2026-05-15T08:00:00Z", "india-index")
+
+        self.assertEqual(price, 51234.5)
+        mock_idx.assert_called_once_with("BANKNIFTY", "2026-05-15T08:00:00Z")
+        mock_stock.assert_not_called()
+
+
 class UsStockPriceTimezoneTests(unittest.TestCase):
     def test_market_alias_uses_crypto_price_source(self) -> None:
         with patch.object(price_fetcher, "_get_hyperliquid_candle_close", return_value=None), \

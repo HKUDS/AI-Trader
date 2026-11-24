@@ -60,9 +60,21 @@ POSITIONS_CACHE_TTL_SECONDS = 10
 
 MENTION_PATTERN = re.compile(r'@([A-Za-z0-9_\-]{2,64})')
 _EXPERIMENT_NOTICE_EXPOSURE_EVENT_CACHE: dict[tuple[int, str, str], float] = {}
-SUPPORTED_MARKETS = {'us-stock', 'crypto', 'polymarket'}
+SUPPORTED_MARKETS = {'us-stock', 'crypto', 'polymarket', 'india-index'}
 VERIFIED_AGENT_IDENTITY_STATUS = 'verified'
 MARKET_ALIASES = {
+    'banknifty': 'india-index',
+    'bank-nifty': 'india-index',
+    'bank_nifty': 'india-index',
+    'nsebank': 'india-index',
+    'nifty-bank': 'india-index',
+    'nifty': 'india-index',
+    'finnifty': 'india-index',
+    'sensex': 'india-index',
+    'nse': 'india-index',
+    'nse-index': 'india-index',
+    'india': 'india-index',
+    'in-index': 'india-index',
     'binance': 'crypto',
     'binance-spot': 'crypto',
     'binance_spot': 'crypto',
@@ -137,7 +149,7 @@ def api_access_log_enabled() -> bool:
 
 def should_fetch_server_trade_price(market: str) -> bool:
     normalized_market = normalize_market(market)
-    if normalized_market in {'crypto', 'polymarket', 'us-stock'}:
+    if normalized_market in {'crypto', 'polymarket', 'us-stock', 'india-index'}:
         return True
     return allow_sync_price_fetch_in_api()
 
@@ -646,12 +658,23 @@ def is_us_market_open() -> bool:
     return day < 5 and 570 <= time_in_minutes < 960
 
 
+def is_nse_open() -> bool:
+    ist_tz = ZoneInfo('Asia/Kolkata')
+    now_ist = datetime.now(ist_tz)
+    day = now_ist.weekday()
+    time_in_minutes = now_ist.hour * 60 + now_ist.minute
+    # NSE/BSE continuous session: Mon-Fri 09:15-15:30 IST.
+    return day < 5 and 555 <= time_in_minutes < 930
+
+
 def is_market_open(market: str) -> bool:
     normalized_market = normalize_market(market)
     if normalized_market in ('crypto', 'polymarket'):
         return True
     if normalized_market == 'us-stock':
         return is_us_market_open()
+    if normalized_market == 'india-index':
+        return is_nse_open()
     return True
 
 

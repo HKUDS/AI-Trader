@@ -21,6 +21,42 @@ from routes_shared import (
 )
 
 
+class IndiaIndexMarketTests(unittest.TestCase):
+    def test_india_index_aliases_normalize_to_india_index(self) -> None:
+        self.assertEqual(normalize_market('BankNifty'), 'india-index')
+        self.assertEqual(normalize_market('nifty-bank'), 'india-index')
+        self.assertEqual(normalize_market('SENSEX'), 'india-index')
+        self.assertEqual(validate_market('india-index'), 'india-index')
+
+    def test_india_index_always_uses_server_prices(self) -> None:
+        with patch.dict(os.environ, {'ALLOW_SYNC_PRICE_FETCH_IN_API': 'false'}, clear=False):
+            self.assertTrue(should_fetch_server_trade_price('india-index'))
+
+    def test_nse_open_only_during_weekday_session_ist(self) -> None:
+        from datetime import datetime as real_datetime, timedelta, timezone
+        import routes_shared
+
+        ist = timezone(timedelta(hours=5, minutes=30))
+
+        class FixedDatetime(real_datetime):
+            fixed: real_datetime
+
+            @classmethod
+            def now(cls, tz=None):
+                return cls.fixed.astimezone(tz)
+
+        def open_at(*args) -> bool:
+            FixedDatetime.fixed = real_datetime(*args, tzinfo=ist)
+            with patch.object(routes_shared, 'datetime', FixedDatetime):
+                return routes_shared.is_nse_open()
+
+        self.assertTrue(open_at(2026, 5, 15, 9, 15))   # Friday, session open
+        self.assertTrue(open_at(2026, 5, 15, 15, 29))  # Friday, just before close
+        self.assertFalse(open_at(2026, 5, 15, 9, 14))  # before open
+        self.assertFalse(open_at(2026, 5, 15, 15, 30)) # at close
+        self.assertFalse(open_at(2026, 5, 16, 11, 0))  # Saturday
+
+
 class TradePriceSourceTests(unittest.TestCase):
     def test_supported_trade_markets_always_use_server_prices(self) -> None:
         with patch.dict(os.environ, {'ALLOW_SYNC_PRICE_FETCH_IN_API': 'false'}, clear=False):
